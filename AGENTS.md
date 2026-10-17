@@ -23,6 +23,7 @@ Kwal — KDE Plasma utility to manage the wallpaper and tint applications/tools 
 ```sh
 cmake --preset default     # configure (Ninja, Debug, compile_commands.json)
 cmake --build --preset default
+ctest --test-dir build     # run tests (QtTest + CTest)
 ./build/kwal               # run (or via kwin MCP for headless UI verification)
 ```
 

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Kwal
+GenericName=Wallpaper & Style Manager
+Comment=Manage your Plasma wallpaper and tint your favorite tools with extracted palettes
+Exec=kwal
+Icon=org.kde.kwal
+Terminal=false
+Categories=Qt;KDE;Utility;
+Keywords=wallpaper;theme;palette;color;plasma;kde;fastfetch;starship;ulauncher;
+StartupNotify=true
+License=GPL-3.0-or-later

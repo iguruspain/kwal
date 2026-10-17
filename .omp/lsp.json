@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "clangd": {
+      "command": "clangd",
+      "args": ["--compile-commands-dir=build"],
+      "fileTypes": [".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx"]
+    },
+    "qmlls": {
+      "command": "qmlls6",
+      "args": ["--build-dir", "build"],
+      "fileTypes": [".qml"],
+      "rootMarkers": ["CMakeLists.txt", ".git", "qmldir"]
+    }
+  }
+}

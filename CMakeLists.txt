@@ -12,14 +12,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ECM 6.31.0 NO_MODULE REQUIRED)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Widgets)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Test Widgets)
 find_package(KF6 REQUIRED COMPONENTS Config Kirigami)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
+enable_testing()
+
 include(KDEInstallDirs)
 
 qt_add_executable(kwal
+    src/appcontroller.cpp
+    src/appcontroller.h
     src/main.cpp
 )
 
@@ -37,6 +41,18 @@ target_link_libraries(kwal
         KF6::ConfigCore
         KF6::Kirigami
 )
+qt_add_executable(tst_appcontroller
+    tests/tst_appcontroller.cpp
+    src/appcontroller.cpp
+    src/appcontroller.h
+)
+target_include_directories(tst_appcontroller PRIVATE src)
+target_link_libraries(tst_appcontroller
+    PRIVATE
+        Qt6::Core
+        Qt6::Test
+)
+add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
 
 install(FILES org.kde.kwal.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications

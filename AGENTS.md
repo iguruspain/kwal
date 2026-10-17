@@ -4,6 +4,13 @@
 
 Kwal — KDE Plasma utility to manage the wallpaper and tint applications/tools with palettes extracted from the wallpaper. C++/Qt6/QML rewrite of the Python original (sibling repo `../Kwal` — read its AGENTS.md for feature spec). App ID: `org.kde.kwal`.
 
+## Development Directives
+
+- **Simplicity first.** The rewrite keeps the new project as simple and clean as possible: smallest code that does the job, no speculative abstractions, no legacy quirks.
+- **No legacy features by default.** The old app included: wallpaper management (folders, thumbnails, filters, video/SVG support), palette extraction (Material You / Color Thief / wal), tool tinting (Fastfetch, Starship, Ulauncher), live preview with shaders. **Before implementing any of these, ask the user which ones to keep** — never port unasked.
+- **Standards over precedent.** Follow KDE HIG + Kirigami skills + current Qt best practices. Where the old app did something differently (threading, file watching, config format), the new code follows current standards — the old implementation is a feature reference, not a pattern reference.
+- **Minimal dependencies.** System packages only; no new third-party library without explicit user approval.
+
 ## Stack (exact versions on this system)
 
 - Qt 6.12.0 (system packages, pkg-config + CMake)

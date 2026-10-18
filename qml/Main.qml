@@ -1,5 +1,5 @@
 import QtQuick
-import QtQuick.Controls as QQC2
+import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
@@ -62,27 +62,32 @@ Kirigami.ApplicationWindow {
                 spacing: Kirigami.Units.smallSpacing
 
                 Item { Layout.fillWidth: true }
-                QQC2.TabBar {
+                TabBar {
                     id: tabBar
                     currentIndex: window.pageStack.currentIndex
 
-                    QQC2.TabButton {
+                    TabButton {
                         text: qsTr("Wallpapers")
                         checked: window.pageStack.currentIndex === 0
                         onClicked: window.pageStack.currentIndex = 0
                     }
-                    QQC2.TabButton {
+                    TabButton {
                         text: qsTr("Fastfetch")
                         checked: window.pageStack.currentIndex === 1
                         onClicked: window.pageStack.currentIndex = 1
                     }
-                    QQC2.TabButton {
+                    TabButton {
                         text: qsTr("Ulauncher")
                         checked: window.pageStack.currentIndex === 2
                         onClicked: window.pageStack.currentIndex = 2
                     }
                 }
                 Item { Layout.fillWidth: true }
+                ToolButton {
+                    icon.name: "preferences-system-symbolic"
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                    onClicked: {console.log("test")}    
+                }
             }
         }
     }

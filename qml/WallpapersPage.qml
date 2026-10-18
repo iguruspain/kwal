@@ -15,37 +15,56 @@ Kirigami.Page {
 
 
     header:ToolBar {
-        // background: Rectangle {
-        //     color: "transparent"//Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
-        // }
-        contentItem: RowLayout {
+        background: Rectangle {
+            color: "transparent"//Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        }
+        contentItem: ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.smallSpacing
             spacing: Kirigami.Units.smallSpacing
+        
+            RowLayout {
+                spacing: Kirigami.Units.smallSpacing
 
-            ToolButton {
-                icon.name: "view-list-details"
-                checkable: true
-                checked: page.sidePaneOpen
-                onClicked: page.sidePaneOpen = checked
-                display: AbstractButton.IconOnly
-                Accessible.name: qsTr("Toggle Folders Panel")
-                ToolTip.text: qsTr("Toggle Folders Panel")
-                ToolTip.visible: hovered
-            }
-            Label {
-                readonly property string fileName: {
-                    const parts = page.app.selectedWallpaper.split("/").filter(function (s) { return s.length > 0 })
-                    return parts.length > 0 ? parts[parts.length - 1] : ""
+                ToolButton {
+                    icon.name: "view-list-details"
+                    checkable: true
+                    checked: page.sidePaneOpen
+                    onClicked: page.sidePaneOpen = checked
+                    display: AbstractButton.IconOnly
+                    Accessible.name: qsTr("Toggle Folders Panel")
+                    ToolTip.text: qsTr("Toggle Folders Panel")
+                    ToolTip.visible: hovered
                 }
-                text: page.app.selectedWallpaper === "" ? qsTr("No wallpaper selected") : fileName
-                font.weight: Font.DemiBold
-                elide: Text.ElideMiddle
-                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                ColumnLayout {
+                    id: headerTitle
+                    spacing: 0
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        readonly property string fileName: {
+                            const parts = page.app.selectedWallpaper.split("/").filter(function (s) { return s.length > 0 })
+                            return parts.length > 0 ? parts[parts.length - 1] : ""
+                        }
+                        text: page.app.selectedWallpaper === "" ? qsTr("No wallpaper selected") : fileName
+                        font.bold: true
+                        elide: Text.ElideMiddle
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: page.app.selectedWallpaperSize
+                        color: Kirigami.Theme.disabledTextColor
+                        opacity: 0.7
+                        visible: page.app.selectedWallpaperSize !== ""
+                        //font.pixelSize: Kirigami.Theme.smallFont.pointSize
+                    }
+                }
+                Item { Layout.fillWidth: true }
             }
-            Label {
-                text: page.app.selectedWallpaperSize
-                opacity: 0.7
-                visible: page.app.selectedWallpaperSize !== ""
-            }
+            MenuSeparator { Layout.fillWidth: true }
         }
     }
 
@@ -73,32 +92,43 @@ Kirigami.Page {
             Layout.fillWidth: true
             Layout.fillHeight: true
 
-            GridView {
-                id: gridView
+            ScrollView {
+                id: scrollView
                 anchors.fill: parent
-                // Responsive cells, matching the old app: at least two ~250px-wide columns in a 16:9 grid.
-                readonly property int columnCount: Math.max(2, Math.floor(width / 250))
-                cellWidth: Math.floor(width / columnCount)
-                cellHeight: Math.floor(cellWidth * 0.5625)
-                model: page.app.wallpaperModel
-                focus: true
-                highlight: Rectangle {
-                    color: Kirigami.Theme.highlightColor
-                    //opacity: 0.4
-                    radius: Kirigami.Units.smallSpacing
-                }
-                delegate: WallpaperItem {
-                    app: page.app
-                    grid: gridView
-                    // GridView does not resize delegates; fill the cell like the old app.
-                    width: gridView.cellWidth
-                    height: gridView.cellHeight
-                }
-                onCurrentIndexChanged: page.app.selectWallpaper(
-                    gridView.currentIndex >= 0 ? page.app.wallpaperModel.pathAt(gridView.currentIndex) : "")
-                Keys.onReturnPressed: function(event) {
-                    event.accepted = true
-                    page.app.applyWallpaper()
+                clip: true
+            
+                GridView {
+                    id: gridView
+                    //anchors.fill: parent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    // Reserve space for the scrollbar to prevent visual overlap
+                    anchors.rightMargin: Kirigami.Units.smallSpacing + Kirigami.Units.largeSpacing
+
+                    // Responsive cells, matching the old app: at least two ~250px-wide columns in a 16:9 grid.
+                    readonly property int columnCount: Math.max(2, Math.floor(width / 250))
+                    cellWidth: Math.floor(width / columnCount)
+                    cellHeight: Math.floor(cellWidth * 0.5625)
+                    model: page.app.wallpaperModel
+                    focus: true
+                    highlight: Rectangle {
+                        color: Kirigami.Theme.highlightColor
+                        //opacity: 0.4
+                        radius: Kirigami.Units.smallSpacing
+                    }
+                    delegate: WallpaperItem {
+                        app: page.app
+                        grid: gridView
+                        // GridView does not resize delegates; fill the cell like the old app.
+                        width: gridView.cellWidth
+                        height: gridView.cellHeight
+                    }
+                    onCurrentIndexChanged: page.app.selectWallpaper(
+                        gridView.currentIndex >= 0 ? page.app.wallpaperModel.pathAt(gridView.currentIndex) : "")
+                    Keys.onReturnPressed: function(event) {
+                        event.accepted = true
+                        page.app.applyWallpaper()
+                    }
                 }
             }
 

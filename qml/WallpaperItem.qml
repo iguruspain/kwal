@@ -36,8 +36,8 @@ ItemDelegate {
                 source: root.thumbnail
                 asynchronous: true
                 smooth: true
-                fillMode: Image.Stretch
-                scale: root.hovered ? 1.14 : (root.isSelected ? 1.06 : 1.0)
+                fillMode: Image.Stretch //Image.PreserveAspectCrop 
+                scale: root.hovered ? 1.14 : (root.isSelected ? 1.07 : 1.0)
                 Behavior on scale {
                     SpringAnimation {
                         spring: 8.0

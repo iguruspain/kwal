@@ -30,7 +30,7 @@ ItemDelegate {
             }
             Label {
                 text: root.modelData
-                elide: Text.ElideMiddle
+                elide: Text.ElideLeft
                 color: Kirigami.Theme.disabledTextColor
                 font: Kirigami.Theme.smallFont
                 Layout.fillWidth: true

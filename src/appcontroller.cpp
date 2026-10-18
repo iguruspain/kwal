@@ -8,6 +8,7 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDir>
+#include <QFileInfo>
 #include <QImageReader>
 #include <QStandardPaths>
 #include <QUrl>
@@ -26,6 +27,15 @@ QString wallpaperScript(const QString &filePath)
                           "  d.writeConfig('Image', 'file://%1');"
                           "}")
         .arg(escaped);
+}
+
+// "WxH" string for a readable image, empty if it cannot be determined.
+QString imageResolution(const QString &filePath)
+{
+    const QSize size = QImageReader(filePath).size();
+    return (size.width() > 0 && size.height() > 0)
+        ? QStringLiteral("%1×%2").arg(size.width()).arg(size.height())
+        : QString();
 }
 } // namespace
 
@@ -81,6 +91,16 @@ QString AppController::currentWallpaperSize() const
     return m_currentWallpaperSize;
 }
 
+QString AppController::selectedWallpaper() const
+{
+    return m_selectedWallpaper;
+}
+
+QString AppController::selectedWallpaperSize() const
+{
+    return m_selectedWallpaperSize;
+}
+
 void AppController::addFolder(const QString &path)
 {
     QString trimmed = path.trimmed();
@@ -128,6 +148,30 @@ void AppController::setCurrentFolderIndex(int index)
     emit currentFolderIndexChanged();
 }
 
+void AppController::selectWallpaper(const QString &filePath)
+{
+    if (m_selectedWallpaper == filePath) {
+        return;
+    }
+    m_selectedWallpaper = filePath;
+    m_selectedWallpaperSize = filePath.isEmpty() ? QString() : imageResolution(filePath);
+    emit selectedWallpaperChanged();
+}
+
+void AppController::applyWallpaper()
+{
+    if (m_selectedWallpaper.isEmpty()) {
+        return;
+    }
+    if (!QFileInfo::exists(m_selectedWallpaper)) {
+        m_selectedWallpaper.clear();
+        emit selectedWallpaperChanged();
+        emit wallpaperSetResult(false, QStringLiteral("The selected wallpaper no longer exists."));
+        return;
+    }
+    setWallpaper(m_selectedWallpaper);
+}
+
 void AppController::setWallpaper(const QString &filePath)
 {
     if (m_wallpaperBusy) {
@@ -164,12 +208,7 @@ void AppController::setWallpaper(const QString &filePath)
 void AppController::setCurrentWallpaper(const QString &filePath)
 {
     m_currentWallpaper = filePath;
-    QImageReader reader(filePath);
-    const QSize size = reader.size();
-    m_currentWallpaperSize =
-        (size.width() > 0 && size.height() > 0)
-        ? QStringLiteral("%1×%2").arg(size.width()).arg(size.height())
-        : QString();
+    m_currentWallpaperSize = imageResolution(filePath);
     saveConfig();
     emit currentWallpaperChanged();
 }
@@ -178,12 +217,15 @@ void AppController::loadConfig()
 {
     const KConfigGroup group = m_config->group(QStringLiteral("Wallpapers"));
     m_folders = group.readEntry("folders", QStringList());
-    qWarning("kwal: loaded %d folders: %s", m_folders.size(), qPrintable(m_folders.join(QStringLiteral(","))));
     if (m_folders.isEmpty()) {
-        // Sensible first run: show the pictures folder if it exists.
-        const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
-        if (!pictures.isEmpty() && QDir(pictures).exists()) {
-            m_folders.append(pictures);
+        // standardLocations() resolves the user's localized Pictures dir
+        // ("Imágenes", "Pictures", ...) without creating it.
+        const QStringList candidates = QStandardPaths::standardLocations(QStandardPaths::PicturesLocation);
+        for (const QString &dir : candidates) {
+            if (QDir(dir).exists()) {
+                m_folders.append(dir);
+                break;
+            }
         }
     }
     m_currentFolderIndex = group.readEntry("currentFolderIndex", 0);

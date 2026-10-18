@@ -9,26 +9,45 @@ ItemDelegate {
     required property string name
     required property url thumbnail
     required property string extension
+    required property GridView grid
+    required property int index
 
-    implicitWidth: 160
-    implicitHeight: 160
     background: Item {}
 
-    readonly property bool isCurrent: root.path === root.app.currentWallpaper
+    readonly property bool isSelected: root.path === root.app.selectedWallpaper
 
     activeFocusOnTab: false
-    highlighted: hovered
-    onClicked: root.app.setWallpaper(root.path)
+    hoverEnabled: true
+    onClicked: root.grid.currentIndex = index
 
     contentItem: Item {
-        Image {
-            id: thumbnailImage
+        // Rounded clipped container like the old app: keeps the hover/selection zoom inside the cell.
+        Rectangle {
+            id: thumbContainer
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
-            source: root.thumbnail
-            asynchronous: true
-            fillMode: Image.PreserveAspectFit
-            sourceSize: Qt.size(512, 512)
+            color: "transparent"
+            radius: Kirigami.Units.smallSpacing
+            clip: true
+
+            Image {
+                id: thumbnailImage
+                anchors.fill: parent
+                source: root.thumbnail
+                asynchronous: true
+                smooth: true
+                fillMode: Image.Stretch
+                scale: root.hovered ? 1.14 : (root.isSelected ? 1.06 : 1.0)
+                Behavior on scale {
+                    SpringAnimation {
+                        spring: 8.0
+                        damping: 0.55
+                        mass: 1.0
+                    }
+                }
+                opacity: status === Image.Ready ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
+            }
         }
         Kirigami.Icon {
             anchors.centerIn: parent
@@ -36,13 +55,18 @@ ItemDelegate {
             color: Kirigami.Theme.disabledTextColor
             visible: root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error
         }
-        Kirigami.Icon {
+        ToolButton {
+            // Replaces the checkmark: appears on the selected cell and applies it.
             anchors.right: parent.right
             anchors.top: parent.top
-            anchors.margins: Kirigami.Units.mediumSpacing
-            source: "checkmark"
-            color: Kirigami.Theme.highlightColor
-            visible: root.isCurrent
+            anchors.margins: Kirigami.Units.smallSpacing
+            icon.name: "dialog-ok-apply"
+            display: AbstractButton.IconOnly
+            visible: root.isSelected
+            Accessible.name: qsTr("Set as Wallpaper")
+            ToolTip.text: qsTr("Set as Wallpaper")
+            ToolTip.visible: hovered
+            onClicked: root.app.applyWallpaper()
         }
         Rectangle {
             id: badge

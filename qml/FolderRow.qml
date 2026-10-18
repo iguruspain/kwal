@@ -37,10 +37,20 @@ ItemDelegate {
             }
         }
         ToolButton {
-            icon.name: "user-trash"
             display: AbstractButton.IconOnly
             Accessible.name: qsTr("Remove Folder")
+            hoverEnabled: true
+            ToolTip.text: qsTr("Remove this folder")
+            ToolTip.visible: hovered
             onClicked: root.app.removeFolder(root.index)
+            // Kirigami.Icon with a semantic color: the Basic style follows the platform palette,
+            // which is light by default and would render the icon nearly invisible.
+            contentItem: Kirigami.Icon {
+                source: "edit-delete"
+                color: Kirigami.Theme.textColor
+                width: Kirigami.Units.iconSizes.medium
+                height: Kirigami.Units.iconSizes.medium
+            }
         }
     }
 }

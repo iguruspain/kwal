@@ -1,11 +1,7 @@
 #include "wallpapermodel.h"
 
-#include <QCryptographicHash>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
-#include <QImageReader>
-#include <QStandardPaths>
 
 namespace {
 const QStringList &imageExtensions()
@@ -100,24 +96,7 @@ void WallpaperModel::refresh()
 
 QUrl WallpaperModel::thumbnailFor(const QString &filePath) const
 {
-    const QFileInfo info(filePath);
-    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
-    QDir().mkpath(cacheDir + QStringLiteral("/thumbnails"));
-
-    // Key on path + mtime so a replaced image gets a fresh thumbnail.
-    const QString key = filePath + QStringLiteral(":") + QString::number(info.lastModified().toSecsSinceEpoch());
-    const QString hash = QString::fromLatin1(QCryptographicHash::hash(key.toUtf8(), QCryptographicHash::Sha1).toHex()).left(16);
-    const QString thumbnailPath = cacheDir + QStringLiteral("/thumbnails/") + hash + QStringLiteral(".jpg");
-    if (QFile::exists(thumbnailPath)) {
-        return QUrl::fromLocalFile(thumbnailPath);
-    }
-
-    QImageReader reader(filePath);
-    reader.setScaledSize(QSize(256, 256));
-    const QImage image = reader.read();
-    if (image.isNull()) {
-        return QUrl();
-    }
-    image.save(thumbnailPath, "JPG", 85);
-    return QUrl::fromLocalFile(thumbnailPath);
+    // The "fdo_thumbnail" provider (FdoThumbnailProvider) resolves the FreeDesktop
+    // thumbnail cache and generates a 256 px thumbnail on a miss.
+    return QUrl(QStringLiteral("image://fdo_thumbnail/") + filePath);
 }

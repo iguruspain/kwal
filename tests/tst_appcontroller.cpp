@@ -17,6 +17,7 @@ private slots:
     void initTestCase();
     void testWallpaperModel();
     void testFoldersAndConfig();
+    void testSelectionAndApply();
 
 private:
     static void saveImage(const QString &path, Qt::GlobalColor color)
@@ -102,14 +103,37 @@ void tst_AppController::testFoldersAndConfig()
     QVERIFY(app2.configFilePath().endsWith(QStringLiteral("kwalrc")));
 }
 
+void tst_AppController::testSelectionAndApply()
+{
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+
+    AppController app;
+    QSignalSpy resultSpy(&app, &AppController::wallpaperSetResult);
+
+    // No selection: applying is a no-op.
+    app.applyWallpaper();
+    QCOMPARE(resultSpy.count(), 0);
+    QCOMPARE(app.selectedWallpaper(), QString());
+
+    // Selection pointing at a missing file: cleared and reported.
+    app.selectWallpaper(pictures + QStringLiteral("/A/missing.png"));
+    QCOMPARE(app.selectedWallpaper(), pictures + QStringLiteral("/A/missing.png"));
+    app.applyWallpaper();
+    QCOMPARE(resultSpy.count(), 1);
+    QCOMPARE(resultSpy.at(0).at(0).toBool(), false);
+    QCOMPARE(app.selectedWallpaper(), QString());
+}
+
 int main(int argc, char *argv[])
 {
     // Sandboxed XDG locations: set before the QCoreApplication is constructed.
+    // HOME is sandboxed too so QStandardPaths user dirs (Pictures, ...) never
+    // touch the real home directory.
     const QString base = QDir::tempPath() + QStringLiteral("/kwal-test-") +
                          QString::number(QCoreApplication::applicationPid());
+    qputenv("HOME", base.toUtf8());
     qputenv("XDG_CONFIG_HOME", (base + QStringLiteral("/config")).toUtf8());
     qputenv("XDG_CACHE_HOME", (base + QStringLiteral("/cache")).toUtf8());
-    qputenv("XDG_USER_PICTURES", (base + QStringLiteral("/Pictures")).toUtf8());
     QCoreApplication app(argc, argv);
 
     tst_AppController test;

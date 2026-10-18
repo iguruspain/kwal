@@ -24,10 +24,17 @@ Item {
             }
             Item { Layout.fillWidth: true }
             ToolButton {
-                icon.name: "list-add"
                 display: AbstractButton.IconOnly
                 Accessible.name: qsTr("Add Folder")
                 onClicked: root.addFolderDialog.open()
+                // Kirigami.Icon with a semantic color: the Basic style follows the platform palette,
+                // which is light by default and would render the icon nearly invisible.
+                contentItem: Kirigami.Icon {
+                    source: "list-add"
+                    color: Kirigami.Theme.textColor
+                    width: Kirigami.Units.iconSizes.medium
+                    height: Kirigami.Units.iconSizes.medium
+                }
             }
         }
 
@@ -44,6 +51,8 @@ Item {
             }
             delegate: FolderRow {
                 app: root.app
+                // ListView does not stretch delegates; match the list width so the row (and its button) fit the sidebar.
+                width: folderList.width
             }
         }
     }

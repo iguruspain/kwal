@@ -24,6 +24,8 @@ include(KDEInstallDirs)
 qt_add_executable(kwal
  src/appcontroller.cpp
  src/appcontroller.h
+ src/fdothumbnailprovider.cpp
+ src/fdothumbnailprovider.h
  src/main.cpp
  src/wallpapermodel.cpp
  src/wallpapermodel.h

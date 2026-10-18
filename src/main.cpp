@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QMessageLogger>
+#include "fdothumbnailprovider.h"
 #include <QQmlApplicationEngine>
 #include <cstdio>
 
@@ -18,6 +19,7 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("kwal"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("fdo_thumbnail"), new FdoThumbnailProvider());
     engine.loadFromModule(QStringLiteral("org.kde.kwal"), QStringLiteral("Main"));
 
     return app.exec();

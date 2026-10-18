@@ -5,16 +5,31 @@ import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
-Item {
+
+Rectangle {
     id: root
     required property AppController app
     required property FolderDialog addFolderDialog
 
-    implicitWidth: 200
+    Layout.preferredWidth: 300
     Layout.fillHeight: true
+    color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+    radius: Kirigami.Units.largeSpacing
+    border.color: Kirigami.Theme.highlightColor
+    border.width: 1.5
+
+// Item {
+//     id: root
+//     required property AppController app
+//     required property FolderDialog addFolderDialog
+
+//     implicitWidth: 300
+//     Layout.fillHeight: true
+
 
     ColumnLayout {
         anchors.fill: parent
+        anchors.margins: Kirigami.Units.mediumSpacing
         spacing: Kirigami.Units.mediumSpacing
 
         RowLayout {
@@ -38,17 +53,19 @@ Item {
             }
         }
 
+        MenuSeparator { Layout.fillWidth: true }
+
         ListView {
             id: folderList
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             model: root.app.folders
-            highlight: Rectangle {
-                radius: Kirigami.Units.smallSpacing
-                color: Kirigami.Theme.highlightColor
-                opacity: 0.25
-            }
+            // highlight: Rectangle {
+            //     radius: Kirigami.Units.smallSpacing
+            //     color: Kirigami.Theme.highlightColor
+            //     opacity: 0.25
+            // }
             delegate: FolderRow {
                 app: root.app
                 // ListView does not stretch delegates; match the list width so the row (and its button) fit the sidebar.
@@ -57,3 +74,5 @@ Item {
         }
     }
 }
+
+

@@ -76,10 +76,27 @@ void WallpaperModel::setSourceDirectory(const QString &directory)
     refresh();
 }
 
+QString WallpaperModel::filterText() const
+{
+    return m_filterText;
+}
+
+void WallpaperModel::setFilterText(const QString &text)
+{
+    if (m_filterText == text) {
+        return;
+    }
+    m_filterText = text;
+    beginResetModel();
+    applyFilter();
+    endResetModel();
+    emit filterTextChanged();
+    emit countChanged();
+}
+
 void WallpaperModel::refresh()
 {
-    beginResetModel();
-    m_entries.clear();
+    m_all.clear();
 
     const QDir dir(m_directory);
     const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
@@ -88,10 +105,27 @@ void WallpaperModel::refresh()
             continue;
         }
         const QString filePath = dir.filePath(fileName);
-        m_entries.append({filePath, QFileInfo(filePath).fileName(), thumbnailFor(filePath), QFileInfo(filePath).suffix()});
+        m_all.append({filePath, QFileInfo(filePath).fileName(), thumbnailFor(filePath), QFileInfo(filePath).suffix()});
     }
+
+    beginResetModel();
+    applyFilter();
     endResetModel();
     emit countChanged();
+}
+
+void WallpaperModel::applyFilter()
+{
+    m_entries.clear();
+    if (m_filterText.isEmpty()) {
+        m_entries = m_all;
+        return;
+    }
+    for (const Entry &entry : m_all) {
+        if (entry.name.contains(m_filterText, Qt::CaseInsensitive)) {
+            m_entries.append(entry);
+        }
+    }
 }
 
 QUrl WallpaperModel::thumbnailFor(const QString &filePath) const

@@ -48,8 +48,8 @@ ItemDelegate {
             contentItem: Kirigami.Icon {
                 source: "edit-delete"
                 color: Kirigami.Theme.textColor
-                width: Kirigami.Units.iconSizes.medium
-                height: Kirigami.Units.iconSizes.medium
+                width: Kirigami.Units.iconSizes.tiny
+                height: Kirigami.Units.iconSizes.tiny
             }
         }
     }

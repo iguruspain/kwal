@@ -11,6 +11,7 @@ class WallpaperModel : public QAbstractListModel
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
+    Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
 
 public:
     enum Roles {
@@ -29,12 +30,17 @@ public:
     Q_INVOKABLE QString pathAt(int row) const;
     Q_INVOKABLE void setSourceDirectory(const QString &directory);
 
+    QString filterText() const;
+    void setFilterText(const QString &text);
+
 signals:
     // Emitted when the number of entries changes (via model reset).
     void countChanged();
+    void filterTextChanged();
 
 private:
     void refresh();
+    void applyFilter();
     QUrl thumbnailFor(const QString &filePath) const;
 
     QString m_directory;
@@ -44,5 +50,7 @@ private:
         QUrl thumbnail;
         QString extension;
     };
+    QVector<Entry> m_all;
     QVector<Entry> m_entries;
+    QString m_filterText;
 };

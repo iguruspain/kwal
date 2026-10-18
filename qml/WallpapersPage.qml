@@ -80,7 +80,7 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 200
                         placeholderText: qsTr("Filter wallpapers...")
-                        onTextChanged: {console.log(text)}
+                        onTextChanged: page.app.wallpaperModel.filterText = text
                         visible: page.searchOpen
 
                         onVisibleChanged: {
@@ -114,7 +114,7 @@ Kirigami.Page {
             app: page.app
             addFolderDialog: page.addFolderDialog
             Layout.fillHeight: true
-            Layout.preferredWidth: page.sidePaneOpen ? 200 : 0
+            Layout.preferredWidth: page.sidePaneOpen ? 300 : 0
             visible: folderSidebar.Layout.preferredWidth > 0
             opacity: page.sidePaneOpen ? 1 : 0
             clip: true
@@ -174,8 +174,8 @@ Kirigami.Page {
                 anchors.centerIn: parent
                 visible: page.app.wallpaperModel.count === 0
                 icon.name: "folder-images"
-                text: qsTr("No wallpapers in this folder")
-                explanation: qsTr("Pick a folder with images to get started.")
+                text: searchField.text === "" ? qsTr("No wallpapers in this folder") : qsTr("No matching wallpapers")
+                explanation: searchField.text === "" ? qsTr("Pick a folder with images to get started.") : qsTr("Try a different search term.")
             }
         }
     }

@@ -14,7 +14,7 @@ Kirigami.ApplicationWindow {
         : Kirigami.Theme.backgroundColor
 
     width: 960
-    height: 600
+    height: 650
     minimumWidth: 700
     minimumHeight: 400
     visible: true
@@ -51,6 +51,10 @@ Kirigami.ApplicationWindow {
 
     header: Rectangle {
         color: appBackground
+        // Reserve vertical space: a bare Rectangle has implicitHeight 0, so the
+        // window header would not push the pageStack down and the page's own
+        // ToolBar would overlap this tab row.
+        implicitHeight: tabBar.implicitHeight + Kirigami.Units.largeSpacing
         ColumnLayout {
             anchors.fill: parent
             RowLayout {

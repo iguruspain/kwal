@@ -13,6 +13,13 @@ ItemDelegate {
     required property int index
 
     background: Item {}
+    // The org.kde.desktop ItemDelegate uses asymmetric top/bottom padding (20/8)
+    // tuned for vertical lists; in the GridView that shifts the content area down,
+    // so the cell highlight looks uneven. Zero it out so the card is centered.
+    topPadding: 2
+    bottomPadding: 2
+    leftPadding: 2
+    rightPadding: 2
 
     readonly property bool isSelected: root.path === root.app.selectedWallpaper
 
@@ -56,7 +63,6 @@ ItemDelegate {
             visible: root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error
         }
         ToolButton {
-            // Replaces the checkmark: appears on the selected cell and applies it.
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: Kirigami.Units.smallSpacing
@@ -72,11 +78,13 @@ ItemDelegate {
             id: badge
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: Kirigami.Units.smallSpacing
-            width: badgeLabel.implicitWidth
+            anchors.margins: Kirigami.Units.smallSpacing * 2
+            width: badgeLabel.implicitWidth + Kirigami.Units.smallSpacing
             height: badgeLabel.implicitHeight
             radius: Kirigami.Units.smallSpacing
             color: Kirigami.Theme.alternateBackgroundColor
+            border.color: Kirigami.Theme.highlightColor
+            border.width: 0.5
             Label {
                 id: badgeLabel
                 anchors.centerIn: parent

@@ -11,13 +11,13 @@ Kirigami.Page {
     title: qsTr("Wallpapers")
     property AppController app
     property FolderDialog addFolderDialog
-    property bool sidePaneOpen: true
+    property bool sidePaneOpen: false
 
 
     header:ToolBar {
-        background: Rectangle {
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
-        }
+        // background: Rectangle {
+        //     color: "transparent"//Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        // }
         contentItem: RowLayout {
             spacing: Kirigami.Units.smallSpacing
 
@@ -84,7 +84,7 @@ Kirigami.Page {
                 focus: true
                 highlight: Rectangle {
                     color: Kirigami.Theme.highlightColor
-                    opacity: 0.4
+                    //opacity: 0.4
                     radius: Kirigami.Units.smallSpacing
                 }
                 delegate: WallpaperItem {

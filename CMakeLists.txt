@@ -22,35 +22,52 @@ enable_testing()
 include(KDEInstallDirs)
 
 qt_add_executable(kwal
-    src/appcontroller.cpp
-    src/appcontroller.h
-    src/main.cpp
+ src/appcontroller.cpp
+ src/appcontroller.h
+ src/main.cpp
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
 )
 
 qt_add_qml_module(kwal
     URI org.kde.kwal
     QML_FILES
         qml/Main.qml
+        qml/WallpapersPage.qml
+        qml/FolderSidebar.qml
+        qml/FolderRow.qml
+        qml/WallpaperItem.qml
+        qml/PlaceholderPage.qml
 )
 
 target_link_libraries(kwal
-    PRIVATE
-        Qt6::Quick
-        Qt6::QuickControls2
-        Qt6::Widgets
-        KF6::ConfigCore
-        KF6::Kirigami
+ PRIVATE
+ Qt6::Gui
+ Qt6::Quick
+ Qt6::QuickControls2
+ Qt6::Widgets
+ Qt6::DBus
+ KF6::ConfigCore
+ KF6::Kirigami
 )
+
+target_include_directories(kwal PRIVATE src)
 qt_add_executable(tst_appcontroller
-    tests/tst_appcontroller.cpp
-    src/appcontroller.cpp
-    src/appcontroller.h
+ tests/tst_appcontroller.cpp
+ src/appcontroller.cpp
+ src/appcontroller.h
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
 )
 target_include_directories(tst_appcontroller PRIVATE src)
 target_link_libraries(tst_appcontroller
-    PRIVATE
-        Qt6::Core
-        Qt6::Test
+ PRIVATE
+ Qt6::Core
+ Qt6::Gui
+ Qt6::Qml
+ Qt6::DBus
+ Qt6::Test
+ KF6::ConfigCore
 )
 add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
 

@@ -29,7 +29,7 @@ ctest --test-dir build     # run tests (QtTest + CTest)
 
 ## Tooling rules (mandatory)
 
-1. **Skills first:** read the relevant skill before writing code (`qt-qml`, `qt-cmake-project`, local `Kirigami`). Follow them.
+1. **Skills first:** read the relevant skill before writing code (`qt-qml`, `qt-cmake-project`, `Kirigami`). Follow them.
 2. **Installed module is the source of truth, not memory or master docs.** Before using any Kirigami type/property, verify it exists in this system's build:
    - QML types/properties: `grep` `/usr/lib/qt6/qml/org/kde/kirigami/{templates,controls,dialogs,forms,primitives,layouts}/{qmldir,*.qmltypes}` or the `.qml` sources.
    - LSP: `xd://lsp` diagnostics/hover on the file (clangd + qmlls6 configured in `.omp/lsp.json`).

@@ -30,7 +30,7 @@ Item {
                 // Kirigami.Icon with a semantic color: the Basic style follows the platform palette,
                 // which is light by default and would render the icon nearly invisible.
                 contentItem: Kirigami.Icon {
-                    source: "list-add"
+                    source: "folder-new"
                     color: Kirigami.Theme.textColor
                     width: Kirigami.Units.iconSizes.medium
                     height: Kirigami.Units.iconSizes.medium

@@ -14,7 +14,10 @@ Kirigami.Page {
     property bool sidePaneOpen: true
 
 
-    header: ToolBar {
+    header:ToolBar {
+        background: Rectangle {
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        }
         contentItem: RowLayout {
             spacing: Kirigami.Units.smallSpacing
 

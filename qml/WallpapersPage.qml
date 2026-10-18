@@ -12,11 +12,23 @@ Kirigami.Page {
     property AppController app
     property FolderDialog addFolderDialog
     property bool sidePaneOpen: false
+    property bool searchOpen: false
+
+    function toggleSearch() {
+        searchOpen = !searchOpen
+    }
+
+    // Accessibility: Shortcut for Ctrl+F to toggle search
+    Shortcut {
+        sequence: "Ctrl+F"
+        context: Qt.ApplicationShortcut
+        onActivated: page.toggleSearch()
+    }
 
 
     header:ToolBar {
         background: Rectangle {
-            color: "transparent"//Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
         }
         contentItem: ColumnLayout {
             anchors.fill: parent
@@ -51,6 +63,7 @@ Kirigami.Page {
                         text: page.app.selectedWallpaper === "" ? qsTr("No wallpaper selected") : fileName
                         font.bold: true
                         elide: Text.ElideMiddle
+                        visible: !page.searchOpen
                     }
                     Label {
                         Layout.fillWidth: true
@@ -58,11 +71,36 @@ Kirigami.Page {
                         text: page.app.selectedWallpaperSize
                         color: Kirigami.Theme.disabledTextColor
                         opacity: 0.7
-                        visible: page.app.selectedWallpaperSize !== ""
+                        visible: page.app.selectedWallpaperSize !== "" && !page.searchOpen
                         //font.pixelSize: Kirigami.Theme.smallFont.pointSize
+                    }
+
+                    Kirigami.SearchField {
+                        id: searchField
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 200
+                        placeholderText: qsTr("Filter wallpapers...")
+                        onTextChanged: {console.log(text)}
+                        visible: page.searchOpen
+
+                        onVisibleChanged: {
+                            if (visible) {
+                                searchField.forceActiveFocus()
+                            }
+                        }
                     }
                 }
                 Item { Layout.fillWidth: true }
+                ToolButton {
+                    id: searchButton
+                    icon.name: "search-symbolic"
+                    checkable: true
+                    checked: page.searchOpen
+                    onClicked: page.toggleSearch()
+                    ToolTip.text: qsTr("Toggle Search Panel")
+                    ToolTip.visible: hovered
+                    display: AbstractButton.IconOnly
+                }
             }
             MenuSeparator { Layout.fillWidth: true }
         }

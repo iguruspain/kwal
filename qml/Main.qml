@@ -14,7 +14,7 @@ Kirigami.ApplicationWindow {
         : Kirigami.Theme.backgroundColor
 
     width: 960
-    height: 650
+    height: 660
     minimumWidth: 700
     minimumHeight: 400
     visible: true
@@ -83,11 +83,11 @@ Kirigami.ApplicationWindow {
                     }
                 }
                 Item { Layout.fillWidth: true }
-                ToolButton {
-                    icon.name: "preferences-system-symbolic"
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-                    onClicked: {console.log("test")}    
-                }
+                // ToolButton {
+                //     icon.name: "preferences-system-symbolic"
+                //     Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                //     onClicked: {console.log("test")}    
+                // }
             }
         }
     }

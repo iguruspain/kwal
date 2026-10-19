@@ -1,0 +1,280 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Dialogs
+import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
+
+pragma ComponentBehavior: Bound
+
+Kirigami.Page {
+    id: page
+    title: qsTr("Fastfetch")
+    background: Rectangle {
+        color: "transparent"
+    }
+
+    readonly property FastfetchController controller: FastfetchController {}
+
+    function shortPath(path) {
+        const parts = String(path).split("/").filter(function (s) { return s.length > 0 })
+        if (parts.length <= 2)
+            return String(path)
+        return "…" + "/" + parts[parts.length - 2] + "/" + parts[parts.length - 1]
+    }
+
+    Dialog {
+        id: resultDialog
+        title: qsTr("Fastfetch")
+        modal: true
+        visible: false
+        standardButtons: Dialog.Ok
+        property string message: ""
+        contentItem: Label {
+            text: resultDialog.message
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    FileDialog {
+        id: imagePicker
+        title: qsTr("Select an Image")
+        nameFilters: [
+            qsTr("Images (*.png *.jpg *.jpeg *.bmp *.webp *.gif)")
+        ]
+        onAccepted: page.controller.selectFile(selectedFile.toString())
+    }
+
+    ColorDialog {
+        id: colorPicker
+        onAccepted: {
+            page.controller.draftColor = page.colorDialogHex()
+            page.controller.generateTintedPreview()
+        }
+    }
+
+    function colorDialogHex() {
+        const c = colorPicker.selectedColor
+        const a = Math.round(c.a * 255)
+        let hex = a < 255
+            ? a.toString(16).padStart(2, "0")
+            : ""
+        hex += Math.round(c.r * 255).toString(16).padStart(2, "0")
+        hex += Math.round(c.g * 255).toString(16).padStart(2, "0")
+        hex += Math.round(c.b * 255).toString(16).padStart(2, "0")
+        return "#" + hex
+    }
+
+    function openColorDialog() {
+        const current = page.controller.draftColor
+        if (current !== "transparent" && current.startsWith("#")) {
+            const hex = current.substring(1)
+            colorPicker.selectedColor = hex.length === 8
+                ? Qt.rgba(parseInt(hex.substring(2, 4), 16) / 255,
+                           parseInt(hex.substring(4, 6), 16) / 255,
+                           parseInt(hex.substring(6, 8), 16) / 255,
+                           parseInt(hex.substring(0, 2), 16) / 255)
+                : Qt.rgba(parseInt(hex.substring(0, 2), 16) / 255,
+                           parseInt(hex.substring(2, 4), 16) / 255,
+                           parseInt(hex.substring(4, 6), 16) / 255, 1)
+        }
+        colorPicker.open()
+    }
+
+    Connections {
+        target: page.controller
+        function onOperationResult(success, message) {
+            resultDialog.message = message
+            resultDialog.visible = true
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible)
+            page.controller.refreshConfigImage()
+    }
+
+    // Hide the page-level navigation header (back/forward + title) so the
+    // window tab bar is the only chrome, matching WallpapersPage.
+    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
+
+    RowLayout {
+        anchors.fill: parent
+        anchors.margins: Kirigami.Units.largeSpacing
+        spacing: Kirigami.Units.largeSpacing
+
+        // --- Left pane: controls ---
+        // Fixed-width control panel: pin min/max/preferred so the Card's
+        // implicit content width cannot inflate it (Card defaults to filling).
+        Kirigami.Card {
+            Layout.preferredWidth: 300
+            Layout.minimumWidth: 300
+            Layout.maximumWidth: 300
+            Layout.fillHeight: true
+            clip: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Kirigami.Units.smallSpacing
+
+                Label {
+                    text: qsTr("Settings")
+                    font.bold: true
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("Select an image")
+                    }
+                    ToolButton {
+                        icon.name: "edit-clear"
+                        enabled: page.controller.selectedFile !== ""
+                        ToolTip.text: qsTr("Clear selection")
+                        ToolTip.visible: hovered
+                        onClicked: page.controller.clearSelection()
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    TextField {
+                        id: imageField
+                        Layout.fillWidth: true
+                        readOnly: true
+                        text: page.controller.selectedFile === ""
+                            ? qsTr("No image selected")
+                            : page.shortPath(page.controller.selectedFile)
+                    }
+                    ToolButton {
+                        icon.name: "document-open"
+                        ToolTip.text: qsTr("Select an image")
+                        ToolTip.visible: hovered
+                        onClicked: imagePicker.open()
+                    }
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: qsTr("Tint color:")
+                    }
+                    Item { Layout.fillWidth: true }
+                    Rectangle {
+                        id: colorPreview
+                        implicitWidth: Kirigami.Units.gridUnit * 1.5
+                        implicitHeight: Kirigami.Units.gridUnit * 1.5
+                        radius: Kirigami.Units.smallSpacing
+                        color: page.controller.draftColor === "transparent"
+                            ? "transparent"
+                            : page.controller.draftColor
+                        border.color: Kirigami.Theme.disabledTextColor
+                        border.width: 1
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: page.openColorDialog()
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: Kirigami.Units.largeSpacing
+
+                    ToolButton {
+                        icon.name: "document-save"
+                        ToolTip.text: qsTr("Apply the selected image directly (no tint)")
+                        ToolTip.visible: hovered
+                        enabled: page.controller.selectedFile !== ""
+                        onClicked: page.controller.applyOriginalImage()
+                    }
+                    ToolButton {
+                        icon.name: "dialog-ok-apply"
+                        ToolTip.text: qsTr("Apply the tinted image")
+                        ToolTip.visible: hovered
+                        enabled: page.controller.selectedFile !== ""
+                            && page.controller.draftColor !== "transparent"
+                        onClicked: page.controller.applyTintedImage()
+                    }
+                    ToolButton {
+                        icon.name: "document-revert"
+                        ToolTip.text: qsTr("Restore the fastfetch config from the last backup")
+                        ToolTip.visible: hovered
+                        enabled: page.controller.hasBackup
+                        onClicked: page.controller.restoreBackup()
+                    }
+                }
+            }
+        }
+
+        // --- Right pane: preview ---
+        Kirigami.Card {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+
+            ColumnLayout {
+                anchors.fill: parent
+                spacing: Kirigami.Units.smallSpacing
+
+                Label {
+                    text: qsTr("Preview")
+                    font.bold: true
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                Item {
+                    id: previewArea
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Image {
+                        id: previewImage
+                        anchors.centerIn: previewArea
+                        asynchronous: true
+                        cache: false
+                        source: page.controller.fileUrl(page.controller.tintedPreviewPath !== ""
+                            ? page.controller.tintedPreviewPath
+                            : page.controller.selectedFile)
+                        fillMode: Image.PreserveAspectFit
+                        visible: page.controller.selectedFile !== ""
+                        width: Math.min(previewArea.width, previewArea.height)
+                        height: Math.min(previewArea.width, previewArea.height)
+                    }
+                    Label {
+                        anchors.centerIn: previewArea
+                        text: qsTr("Select an image to preview")
+                        color: Kirigami.Theme.disabledTextColor
+                        visible: page.controller.selectedFile === ""
+                    }
+                }
+
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: qsTr("Current fastfetch image:")
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                    Item { Layout.fillWidth: true }
+                    Label {
+                        text: page.controller.configImage === ""
+                            ? qsTr("none detected")
+                            : page.shortPath(page.controller.configImage)
+                        color: Kirigami.Theme.disabledTextColor
+                    }
+                }
+            }
+        }
+    }
+}

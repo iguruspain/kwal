@@ -1,0 +1,193 @@
+"$schema" = 'https://starship.rs/config-schema.json'
+
+format = """
+[](fg:accent)\
+$os\
+[ ](fg:accent bg:accent)\
+$username\
+[ ](fg:accent bg:accent)\
+[](fg:accent bg:dir_bg)\
+$directory\
+[](fg:dir_bg bg:git_bg)\
+$git_branch\
+$git_status\
+[](fg:git_bg bg:other_bg)\
+$c\
+$cpp\
+$rust\
+$golang\
+$nodejs\
+$php\
+$java\
+$kotlin\
+$haskell\
+$python\
+$docker_context\
+$conda\
+$pixi\
+[](fg:other_bg bg:dir_bg)\
+$time\
+[ ](fg:dir_bg)\
+$line_break\
+[  ](bold fg:accent)
+"""
+palette = 'colors'
+
+[palettes.colors]
+accent='#569cc1'
+accent_text='#00344a'
+dir_fg = '#cb8a51'
+dir_bg='#1d6586'
+dir_text='#ccdfee'
+git_fg='#8b9297'
+git_bg='#333a3f'
+git_text = '#ccdfee'
+other_fg='#1d6586'
+other_bg='#61a0c4'
+other_text='#00344a'
+color_green = '#00aa7f'
+color_purple = '#6e0c9bff'
+color_red = '#964b70'
+color_yellow = '#d8ff7e'
+
+[os]
+disabled = false
+style = "bold fg:accent_text bg:accent"
+
+[os.symbols]
+Windows = "󰍲"
+Ubuntu = "󰕈"
+SUSE = ""
+Raspbian = "󰐿"
+Mint = "󰣭"
+Macos = "󰀵"
+Manjaro = ""
+Linux = "󰌽"
+Gentoo = "󰣨"
+Fedora = "󰣛"
+Alpine = ""
+Amazon = ""
+Android = ""
+Arch = ""
+Artix = ""
+EndeavourOS = ""
+CentOS = ""
+Debian = "󰣚"
+Redhat = "󱄛"
+RedHatEnterprise = "󱄛"
+Pop = ""
+CachyOS = ""
+
+[username]
+show_always = true
+style_user = "fg:accent_text bg:accent"
+style_root = "fg:#ff0000 bg:accent"
+format = '[$user](bold $style)'
+
+[directory]
+style = "fg:dir_text bg:dir_bg"
+format = "[ $path ]($style)"
+truncation_length = 3
+truncation_symbol = " /"
+
+[directory.substitutions]
+"Documents" = "󰈙 "
+"Documentos" = "󰈙 "
+"Downloads" = " "
+"Descargas" = " "
+"Music" = "󰝚 "
+"Música" = "󰝚 "
+"Pictures" = " "
+"Imágenes" = " "
+"Developer" = "󰲋 "
+"Scripts" = "󰲋 "
+
+[git_branch]
+symbol = ""
+style = "bg:git_bg"
+format = '[[ $symbol $branch ](fg:git_text bg:git_bg)]($style)'
+
+[git_status]
+style = "bg:git_bg"
+format = '[[($all_status$ahead_behind )](fg:git_text bg:git_bg)]($style)'
+
+[nodejs]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[c]
+symbol = " "
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[cpp]
+symbol = " "
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[rust]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[golang]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[php]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[java]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[kotlin]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[haskell]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) ](fg:other_text bg:other_bg)]($style)'
+
+[python]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $version) (\($virtualenv\)) ](fg:other_text bg:other_bg)]($style)'
+
+[docker_context]
+symbol = ""
+style = "bg:other_bg"
+format = '[[ $symbol( $context) ](fg:other_text bg:other_bg)]($style)'
+
+[conda]
+style = "bg:other_bg"
+format = '[[ $symbol( $environment) ](fg:other_text bg:other_bg)]($style)'
+
+[pixi]
+style = "bg:other_bg"
+format = '[[ $symbol( $version)( $environment) ](fg:other_text bg:other_bg)]($style)'
+
+[time]
+disabled = false
+time_format = "%R"
+style = "bg:dir_bg"
+format = '[[  $time ](fg:dir_text bg:dir_bg)]($style)'
+
+[line_break]
+disabled = false
+
+[character]
+disabled = false
+success_symbol = '[ ](bold fg:color_green)'
+error_symbol = '[ ](bold fg:color_red)'
+vimcmd_symbol = '[](bold fg:color_green)'
+vimcmd_replace_one_symbol = '[](bold fg:color_purple)'
+vimcmd_replace_symbol = '[](bold fg:color_purple)'
+vimcmd_visual_symbol = '[](bold fg:color_yellow)'

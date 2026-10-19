@@ -1,6 +1,7 @@
 #include <QApplication>
 #include <QProcessEnvironment>
 #include <QMessageLogger>
+#include <QtWebEngineQuick>
 #include "fdothumbnailprovider.h"
 #include <QQmlApplicationEngine>
 #include <cstdio>
@@ -29,6 +30,17 @@ static void applyDesktopIntegration()
 int main(int argc, char *argv[])
 {
     applyDesktopIntegration();
+
+    // WebEngine preview pages: keep Chromium on the software path to avoid
+    // "GBM not supported" warnings and freezes on systems without working
+    // GPU acceleration (same behavior as the original app). Never overrides
+    // an explicit user setting.
+    const QProcessEnvironment webEnv = QProcessEnvironment::systemEnvironment();
+    if (webEnv.value(QStringLiteral("QTWEBENGINE_CHROMIUM_FLAGS")).isEmpty())
+        qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
+
+    // Must run before the application object is created.
+    QtWebEngineQuick::initialize();
     QApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("KDE"));
     app.setOrganizationDomain(QStringLiteral("kde.org"));

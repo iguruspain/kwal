@@ -1,0 +1,14 @@
+<RCC>
+    <qresource prefix="/templates/starship">
+        <file alias="catpuccin.toml">templates/starship/catpuccin.toml</file>
+        <file alias="gruvbox-rainbow.toml">templates/starship/gruvbox-rainbow.toml</file>
+        <file alias="iguruspain.toml">templates/starship/iguruspain.toml</file>
+        <file alias="iguruspain2.toml">templates/starship/iguruspain2.toml</file>
+    </qresource>
+    <qresource prefix="/templates/ulauncher/theme_template">
+        <file alias="LICENSE">templates/ulauncher/theme_template/LICENSE</file>
+        <file alias="manifest.json">templates/ulauncher/theme_template/manifest.json</file>
+        <file alias="theme-gtk-3.20.css">templates/ulauncher/theme_template/theme-gtk-3.20.css</file>
+        <file alias="theme.css">templates/ulauncher/theme_template/theme.css</file>
+    </qresource>
+</RCC>

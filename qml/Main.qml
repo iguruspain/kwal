@@ -151,9 +151,12 @@ Kirigami.ApplicationWindow {
             color: window.appBackground
         }
     }
-    Component { id: fastfetchPage; PlaceholderPage { toolName: "Fastfetch"; iconName: "utilities-terminal" } }
-    Component { id: starshipPage; PlaceholderPage { toolName: "Starship"; iconName: "utilities-terminal" } }
-    Component { id: ulauncherPage; PlaceholderPage { toolName: "Ulauncher"; iconName: "ulauncher" } }
+    Component {
+        id: fastfetchPage
+        FastfetchPage {}
+    }
+    Component { id: starshipPage; StarshipPage {} }
+    Component { id: ulauncherPage; UlauncherPage {} }
 
 
     Connections {

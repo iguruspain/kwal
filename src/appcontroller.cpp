@@ -1,4 +1,5 @@
 #include "appcontroller.h"
+#include "templateinstaller.h"
 #include "wallpapermodel.h"
 #include <KConfig>
 #include <KConfigGroup>
@@ -55,6 +56,7 @@ AppController::AppController(QObject *parent)
 {
     loadConfig();
     applyCurrentFolder();
+    tools::installTemplates();
 }
 
 WallpaperModel *AppController::wallpaperModel() const

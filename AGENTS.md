@@ -48,7 +48,8 @@ Tests sandbox the user dirs: `tst_appcontroller` sets `HOME`/`XDG_*` to a temp d
 - Single executable `kwal` + QML module `org.kde.kwal`; `main.cpp` loads `Main` via `loadFromModule`. On KDE desktops it sets `QT_QPA_PLATFORMTHEME=kde` and `QT_QUICK_CONTROLS_STYLE=org.kde.desktop` (never overriding explicit user settings).
 - `AppController` (`QML_ELEMENT`, instantiated in `Main.qml`) is the app state/services: folders, wallpaper selection, config, and applying the wallpaper by running a Plasma JS snippet via D-Bus `org.kde.plasmashell` → `evaluateScript`.
 - `WallpaperModel` (QAbstractListModel over the current folder) + `FdoThumbnailProvider` (QQuickImageProvider `fdo_thumbnail`) feed the grid.
-- Two windows: `Main` (tabs: Wallpapers live, Fastfetch/Ulauncher placeholders) and a lazily-created `SettingsWindow` from the header menu.
+- Tool tabs (Fastfetch, Starship, Ulauncher): a `QML_ELEMENT` controller each (`FastfetchController`, `StarshipController`, `UlauncherController`) backed by `src/tools/` (config read/write with `.bak` backup, Starship HTML terminal preview, Ulauncher theme + live QML mockup). Bundled templates are compiled in and copied to `~/.config/kwal/templates` at startup (`tools::installTemplates`); a tab appears only when its binary is on `PATH`.
+- Two windows: `Main` (tabs: Wallpapers, Fastfetch, Starship, Ulauncher) and a lazily-created `SettingsWindow` from the header menu.
 - Settings via KConfig (`kwalrc`); identity: `OrganizationName "KDE"`, domain `kde.org`. Groups:
   - `[Wallpapers]`: `folders`, `currentFolderIndex`, `currentWallpaper(+Size)`.
   - `[General]`: `windowWidth`/`windowHeight` — applied **at startup only** (window default 960×650, clamped to 700×400–3840×2160); no live resize. `transparency` — window background opacity.

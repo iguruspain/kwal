@@ -11,6 +11,14 @@ Kirigami.ScrollablePage {
 
     required property AppController app
 
+    // Setting labels exposed to the settings drawer search; keep in sync
+    // with the controls below.
+    property var searchKeys: [
+        qsTr("Enable transparency"),
+        qsTr("Default width"),
+        qsTr("Default height")
+    ]
+
     contentItem: Item {
         ColumnLayout {
             anchors.fill: parent

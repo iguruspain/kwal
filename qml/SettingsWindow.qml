@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigami.layouts as KirigamiLayouts
 
@@ -21,6 +23,30 @@ Kirigami.ApplicationWindow {
         ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
         : Kirigami.Theme.backgroundColor
 
+    // Returns whether a drawer section matches the settings search: the query
+    // must be contained in the section's page title or in any of the page's
+    // setting labels (searchKeys).
+    function sectionMatches(query, index) {
+        if (query === "") {
+            return true;
+        }
+        const page = settingsWindow.pageStack.items[index];
+        if (!page) {
+            return true;
+        }
+        const q = query.toLowerCase();
+        if (page.title.toLowerCase().includes(q)) {
+            return true;
+        }
+        const keys = page.searchKeys ?? [];
+        for (const key of keys) {
+            if (key.toLowerCase().includes(q)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     globalDrawer: Kirigami.GlobalDrawer {
         id: globalDrawer
 
@@ -29,28 +55,44 @@ Kirigami.ApplicationWindow {
         collapsible: true
         collapsed: false
 
+        // Settings search; filters the sections below (see drawerMatches).
+        header: ToolBar {
+            visible: !globalDrawer.collapsed
+            contentItem: RowLayout {
+                Kirigami.SearchField {
+                    id: drawerSearch
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Search settings…")
+                }
+            }
+        }
+
         actions: [
             Kirigami.Action {
                 text: qsTr("General")
                 icon.name: "preferences-system"
+                visible: settingsWindow.sectionMatches(drawerSearch.text, 0)
                 checked: settingsWindow.pageStack.currentIndex === 0
                 onTriggered: settingsWindow.pageStack.currentIndex = 0
             },
             Kirigami.Action {
                 text: qsTr("Wallpapers")
                 icon.name: "preferences-desktop-wallpaper"
+                visible: settingsWindow.sectionMatches(drawerSearch.text, 1)
                 checked: settingsWindow.pageStack.currentIndex === 1
                 onTriggered: settingsWindow.pageStack.currentIndex = 1
             },
             Kirigami.Action {
                 text: qsTr("Fastfetch")
                 icon.name: "utilities-terminal"
+                visible: settingsWindow.sectionMatches(drawerSearch.text, 2)
                 checked: settingsWindow.pageStack.currentIndex === 2
                 onTriggered: settingsWindow.pageStack.currentIndex = 2
             },
             Kirigami.Action {
                 text: qsTr("Ulauncher")
                 icon.name: "application-x-executable"
+                visible: settingsWindow.sectionMatches(drawerSearch.text, 3)
                 checked: settingsWindow.pageStack.currentIndex === 3
                 onTriggered: settingsWindow.pageStack.currentIndex = 3
             }

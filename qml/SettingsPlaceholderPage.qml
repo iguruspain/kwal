@@ -7,6 +7,10 @@ Kirigami.Page {
     required property string sectionName
     required property string iconName
 
+    // Setting labels exposed to the settings drawer search; sections without
+    // settings yet leave this empty.
+    property var searchKeys: []
+
     title: sectionName
 
     contentItem: Item {

@@ -2,7 +2,6 @@
 
 #include "tools/starshipconfig.h"
 #include "tools/starshippreview.h"
-#include "tools/fileutil.h"
 
 #include <QCoreApplication>
 #include <QStandardPaths>
@@ -372,5 +371,3 @@ void StarshipController::loadTemplateList()
     m_templateNames = tools::listStarshipTemplates();
     emit templateNamesChanged();
 }
-
-#include "starshipcontroller.moc"

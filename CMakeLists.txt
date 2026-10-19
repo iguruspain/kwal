@@ -12,9 +12,50 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ECM 6.31.0 NO_MODULE REQUIRED)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Test Widgets WebEngineQuick)
-find_package(KF6 REQUIRED COMPONENTS Config Kirigami)
+include(KDEInstallDirs)
 
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Test Widgets WebEngineQuick)
+find_package(KF6 REQUIRED COMPONENTS Config Kirigami KirigamiPlatform)
+
+# KF6 6.31's installed CMake package creates imported targets for the Kirigami
+# backing libraries and registers the QML plugin target names, but never
+# creates the plugin targets themselves. Qt 6.12's target finalizer then warns
+# once per missing plugin on every clean configure. Point the registered names
+# at the installed plugin libraries.
+find_path(Kwal_KirigamiQmlDir NAMES org/kde/kirigami/qmldir
+    HINTS /usr/lib/qt6/qml /usr/lib/qml
+)
+if (NOT Kwal_KirigamiQmlDir)
+    message(FATAL_ERROR "Kirigami QML directory not found")
+endif()
+set(_kwal_kirigami_qml_plugins
+    "KF6Kirigamiplugin libKirigamiplugin.so"
+    "KF6KirigamiControlsplugin controls/libKirigamiControlsplugin.so"
+    "KF6KirigamiDelegates delegates/libKirigamiDelegatesplugin.so"
+    "KF6KirigamiDialogsplugin dialogs/libKirigamiDialogsplugin.so"
+    "KF6KirigamiFormsplugin forms/libKirigamiFormsplugin.so"
+    "KF6KirigamiFormsPrivateCardsplugin forms/private/cards/libKirigamiFormsPrivateCardsplugin.so"
+    "KF6KirigamiFormsPrivateFlatplugin forms/private/flat/libKirigamiFormsPrivateFlatplugin.so"
+    "KF6KirigamiFormsPrivateTemplatesplugin forms/private/templates/libKirigamiFormsPrivateTemplatesplugin.so"
+    "KF6KirigamiLayoutsplugin layouts/libKirigamiLayoutsplugin.so"
+    "KF6KirigamiLayoutsPrivateplugin layouts/private/libKirigamiLayoutsPrivateplugin.so"
+    "KF6KirigamiPrivateplugin private/libKirigamiPrivateplugin.so"
+    "KF6KirigamiPolyfillplugin private/polyfill/libKirigamiPolyfillplugin.so"
+    "KF6KirigamiPrimitives primitives/libKirigamiPrimitivesplugin.so"
+    "KF6KirigamiTemplates templates/libKirigamiTemplatesplugin.so"
+    "KF6::KirigamiPlatformplugin platform/libKirigamiPlatformplugin.so"
+)
+foreach(_entry IN LISTS _kwal_kirigami_qml_plugins)
+    string(REPLACE " " ";" _parts "${_entry}")
+    list(GET _parts 0 _plugin_target)
+    list(GET _parts 1 _plugin_lib)
+    if (NOT TARGET ${_plugin_target})
+        add_library(${_plugin_target} SHARED IMPORTED)
+        set_target_properties(${_plugin_target} PROPERTIES
+            IMPORTED_LOCATION "${Kwal_KirigamiQmlDir}/${_plugin_lib}"
+        )
+    endif()
+endforeach()
 # toml++ (header-only): prefer the system package, fall back to a pinned release.
 find_package(tomlplusplus 3.4 QUIET CONFIG)
 if (NOT tomlplusplus_FOUND)
@@ -22,6 +63,7 @@ if (NOT tomlplusplus_FOUND)
     FetchContent_Declare(tomlplusplus
         URL https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
         URL_HASH SHA256=8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     FetchContent_MakeAvailable(tomlplusplus)
 endif()
@@ -29,8 +71,6 @@ endif()
 qt_standard_project_setup(REQUIRES 6.8)
 
 enable_testing()
-
-include(KDEInstallDirs)
 
 qt_add_executable(kwal
  src/appcontroller.cpp
@@ -81,6 +121,7 @@ qt_add_qml_module(kwal
  qml/StarshipPreview.qml
  qml/UlauncherPage.qml
  qml/UlauncherMockup.qml
+qml/ColorDot.qml
  RESOURCES
  resources/resources.qrc
 )

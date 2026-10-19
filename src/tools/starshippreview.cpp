@@ -7,11 +7,8 @@
 #include <QRegularExpression>
 #include <QDateTime>
 #include <QProcessEnvironment>
-#include <algorithm>
-#include <cctype>
 #include <map>
 #include <string>
-#include <vector>
 
 namespace tools
 {
@@ -197,8 +194,7 @@ QString resolveColor(const QString &key, const std::map<QString, QString> &activ
 {
     if (key.isEmpty()) return "inherit";
 
-    QString cleanKey = key.toLower();
-    cleanKey.remove("fg:").remove("bg:").trimmed();
+    QString cleanKey = key.toLower().remove("fg:").remove("bg:").trimmed();
 
     auto it = activePalette.find(cleanKey);
     if (it != activePalette.end()) {
@@ -232,7 +228,7 @@ QStringList buildElementCss(const QString &styleStr, const std::map<QString, QSt
         css.append(QStringLiteral("color: %1").arg(resolveColor(fgMatch.captured(1), activePalette)));
     } else if (!styleStr.trimmed().isEmpty() && !styleStr.contains("bg:")) {
         QString bareColor = styleStr;
-        bareColor.remove("bold").trimmed();
+        bareColor = bareColor.remove("bold").trimmed();
         if (!bareColor.isEmpty()) {
             css.append(QStringLiteral("color: %1").arg(resolveColor(bareColor, activePalette)));
         }
@@ -356,7 +352,7 @@ QVector<Segment> getSegments(const QString &text)
         if (ch == '$') {
             VariableMatch var = findVariable(text, i);
             if (var.valid) {
-                segments.append({Segment::Variable, QString(), var.name, var.end - var.name.length() - 1, var.end});
+                segments.append({Segment::Variable, QString(), var.name, var.end - static_cast<int>(var.name.length()) - 1, var.end});
                 i = var.end;
                 continue;
             }

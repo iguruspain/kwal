@@ -1,3 +1,4 @@
+import QtCore
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -9,8 +10,13 @@ pragma ComponentBehavior: Bound
 Kirigami.Page {
     id: page
     title: qsTr("Fastfetch")
+
+    readonly property color pageBackground: app.enableTransparency
+        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        : Kirigami.Theme.backgroundColor
+
     background: Rectangle {
-        color: "transparent"
+        color: pageBackground
     }
 
     readonly property FastfetchController controller: FastfetchController {}
@@ -38,6 +44,7 @@ Kirigami.Page {
     FileDialog {
         id: imagePicker
         title: qsTr("Select an Image")
+        currentFolder: StandardPaths.standardLocations(StandardPaths.PicturesLocation)[0]
         nameFilters: [
             qsTr("Images (*.png *.jpg *.jpeg *.bmp *.webp *.gif)")
         ]
@@ -104,26 +111,35 @@ Kirigami.Page {
         // --- Left pane: controls ---
         // Fixed-width control panel: pin min/max/preferred so the Card's
         // implicit content width cannot inflate it (Card defaults to filling).
-        Kirigami.Card {
+        Rectangle {
+            id: leftPane
             Layout.preferredWidth: 300
-            Layout.minimumWidth: 300
-            Layout.maximumWidth: 300
             Layout.fillHeight: true
-            clip: true
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            radius: Kirigami.Units.largeSpacing
+            border.color: Kirigami.Theme.highlightColor
+            border.width: 1.5
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.mediumSpacing
+                spacing: Kirigami.Units.mediumSpacing
 
-                Label {
-                    text: qsTr("Settings")
-                    font.bold: true
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    Label {
+                        text: qsTr("Settings")
+                        font.bold: true
+                    }
                 }
 
                 Kirigami.Separator { Layout.fillWidth: true }
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     Label {
                         Layout.fillWidth: true
                         text: qsTr("Select an image")
@@ -139,6 +155,7 @@ Kirigami.Page {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     TextField {
                         id: imageField
                         Layout.fillWidth: true
@@ -159,6 +176,7 @@ Kirigami.Page {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     Label {
                         text: qsTr("Tint color:")
                     }
@@ -187,6 +205,7 @@ Kirigami.Page {
 
                 RowLayout {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
                     Layout.alignment: Qt.AlignHCenter
                     spacing: Kirigami.Units.largeSpacing
 
@@ -217,13 +236,17 @@ Kirigami.Page {
         }
 
         // --- Right pane: previews ---
-        Kirigami.Card {
+        Rectangle {
+            id: rightPane
             Layout.fillWidth: true
             Layout.fillHeight: true
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.mediumSpacing
+                spacing: Kirigami.Units.mediumSpacing
 
                 // 1. Image currently referenced by the fastfetch config.
                 Label {
@@ -262,11 +285,6 @@ Kirigami.Page {
                         color: Kirigami.Theme.disabledTextColor
                         visible: page.controller.configImage === ""
                     }
-                }
-
-                Kirigami.Separator {
-                    Layout.fillWidth: true
-                    visible: page.controller.manuallySelected
                 }
 
                 // 2+3. Selected image and its tinted version, side by side.

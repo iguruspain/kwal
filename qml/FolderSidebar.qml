@@ -18,15 +18,6 @@ Rectangle {
     border.color: Kirigami.Theme.highlightColor
     border.width: 1.5
 
-// Item {
-//     id: root
-//     required property AppController app
-//     required property FolderDialog addFolderDialog
-
-//     implicitWidth: 300
-//     Layout.fillHeight: true
-
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Kirigami.Units.mediumSpacing

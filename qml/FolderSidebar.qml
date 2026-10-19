@@ -20,8 +20,8 @@ Rectangle {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Kirigami.Units.mediumSpacing
-        spacing: Kirigami.Units.mediumSpacing
+        anchors.margins: Kirigami.Units.gridUnit
+        spacing: Kirigami.Units.gridUnit
 
         RowLayout {
             Kirigami.Heading {

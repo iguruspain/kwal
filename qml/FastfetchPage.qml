@@ -89,8 +89,8 @@ Kirigami.Page {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.mediumSpacing
-                spacing: Kirigami.Units.mediumSpacing
+                anchors.margins: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.gridUnit
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -197,13 +197,13 @@ Kirigami.Page {
             id: rightPane
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
             radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.mediumSpacing
-                spacing: Kirigami.Units.mediumSpacing
+                anchors.margins: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.gridUnit
 
                 // 1. Image currently referenced by the fastfetch config.
                 Label {

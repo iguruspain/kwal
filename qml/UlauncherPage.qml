@@ -8,8 +8,12 @@ pragma ComponentBehavior: Bound
 Kirigami.Page {
     id: page
     title: qsTr("Ulauncher")
+    readonly property color pageBackground: app.enableTransparency
+        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        : Kirigami.Theme.backgroundColor
+
     background: Rectangle {
-        color: "transparent"
+        color: page.pageBackground
     }
 
     readonly property UlauncherController controller: UlauncherController {}
@@ -48,16 +52,19 @@ Kirigami.Page {
         spacing: Kirigami.Units.largeSpacing
 
         // --- Left pane: controls ---
-        Kirigami.Card {
+        Rectangle {
+            id: leftPane
             Layout.preferredWidth: 300
-            Layout.minimumWidth: 300
-            Layout.maximumWidth: 300
             Layout.fillHeight: true
-            clip: true
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            radius: Kirigami.Units.largeSpacing
+            border.color: Kirigami.Theme.highlightColor
+            border.width: 1.5
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.gridUnit
 
                 Label {
                     text: qsTr("Theme")
@@ -115,13 +122,17 @@ Kirigami.Page {
         }
 
         // --- Right pane: preview ---
-        Kirigami.Card {
+        Rectangle {
+            id: rightPane
             Layout.fillWidth: true
             Layout.fillHeight: true
+            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.gridUnit
 
                 Label {
                     text: qsTr("Preview")

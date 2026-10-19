@@ -31,6 +31,18 @@ ctest --test-dir build     # run tests (QtTest + CTest)
 ```
 
 Tests sandbox the user dirs: `tst_appcontroller` sets `HOME`/`XDG_*` to a temp dir *before* constructing `QCoreApplication` so KConfig and QStandardPaths never touch the real home. New tests must keep this.
+## Build assurance (mandatory)
+
+- **Clean build is the only proof.** Never declare a build healthy from an incremental compile on a stale tree: configure warnings and compiler warnings only surface on a fresh configure + full recompile. Verification = `./build.sh clean` → `cmake --preset default` → `cmake --build --preset default` → **zero errors, zero warnings** → `ctest`.
+- **Never filter or truncate build output** (`tail`, `grep` on the log) when verifying — a filtered log is not a verification; read the full output.
+- **Zero-warning policy.** Every compiler, AutoMoc, and CMake warning must be fixed at the source — no suppressions, no pragmas, no "pre-existing" excuses. A warning found while working (even in code you did not touch) is fixed in the same task.
+
+## Working method (mandatory)
+
+- **Evidence before claims.** Never assert how code or tooling behaves from memory or general knowledge — read the installed headers/packages/sources that actually govern the behavior. The installed file is the proof.
+- **Root cause, not symptom.** When an error or warning appears, identify its cause (read the relevant file) before fixing it. Silencing, suppressing, or special-casing without understanding the cause is forbidden.
+- **Full output is the proof.** Verification means reading the complete unfiltered output (see Build assurance), not a filtered count.
+- **Honest reporting.** Report what was done and what was proven; state explicitly what is unverified. Never hide, gloss over, or blame the user/environment without evidence.
 
 ## Tooling rules (mandatory)
 
@@ -39,7 +51,10 @@ Tests sandbox the user dirs: `tst_appcontroller` sets `HOME`/`XDG_*` to a temp d
    - QML types/properties: `grep` `/usr/lib/qt6/qml/org/kde/kirigami/{templates,controls,dialogs,forms,primitives,layouts}/{qmldir,*.qmltypes}` or the `.qml` sources.
    - LSP: `xd://lsp` diagnostics/hover on the file (clangd + qmlls6 configured in `.omp/lsp.json`).
    - Docs: `qt_documentation_search` MCP (Qt 6.12) for Qt APIs; api.kde.org / develop.kde.org for Kirigami.
-3. **After every edit** of `.qml`/`.cpp`: run `xd://lsp` `diagnostics` on the file (per-file; workspace-wide `file:"*"` fails — project type not detected); fix all warnings before calling it done.
+3. **LSP is the priority tool** (clangd + qmlls6, configured in `.omp/lsp.json`) for both code intelligence and quality:
+   - Code intelligence (definitions, references, hovers, renames) MUST use `xd://lsp`, never raw text search; cross-file renames only via LSP `rename`/`rename_file`.
+   - After every edit of a `.cpp`/`.h`/`.qml` file: run `xd://lsp` `diagnostics` on it (per-file; workspace-wide `file:"*"` fails — project type not detected) and fix every diagnostic before calling the file done.
+   - LSP complements the compiler — it catches what GCC misses (e.g. unused includes). A file is only clean when **both** the compiler and LSP report zero diagnostics.
 4. **Verify UI empirically:** kwin MCP — `session_start`, then `launch_app` with `command:` (session_start does not launch the app), `screenshot` + `window_geometry`, then `session_stop`. Screenshots are the proof.
 5. Do not assume APIs from other Kirigami versions. If a pattern is not verifiable locally, say so instead of guessing.
 

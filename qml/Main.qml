@@ -5,14 +5,34 @@ import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
 import org.kde.kirigami.layouts as KirigamiLayouts
 
-pragma ComponentBehavior: Bound
-
 Kirigami.ApplicationWindow {
     id: window
     readonly property AppController app: AppController {}
     readonly property color appBackground: app.enableTransparency
         ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
         : Kirigami.Theme.backgroundColor
+
+    // Header tabs; tools not installed on the system are excluded from the
+    // model so the bar never renders an empty slot for them.
+    readonly property var tabs: (function () {
+        const tabs = [
+            { title: qsTr("Wallpapers"), icon: "preferences-desktop-wallpaper", page: 0 },
+            { title: qsTr("Fastfetch"), icon: "utilities-terminal", page: 1, available: app.fastfetchAvailable },
+            { title: qsTr("Starship"), icon: "utilities-terminal", page: 2, available: app.starshipAvailable },
+            { title: qsTr("Ulauncher"), icon: "ulauncher-indicator-symbolic", page: 3, available: app.ulauncherAvailable }
+        ];
+        return tabs.filter(function (t) { return t.available !== false; });
+    })()
+
+    // Index of the tab backing a pageStack page; the model skips pages of
+    // tools that are not installed.
+    function tabBarIndex(pageIndex) {
+        for (let i = 0; i < window.tabs.length; i++) {
+            if (window.tabs[i].page === pageIndex)
+                return i;
+        }
+        return 0;
+    }
 
     width: app.defaultWindowWidth
     height: app.defaultWindowHeight
@@ -76,31 +96,16 @@ Kirigami.ApplicationWindow {
                 Item { Layout.fillWidth: true }
                 TabBar {
                     id: tabBar
-                    currentIndex: window.pageStack.currentIndex
+                    currentIndex: window.tabBarIndex(window.pageStack.currentIndex)
 
-                    TabButton {
-                        text: qsTr("Wallpapers")
-                        icon.name: "preferences-desktop-wallpaper"
-                        checked: window.pageStack.currentIndex === 0
-                        onClicked: window.pageStack.currentIndex = 0
-                    }
-                    TabButton {
-                        text: qsTr("Fastfetch")
-                        icon.name: "utilities-terminal"
-                        checked: window.pageStack.currentIndex === 1
-                        onClicked: window.pageStack.currentIndex = 1
-                    }
-                    TabButton {
-                        text: qsTr("Starship")
-                        icon.name: "utilities-terminal"
-                        checked: window.pageStack.currentIndex === 2
-                        onClicked: window.pageStack.currentIndex = 2
-                    }
-                    TabButton {
-                        text: qsTr("Ulauncher")
-                        icon.name: "ulauncher-indicator-symbolic"
-                        checked: window.pageStack.currentIndex === 3
-                        onClicked: window.pageStack.currentIndex = 3
+                    Repeater {
+                        model: window.tabs
+                        delegate: TabButton {
+                            text: modelData.title
+                            icon.name: modelData.icon
+                            checked: window.pageStack.currentIndex === modelData.page
+                            onClicked: window.pageStack.currentIndex = modelData.page
+                        }
                     }
                 }
                 Item { Layout.fillWidth: true }

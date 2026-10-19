@@ -21,6 +21,7 @@ private slots:
     void testSelectionAndApply();
     void testWindowSettings();
     void testTransparencyPersistence();
+    void testToolDetection();
 
 private:
     static void saveImage(const QString &path, Qt::GlobalColor color)
@@ -183,6 +184,33 @@ void tst_AppController::testTransparencyPersistence()
     QCOMPARE(app2.enableTransparency(), false);
 
     app2.setEnableTransparency(true); // restore default
+}
+
+void tst_AppController::testToolDetection()
+{
+    // Detection is a $PATH lookup for installed binaries (not running
+    // processes): point PATH at a sandbox dir holding only a fake
+    // fastfetch and assert the other tools are not reported.
+    const QByteArray previousPath = qgetenv("PATH");
+    const QString fakeBin = QDir::tempPath() + QStringLiteral("/kwal-test-tools-") +
+                            QString::number(QCoreApplication::applicationPid());
+    QVERIFY(QDir().mkpath(fakeBin));
+    QFile fake(fakeBin + QStringLiteral("/fastfetch"));
+    QVERIFY(fake.open(QIODevice::WriteOnly));
+    fake.write("#!/bin/sh");
+    fake.close();
+    const QFile::Permissions exec = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+                                    QFile::ReadGroup | QFile::ExeGroup | QFile::ReadOther | QFile::ExeOther;
+    QVERIFY(QFile::setPermissions(fake.fileName(), exec));
+    qputenv("PATH", fakeBin.toUtf8());
+
+    AppController app;
+    QCOMPARE(app.fastfetchAvailable(), true);
+    QCOMPARE(app.starshipAvailable(), false);
+    QCOMPARE(app.ulauncherAvailable(), false);
+
+    qputenv("PATH", previousPath);
+    QDir().remove(fakeBin);
 }
 
 int main(int argc, char *argv[])

@@ -85,21 +85,21 @@ Kirigami.ApplicationWindow {
             Kirigami.Action {
                 text: qsTr("Fastfetch")
                 icon.name: "utilities-terminal"
-                visible: settingsWindow.sectionMatches(drawerSearch.text, 2)
+                visible: settingsWindow.app.fastfetchAvailable && settingsWindow.sectionMatches(drawerSearch.text, 2)
                 checked: settingsWindow.pageStack.currentIndex === 2
                 onTriggered: settingsWindow.pageStack.currentIndex = 2
             },
             Kirigami.Action {
                 text: qsTr("Starship")
                 icon.name: "utilities-terminal"
-                visible: settingsWindow.sectionMatches(drawerSearch.text, 3)
+                visible: settingsWindow.app.starshipAvailable && settingsWindow.sectionMatches(drawerSearch.text, 3)
                 checked: settingsWindow.pageStack.currentIndex === 3
                 onTriggered: settingsWindow.pageStack.currentIndex = 3
             },
             Kirigami.Action {
                 text: qsTr("Ulauncher")
                 icon.name: "ulauncher-indicator-symbolic"
-                visible: settingsWindow.sectionMatches(drawerSearch.text, 4)
+                visible: settingsWindow.app.ulauncherAvailable && settingsWindow.sectionMatches(drawerSearch.text, 4)
                 checked: settingsWindow.pageStack.currentIndex === 4
                 onTriggered: settingsWindow.pageStack.currentIndex = 4
             }

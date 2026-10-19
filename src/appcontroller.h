@@ -29,6 +29,9 @@ class AppController : public QObject
     Q_PROPERTY(bool enableTransparency READ enableTransparency WRITE setEnableTransparency NOTIFY enableTransparencyChanged)
     Q_PROPERTY(int defaultWindowWidth READ defaultWindowWidth WRITE setDefaultWindowWidth NOTIFY defaultWindowWidthChanged)
     Q_PROPERTY(int defaultWindowHeight READ defaultWindowHeight WRITE setDefaultWindowHeight NOTIFY defaultWindowHeightChanged)
+    Q_PROPERTY(bool fastfetchAvailable READ fastfetchAvailable CONSTANT)
+    Q_PROPERTY(bool starshipAvailable READ starshipAvailable CONSTANT)
+    Q_PROPERTY(bool ulauncherAvailable READ ulauncherAvailable CONSTANT)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -49,6 +52,9 @@ public:
     int defaultWindowHeight() const;
     void setDefaultWindowWidth(int width);
     void setDefaultWindowHeight(int height);
+    bool fastfetchAvailable() const;
+    bool starshipAvailable() const;
+    bool ulauncherAvailable() const;
 
     Q_INVOKABLE void addFolder(const QString &path);
     Q_INVOKABLE void removeFolder(int index);
@@ -84,6 +90,9 @@ private:
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
     bool m_enableTransparency = true;
+    bool m_fastfetchAvailable = false;
+    bool m_starshipAvailable = false;
+    bool m_ulauncherAvailable = false;
     int m_defaultWindowWidth = kDefaultWindowWidth;
     int m_defaultWindowHeight = kDefaultWindowHeight;
 

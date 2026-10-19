@@ -37,12 +37,21 @@ QString imageResolution(const QString &filePath)
         ? QStringLiteral("%1×%2").arg(size.width()).arg(size.height())
         : QString();
 }
+
+// Whether a companion tool binary can be found on $PATH.
+bool isToolInstalled(const QString &binary)
+{
+    return !QStandardPaths::findExecutable(binary).isEmpty();
+}
 } // namespace
 
 AppController::AppController(QObject *parent)
     : QObject(parent)
     , m_wallpaperModel(new WallpaperModel(this))
     , m_config(new KConfig(QStringLiteral("kwalrc"), KConfig::SimpleConfig))
+    , m_fastfetchAvailable(isToolInstalled(QStringLiteral("fastfetch")))
+    , m_starshipAvailable(isToolInstalled(QStringLiteral("starship")))
+    , m_ulauncherAvailable(isToolInstalled(QStringLiteral("ulauncher")))
 {
     loadConfig();
     applyCurrentFolder();
@@ -124,6 +133,21 @@ int AppController::defaultWindowWidth() const
 int AppController::defaultWindowHeight() const
 {
     return m_defaultWindowHeight;
+}
+
+bool AppController::fastfetchAvailable() const
+{
+    return m_fastfetchAvailable;
+}
+
+bool AppController::starshipAvailable() const
+{
+    return m_starshipAvailable;
+}
+
+bool AppController::ulauncherAvailable() const
+{
+    return m_ulauncherAvailable;
 }
 
 void AppController::setDefaultWindowWidth(int width)

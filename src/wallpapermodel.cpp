@@ -2,6 +2,8 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QFileSystemWatcher>
+#include <QTimer>
 
 namespace {
 const QStringList &imageExtensions()
@@ -22,6 +24,18 @@ const QStringList &imageExtensions()
 WallpaperModel::WallpaperModel(QObject *parent)
     : QAbstractListModel(parent)
 {
+    m_watcher = new QFileSystemWatcher(this);
+    m_debounce = new QTimer(this);
+    m_debounce->setSingleShot(true);
+    m_debounce->setInterval(kRefreshDebounceMs);
+    connect(m_debounce, &QTimer::timeout, this, &WallpaperModel::refresh);
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString &) {
+        // Re-arm in case the directory was deleted and recreated meanwhile.
+        if (!m_directory.isEmpty() && !m_watcher->directories().contains(m_directory)) {
+            m_watcher->addPath(m_directory);
+        }
+        m_debounce->start();
+    });
 }
 
 QHash<int, QByteArray> WallpaperModel::roleNames() const
@@ -72,7 +86,15 @@ void WallpaperModel::setSourceDirectory(const QString &directory)
     if (m_directory == directory) {
         return;
     }
+    const QString previous = m_directory;
     m_directory = directory;
+    m_debounce->stop();
+    if (!previous.isEmpty()) {
+        m_watcher->removePath(previous);
+    }
+    if (!directory.isEmpty() && QDir(directory).exists()) {
+        m_watcher->addPath(directory);
+    }
     refresh();
 }
 

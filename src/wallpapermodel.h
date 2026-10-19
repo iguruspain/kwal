@@ -3,6 +3,8 @@
 #include <QAbstractListModel>
 #include <QUrl>
 #include <QtQml/qqmlregistration.h>
+class QFileSystemWatcher;
+class QTimer;
 
 
 // Provides the wallpaper images of one folder: path, display name and a cached thumbnail.
@@ -43,6 +45,11 @@ private:
     void applyFilter();
     QUrl thumbnailFor(const QString &filePath) const;
 
+    QFileSystemWatcher *m_watcher = nullptr;
+    QTimer *m_debounce = nullptr;
+
+    // Batches a burst of file-system events into a single re-scan.
+    static constexpr int kRefreshDebounceMs = 200;
     QString m_directory;
     struct Entry {
         QString path;

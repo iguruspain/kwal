@@ -16,6 +16,7 @@ class tst_AppController : public QObject
 private slots:
     void initTestCase();
     void testWallpaperModel();
+    void testAutoRefresh();
     void testFoldersAndConfig();
     void testSelectionAndApply();
     void testWindowSettings();
@@ -67,6 +68,22 @@ void tst_AppController::testWallpaperModel()
     QCOMPARE(model->data(index, WallpaperModel::NameRole).toString(), QStringLiteral("alpha.png"));
     QVERIFY(!model->data(index, WallpaperModel::ThumbnailRole).toUrl().isEmpty());
     QCOMPARE(model->data(index, WallpaperModel::ExtensionRole).toString(), QStringLiteral("png"));
+}
+
+void tst_AppController::testAutoRefresh()
+{
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    const QString a = pictures + QStringLiteral("/A");
+
+    WallpaperModel model;
+    model.setSourceDirectory(a);
+    QCOMPARE(model.rowCount(), 2);
+
+    QSignalSpy countSpy(&model, &WallpaperModel::countChanged);
+    saveImage(a + QStringLiteral("/delta.png"), Qt::green);
+    QVERIFY(countSpy.wait(5000));
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(QFileInfo(model.pathAt(2)).fileName(), QStringLiteral("delta.png"));
 }
 
 void tst_AppController::testFoldersAndConfig()

@@ -83,11 +83,29 @@ Kirigami.ApplicationWindow {
                     }
                 }
                 Item { Layout.fillWidth: true }
-                // ToolButton {
-                //     icon.name: "preferences-system-symbolic"
-                //     Layout.preferredWidth: Kirigami.Units.gridUnit * 2
-                //     onClicked: {console.log("test")}    
-                // }
+            }
+        }
+        Item { Layout.fillWidth: true }
+        ToolButton {
+            id: menuButton
+            icon.name: "open-menu-symbolic"
+            onClicked: appMenu.open()
+
+            Menu {
+                id: appMenu
+                y: menuButton.height
+
+                MenuItem {
+                    text: qsTr("Configure Kwal")
+                    icon.name: "preferences-system-symbolic"
+                    onTriggered: {console.log("Preferences test")}
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: qsTr("Quit")
+                    icon.name: "application-exit"
+                    onTriggered: Qt.quit()
+                }
             }
         }
     }

@@ -40,6 +40,9 @@ qt_add_qml_module(kwal
         qml/FolderRow.qml
         qml/WallpaperItem.qml
         qml/PlaceholderPage.qml
+        qml/SettingsWindow.qml
+        qml/GeneralSettingsPage.qml
+        qml/SettingsPlaceholderPage.qml
 )
 
 target_link_libraries(kwal

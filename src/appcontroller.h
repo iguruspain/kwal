@@ -26,6 +26,7 @@ class AppController : public QObject
     Q_PROPERTY(QString currentWallpaperSize READ currentWallpaperSize NOTIFY currentWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
+    Q_PROPERTY(bool enableTransparency READ enableTransparency WRITE setEnableTransparency NOTIFY enableTransparencyChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -40,6 +41,8 @@ public:
     QString currentWallpaperSize() const;
     QString selectedWallpaper() const;
     QString selectedWallpaperSize() const;
+    bool enableTransparency() const;
+    void setEnableTransparency(bool enabled);
 
     Q_INVOKABLE void addFolder(const QString &path);
     Q_INVOKABLE void removeFolder(int index);
@@ -55,6 +58,7 @@ signals:
     void currentWallpaperChanged();
     void selectedWallpaperChanged();
 
+    void enableTransparencyChanged();
 private:
     void loadConfig();
     void saveConfig();
@@ -71,4 +75,5 @@ private:
     QString m_currentWallpaperSize;
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
+    bool m_enableTransparency = true;
 };

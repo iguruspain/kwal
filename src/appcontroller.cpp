@@ -101,6 +101,20 @@ QString AppController::selectedWallpaperSize() const
     return m_selectedWallpaperSize;
 }
 
+bool AppController::enableTransparency() const
+{
+    return m_enableTransparency;
+}
+
+void AppController::setEnableTransparency(bool enabled)
+{
+    if (m_enableTransparency == enabled) {
+        return;
+    }
+    m_enableTransparency = enabled;
+    emit enableTransparencyChanged();
+}
+
 void AppController::addFolder(const QString &path)
 {
     QString trimmed = path.trimmed();

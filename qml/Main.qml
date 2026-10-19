@@ -5,11 +5,12 @@ import QtQuick.Dialogs
 import org.kde.kirigami as Kirigami
 import org.kde.kirigami.layouts as KirigamiLayouts
 
+pragma ComponentBehavior: Bound
+
 Kirigami.ApplicationWindow {
     id: window
-    readonly property bool enableTransparency: true
     readonly property AppController app: AppController {}
-    readonly property color appBackground: enableTransparency
+    readonly property color appBackground: app.enableTransparency
         ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
         : Kirigami.Theme.backgroundColor
 
@@ -22,10 +23,21 @@ Kirigami.ApplicationWindow {
     title: qsTr("Kwal")
 
     FolderDialog {
-        id: addFolderDialog
+        id: folderPicker
         title: qsTr("Choose a Wallpaper Folder")
         currentFolder: Qt.resolvedUrl(window.app.currentFolderPath)
         onAccepted: window.app.addFolder(selectedFolder.toString())
+    }
+
+    // Created lazily on first use so no second surface exists at startup.
+    property var settingsWindow
+
+    Component {
+        id: settingsWindowComponent
+
+        SettingsWindow {
+            app: window.app
+        }
     }
 
     // footer: Kirigami.NavigationTabBar {
@@ -50,7 +62,7 @@ Kirigami.ApplicationWindow {
     // }
 
     header: Rectangle {
-        color: appBackground
+        color: window.appBackground
         // Reserve vertical space: a bare Rectangle has implicitHeight 0, so the
         // window header would not push the pageStack down and the page's own
         // ToolBar would overlap this tab row.
@@ -98,7 +110,11 @@ Kirigami.ApplicationWindow {
                 MenuItem {
                     text: qsTr("Configure Kwal")
                     icon.name: "preferences-system-symbolic"
-                    onTriggered: {console.log("Preferences test")}
+                    onTriggered: {
+                        if (!window.settingsWindow)
+                            window.settingsWindow = settingsWindowComponent.createObject(window)
+                        window.settingsWindow.show()
+                    }
                 }
                 MenuSeparator {}
                 MenuItem {
@@ -114,11 +130,11 @@ Kirigami.ApplicationWindow {
 
     pageStack.initialPage: WallpapersPage {
         app: window.app
-        addFolderDialog: addFolderDialog
+        addFolderDialog: folderPicker
 
         globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
         background: Rectangle {
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: window.appBackground
         }
     }
     Component { id: fastfetchPage; PlaceholderPage { toolName: "Fastfetch" } }

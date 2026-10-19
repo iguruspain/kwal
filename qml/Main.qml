@@ -153,7 +153,9 @@ Kirigami.ApplicationWindow {
     }
     Component {
         id: fastfetchPage
-        FastfetchPage {}
+        FastfetchPage {
+            app: window.app
+        }
     }
     Component { id: starshipPage; StarshipPage {} }
     Component { id: ulauncherPage; UlauncherPage {} }

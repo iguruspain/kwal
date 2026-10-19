@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Dialogs
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
@@ -26,37 +25,6 @@ Kirigami.Page {
             text: resultDialog.message
             wrapMode: Text.WordWrap
         }
-    }
-
-    ColorDialog {
-        id: colorPicker
-        onAccepted: page.controller.draftColor = page.colorDialogHex()
-    }
-
-    function colorDialogHex() {
-        const c = colorPicker.selectedColor
-        const a = Math.round(c.a * 255)
-        let hex = a < 255 ? a.toString(16).padStart(2, "0") : ""
-        hex += Math.round(c.r * 255).toString(16).padStart(2, "0")
-        hex += Math.round(c.g * 255).toString(16).padStart(2, "0")
-        hex += Math.round(c.b * 255).toString(16).padStart(2, "0")
-        return "#" + hex
-    }
-
-    function openColorDialog() {
-        const current = page.controller.draftColor
-        if (current !== "transparent" && current.startsWith("#")) {
-            const hex = current.substring(1)
-            colorPicker.selectedColor = hex.length === 8
-                ? Qt.rgba(parseInt(hex.substring(2, 4), 16) / 255,
-                           parseInt(hex.substring(4, 6), 16) / 255,
-                           parseInt(hex.substring(6, 8), 16) / 255,
-                           parseInt(hex.substring(0, 2), 16) / 255)
-                : Qt.rgba(parseInt(hex.substring(0, 2), 16) / 255,
-                           parseInt(hex.substring(2, 4), 16) / 255,
-                           parseInt(hex.substring(4, 6), 16) / 255, 1)
-        }
-        colorPicker.open()
     }
 
     Connections {
@@ -115,24 +83,9 @@ Kirigami.Page {
                     onActivated: page.controller.colorIndex = currentIndex
                 }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    Rectangle {
-                        id: colorSwatch
-                        Layout.preferredWidth: Kirigami.Units.gridUnit * 1.5
-                        Layout.preferredHeight: Kirigami.Units.gridUnit * 1.5
-                        radius: Kirigami.Units.smallSpacing
-                        color: page.controller.draftColor === "transparent"
-                            ? "transparent"
-                            : page.controller.draftColor
-                        border.color: Kirigami.Theme.disabledTextColor
-                        border.width: 1
-                    }
-                    Item { Layout.fillWidth: true }
-                    Button {
-                        text: qsTr("Edit color")
-                        onClicked: page.openColorDialog()
-                    }
+                ColorDot {
+                    color: page.controller.draftColor
+                    onAccepted: (hex) => { page.controller.draftColor = hex }
                 }
 
                 Item { Layout.fillHeight: true }

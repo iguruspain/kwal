@@ -18,6 +18,8 @@ private slots:
     void testWallpaperModel();
     void testFoldersAndConfig();
     void testSelectionAndApply();
+    void testWindowSettings();
+    void testTransparencyPersistence();
 
 private:
     static void saveImage(const QString &path, Qt::GlobalColor color)
@@ -122,6 +124,48 @@ void tst_AppController::testSelectionAndApply()
     QCOMPARE(resultSpy.count(), 1);
     QCOMPARE(resultSpy.at(0).at(0).toBool(), false);
     QCOMPARE(app.selectedWallpaper(), QString());
+}
+
+void tst_AppController::testWindowSettings()
+{
+    AppController app;
+    QCOMPARE(app.defaultWindowWidth(), 960);
+    QCOMPARE(app.defaultWindowHeight(), 650);
+
+    QSignalSpy widthSpy(&app, &AppController::defaultWindowWidthChanged);
+    app.setDefaultWindowWidth(1024);
+    app.setDefaultWindowHeight(768);
+    QCOMPARE(app.defaultWindowWidth(), 1024);
+    QCOMPARE(app.defaultWindowHeight(), 768);
+    QCOMPARE(widthSpy.count(), 1);
+
+    app.setDefaultWindowWidth(1024); // unchanged value does not re-emit
+    QCOMPARE(widthSpy.count(), 1);
+
+    // Out-of-range values are clamped to the configurable window range.
+    app.setDefaultWindowWidth(1);
+    app.setDefaultWindowHeight(4096);
+    QCOMPARE(app.defaultWindowWidth(), 700);
+    QCOMPARE(app.defaultWindowHeight(), 2160);
+
+    // Persisted to the same kwalrc file and visible to a fresh controller.
+    AppController app2;
+    QCOMPARE(app2.defaultWindowWidth(), 700);
+    QCOMPARE(app2.defaultWindowHeight(), 2160);
+}
+
+void tst_AppController::testTransparencyPersistence()
+{
+    AppController app;
+    QCOMPARE(app.enableTransparency(), true); // default on
+
+    app.setEnableTransparency(false);
+    QCOMPARE(app.enableTransparency(), false);
+
+    AppController app2;
+    QCOMPARE(app2.enableTransparency(), false);
+
+    app2.setEnableTransparency(true); // restore default
 }
 
 int main(int argc, char *argv[])

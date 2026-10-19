@@ -112,7 +112,40 @@ void AppController::setEnableTransparency(bool enabled)
         return;
     }
     m_enableTransparency = enabled;
+    saveConfig();
     emit enableTransparencyChanged();
+}
+
+int AppController::defaultWindowWidth() const
+{
+    return m_defaultWindowWidth;
+}
+
+int AppController::defaultWindowHeight() const
+{
+    return m_defaultWindowHeight;
+}
+
+void AppController::setDefaultWindowWidth(int width)
+{
+    const int clamped = qBound(kMinimumWindowWidth, width, kMaximumWindowWidth);
+    if (m_defaultWindowWidth == clamped) {
+        return;
+    }
+    m_defaultWindowWidth = clamped;
+    saveConfig();
+    emit defaultWindowWidthChanged();
+}
+
+void AppController::setDefaultWindowHeight(int height)
+{
+    const int clamped = qBound(kMinimumWindowHeight, height, kMaximumWindowHeight);
+    if (m_defaultWindowHeight == clamped) {
+        return;
+    }
+    m_defaultWindowHeight = clamped;
+    saveConfig();
+    emit defaultWindowHeightChanged();
 }
 
 void AppController::addFolder(const QString &path)
@@ -248,6 +281,15 @@ void AppController::loadConfig()
     }
     m_currentWallpaper = group.readEntry("currentWallpaper", QString());
     m_currentWallpaperSize = group.readEntry("currentWallpaperSize", QString());
+
+    const KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
+    m_defaultWindowWidth = qBound(kMinimumWindowWidth,
+                                  generalGroup.readEntry("windowWidth", kDefaultWindowWidth),
+                                  kMaximumWindowWidth);
+    m_defaultWindowHeight = qBound(kMinimumWindowHeight,
+                                   generalGroup.readEntry("windowHeight", kDefaultWindowHeight),
+                                   kMaximumWindowHeight);
+    m_enableTransparency = generalGroup.readEntry("transparency", true);
 }
 
 void AppController::saveConfig()
@@ -257,6 +299,10 @@ void AppController::saveConfig()
     group.writeEntry("currentFolderIndex", m_currentFolderIndex);
     group.writeEntry("currentWallpaper", m_currentWallpaper);
     group.writeEntry("currentWallpaperSize", m_currentWallpaperSize);
+    KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
+    generalGroup.writeEntry("windowWidth", m_defaultWindowWidth);
+    generalGroup.writeEntry("windowHeight", m_defaultWindowHeight);
+    generalGroup.writeEntry("transparency", m_enableTransparency);
     m_config->sync();
 }
 

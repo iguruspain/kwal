@@ -4,6 +4,8 @@
 
 Kwal — KDE Plasma utility to manage the wallpaper and tint applications/tools with palettes extracted from the wallpaper. C++/Qt6/QML rewrite of the Python original (sibling repo `../Kwal` — read its AGENTS.md for feature spec). App ID: `org.kde.kwal`.
 
+Future design notes (thumbnail cache, video/SVG support, palettes) live in `diseñando.txt` — roadmap only, not a spec for current work.
+
 ## Development Directives
 
 - **Simplicity first.** The rewrite keeps the new project as simple and clean as possible: smallest code that does the job, no speculative abstractions, no legacy quirks.
@@ -21,11 +23,14 @@ Kwal — KDE Plasma utility to manage the wallpaper and tint applications/tools 
 ## Commands
 
 ```sh
+./build.sh             # helper: [build|test|run|config|clean], auto-configures on first run
 cmake --preset default     # configure (Ninja, Debug, compile_commands.json)
 cmake --build --preset default
 ctest --test-dir build     # run tests (QtTest + CTest)
 ./build/kwal               # run (or via kwin MCP for headless UI verification)
 ```
+
+Tests sandbox the user dirs: `tst_appcontroller` sets `HOME`/`XDG_*` to a temp dir *before* constructing `QCoreApplication` so KConfig and QStandardPaths never touch the real home. New tests must keep this.
 
 ## Tooling rules (mandatory)
 
@@ -34,13 +39,18 @@ ctest --test-dir build     # run tests (QtTest + CTest)
    - QML types/properties: `grep` `/usr/lib/qt6/qml/org/kde/kirigami/{templates,controls,dialogs,forms,primitives,layouts}/{qmldir,*.qmltypes}` or the `.qml` sources.
    - LSP: `xd://lsp` diagnostics/hover on the file (clangd + qmlls6 configured in `.omp/lsp.json`).
    - Docs: `qt_documentation_search` MCP (Qt 6.12) for Qt APIs; api.kde.org / develop.kde.org for Kirigami.
-3. **After every edit** of `.qml`/`.cpp`: run `xd://lsp` `diagnostics` on the file; fix all warnings before calling it done.
-4. **Verify UI empirically:** kwin MCP — `session_start` with the binary, `screenshot`, then `session_stop`. Screenshots are the proof.
+3. **After every edit** of `.qml`/`.cpp`: run `xd://lsp` `diagnostics` on the file (per-file; workspace-wide `file:"*"` fails — project type not detected); fix all warnings before calling it done.
+4. **Verify UI empirically:** kwin MCP — `session_start`, then `launch_app` with `command:` (session_start does not launch the app), `screenshot` + `window_geometry`, then `session_stop`. Screenshots are the proof.
 5. Do not assume APIs from other Kirigami versions. If a pattern is not verifiable locally, say so instead of guessing.
 
 ## Architecture
 
-- Single executable `kwal` + QML module `org.kde.kwal`. C++ root context (e.g. `AppController`) for app state/services; QML for UI.
-- Settings via KConfig (`kwalrc`); identity: `OrganizationName "KDE"`, domain `kde.org`.
+- Single executable `kwal` + QML module `org.kde.kwal`; `main.cpp` loads `Main` via `loadFromModule`. On KDE desktops it sets `QT_QPA_PLATFORMTHEME=kde` and `QT_QUICK_CONTROLS_STYLE=org.kde.desktop` (never overriding explicit user settings).
+- `AppController` (`QML_ELEMENT`, instantiated in `Main.qml`) is the app state/services: folders, wallpaper selection, config, and applying the wallpaper by running a Plasma JS snippet via D-Bus `org.kde.plasmashell` → `evaluateScript`.
+- `WallpaperModel` (QAbstractListModel over the current folder) + `FdoThumbnailProvider` (QQuickImageProvider `fdo_thumbnail`) feed the grid.
+- Two windows: `Main` (tabs: Wallpapers live, Fastfetch/Ulauncher placeholders) and a lazily-created `SettingsWindow` from the header menu.
+- Settings via KConfig (`kwalrc`); identity: `OrganizationName "KDE"`, domain `kde.org`. Groups:
+  - `[Wallpapers]`: `folders`, `currentFolderIndex`, `currentWallpaper(+Size)`.
+  - `[General]`: `windowWidth`/`windowHeight` — applied **at startup only** (window default 960×650, clamped to 700×400–3840×2160); no live resize. `transparency` — window background opacity.
 - QML: `qsTr()` for all user strings, `Kirigami.Units` for spacing/sizing, semantic `Kirigami.Theme` colors, Kirigami semantic components over raw Controls.
-- KDE install layout (ECM): binary → `libexec`, desktop file + icon → `share`.
+- Install (ECM): desktop file (→ `kwal.desktop`) + hicolor icon; the executable itself is not installed yet.

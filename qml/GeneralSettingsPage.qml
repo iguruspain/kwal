@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import org.kde.kirigami.delegates as KirigamiDelegates
@@ -23,6 +24,32 @@ Kirigami.ScrollablePage {
                 subtitle: qsTr("Draw window backgrounds with reduced opacity")
                 checked: page.app.enableTransparency
                 onToggled: page.app.enableTransparency = checked
+            }
+
+            Kirigami.Heading {
+                Layout.fillWidth: true
+                text: qsTr("Window")
+                level: 3
+            }
+
+            Kirigami.FormLayout {
+                SpinBox {
+                    Kirigami.FormData.label: qsTr("Default width")
+                    from: 700
+                    to: 3840
+                    stepSize: 10
+                    value: page.app.defaultWindowWidth
+                    onValueModified: page.app.defaultWindowWidth = value
+                }
+
+                SpinBox {
+                    Kirigami.FormData.label: qsTr("Default height")
+                    from: 400
+                    to: 2160
+                    stepSize: 10
+                    value: page.app.defaultWindowHeight
+                    onValueModified: page.app.defaultWindowHeight = value
+                }
             }
         }
     }

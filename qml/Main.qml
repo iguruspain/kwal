@@ -14,8 +14,8 @@ Kirigami.ApplicationWindow {
         ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
         : Kirigami.Theme.backgroundColor
 
-    width: 960
-    height: 650
+    width: app.defaultWindowWidth
+    height: app.defaultWindowHeight
     minimumWidth: 700
     minimumHeight: 400
     visible: true

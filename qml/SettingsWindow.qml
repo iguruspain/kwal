@@ -90,11 +90,18 @@ Kirigami.ApplicationWindow {
                 onTriggered: settingsWindow.pageStack.currentIndex = 2
             },
             Kirigami.Action {
-                text: qsTr("Ulauncher")
-                icon.name: "application-x-executable"
+                text: qsTr("Starship")
+                icon.name: "utilities-terminal"
                 visible: settingsWindow.sectionMatches(drawerSearch.text, 3)
                 checked: settingsWindow.pageStack.currentIndex === 3
                 onTriggered: settingsWindow.pageStack.currentIndex = 3
+            },
+            Kirigami.Action {
+                text: qsTr("Ulauncher")
+                icon.name: "ulauncher-indicator-symbolic"
+                visible: settingsWindow.sectionMatches(drawerSearch.text, 4)
+                checked: settingsWindow.pageStack.currentIndex === 4
+                onTriggered: settingsWindow.pageStack.currentIndex = 4
             }
         ]
     }
@@ -109,11 +116,13 @@ Kirigami.ApplicationWindow {
     }
     Component { id: wallpapersSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Wallpapers"); iconName: "preferences-desktop-wallpaper"; background: Rectangle { color: settingsWindow.pageBackground } } }
     Component { id: fastfetchSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Fastfetch"); iconName: "utilities-terminal"; background: Rectangle { color: settingsWindow.pageBackground } } }
-    Component { id: ulauncherSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Ulauncher"); iconName: "application-x-executable"; background: Rectangle { color: settingsWindow.pageBackground } } }
+    Component { id: starshipSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Starship"); iconName: "utilities-terminal"; background: Rectangle { color: settingsWindow.pageBackground } } }    
+    Component { id: ulauncherSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Ulauncher"); iconName: "ulauncher"; background: Rectangle { color: settingsWindow.pageBackground } } }
 
     Component.onCompleted: {
         settingsWindow.pageStack.push(wallpapersSettingsPage.createObject(settingsWindow))
         settingsWindow.pageStack.push(fastfetchSettingsPage.createObject(settingsWindow))
+        settingsWindow.pageStack.push(starshipSettingsPage.createObject(settingsWindow))
         settingsWindow.pageStack.push(ulauncherSettingsPage.createObject(settingsWindow))
         settingsWindow.pageStack.currentIndex = 0
     }

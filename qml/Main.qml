@@ -49,13 +49,13 @@ Kirigami.ApplicationWindow {
     //     }
     //     Kirigami.NavigationTabButton {
     //         text: qsTr("Fastfetch")
-    //         icon.name: "utilities-system-tools"
+    //         icon.name: "utilities-terminal"
     //         checked: window.pageStack.currentIndex === 1
     //         onClicked: window.pageStack.currentIndex = 1
     //     }
     //     Kirigami.NavigationTabButton {
     //         text: qsTr("Ulauncher")
-    //         icon.name: "application-x-executable"
+    //         icon.name: "ulauncher-indicator-symbolic"
     //         checked: window.pageStack.currentIndex === 2
     //         onClicked: window.pageStack.currentIndex = 2
     //     }
@@ -80,18 +80,27 @@ Kirigami.ApplicationWindow {
 
                     TabButton {
                         text: qsTr("Wallpapers")
+                        icon.name: "preferences-desktop-wallpaper"
                         checked: window.pageStack.currentIndex === 0
                         onClicked: window.pageStack.currentIndex = 0
                     }
                     TabButton {
                         text: qsTr("Fastfetch")
+                        icon.name: "utilities-terminal"
                         checked: window.pageStack.currentIndex === 1
                         onClicked: window.pageStack.currentIndex = 1
                     }
                     TabButton {
-                        text: qsTr("Ulauncher")
+                        text: qsTr("Starship")
+                        icon.name: "utilities-terminal"
                         checked: window.pageStack.currentIndex === 2
                         onClicked: window.pageStack.currentIndex = 2
+                    }
+                    TabButton {
+                        text: qsTr("Ulauncher")
+                        icon.name: "ulauncher-indicator-symbolic"
+                        checked: window.pageStack.currentIndex === 3
+                        onClicked: window.pageStack.currentIndex = 3
                     }
                 }
                 Item { Layout.fillWidth: true }
@@ -138,6 +147,7 @@ Kirigami.ApplicationWindow {
         }
     }
     Component { id: fastfetchPage; PlaceholderPage { toolName: "Fastfetch" } }
+    Component { id: starshipPage; PlaceholderPage { toolName: "Starship" } }
     Component { id: ulauncherPage; PlaceholderPage { toolName: "Ulauncher" } }
 
 
@@ -149,6 +159,7 @@ Kirigami.ApplicationWindow {
     }
     Component.onCompleted: {
         window.pageStack.push(fastfetchPage.createObject(window))
+        window.pageStack.push(starshipPage.createObject(window))
         window.pageStack.push(ulauncherPage.createObject(window))
         window.pageStack.currentIndex = 0
     }

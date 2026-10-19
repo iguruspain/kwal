@@ -46,10 +46,9 @@ Kirigami.Page {
 
     ColorDialog {
         id: colorPicker
-        onAccepted: {
-            page.controller.draftColor = page.colorDialogHex()
-            page.controller.generateTintedPreview()
-        }
+        // The controller regenerates the tinted preview itself when the
+        // draft color changes.
+        onAccepted: page.controller.draftColor = page.colorDialogHex()
     }
 
     function colorDialogHex() {
@@ -217,7 +216,7 @@ Kirigami.Page {
             }
         }
 
-        // --- Right pane: preview ---
+        // --- Right pane: previews ---
         Kirigami.Card {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -226,52 +225,130 @@ Kirigami.Page {
                 anchors.fill: parent
                 spacing: Kirigami.Units.smallSpacing
 
+                // 1. Image currently referenced by the fastfetch config.
                 Label {
-                    text: qsTr("Preview")
+                    text: qsTr("Current (config):")
                     font.bold: true
                 }
 
-                Kirigami.Separator { Layout.fillWidth: true }
+                Label {
+                    Layout.fillWidth: true
+                    font.italic: true
+                    wrapMode: Text.WrapAnywhere
+                    color: Kirigami.Theme.disabledTextColor
+                    text: page.controller.configImage === ""
+                        ? qsTr("No image found")
+                        : page.shortPath(page.controller.configImage)
+                }
 
                 Item {
-                    id: previewArea
+                    id: configPreviewArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredHeight: 300
                     Image {
-                        id: previewImage
-                        anchors.centerIn: previewArea
+                        anchors.centerIn: parent
+                        source: page.controller.configImageUrl
                         asynchronous: true
                         cache: false
-                        source: page.controller.fileUrl(page.controller.tintedPreviewPath !== ""
-                            ? page.controller.tintedPreviewPath
-                            : page.controller.selectedFile)
                         fillMode: Image.PreserveAspectFit
-                        visible: page.controller.selectedFile !== ""
-                        width: Math.min(previewArea.width, previewArea.height)
-                        height: Math.min(previewArea.width, previewArea.height)
+                        visible: page.controller.configImage !== ""
+                        width: Math.min(configPreviewArea.width, configPreviewArea.height)
+                        height: Math.min(configPreviewArea.width, configPreviewArea.height)
                     }
                     Label {
-                        anchors.centerIn: previewArea
-                        text: qsTr("Select an image to preview")
+                        anchors.centerIn: parent
+                        text: qsTr("No configured image")
                         color: Kirigami.Theme.disabledTextColor
-                        visible: page.controller.selectedFile === ""
+                        visible: page.controller.configImage === ""
                     }
                 }
 
-                Kirigami.Separator { Layout.fillWidth: true }
+                Kirigami.Separator {
+                    Layout.fillWidth: true
+                    visible: page.controller.manuallySelected
+                }
 
+                // 2+3. Selected image and its tinted version, side by side.
                 RowLayout {
                     Layout.fillWidth: true
-                    Label {
-                        text: qsTr("Current fastfetch image:")
-                        color: Kirigami.Theme.disabledTextColor
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: 300
+                    spacing: Kirigami.Units.largeSpacing
+                    visible: page.controller.manuallySelected
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumWidth: 200
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Label {
+                            text: qsTr("Selected image:")
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            font.italic: true
+                            wrapMode: Text.WrapAnywhere
+                            color: Kirigami.Theme.disabledTextColor
+                            text: page.shortPath(page.controller.selectedFile)
+                        }
+
+                        Item {
+                            id: originalPreviewArea
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Image {
+                                anchors.centerIn: parent
+                                source: page.controller.fileUrl(page.controller.selectedFile)
+                                asynchronous: true
+                                cache: false
+                                fillMode: Image.PreserveAspectFit
+                                width: Math.min(originalPreviewArea.width, originalPreviewArea.height)
+                                height: Math.min(originalPreviewArea.width, originalPreviewArea.height)
+                            }
+                        }
                     }
-                    Item { Layout.fillWidth: true }
-                    Label {
-                        text: page.controller.configImage === ""
-                            ? qsTr("none detected")
-                            : page.shortPath(page.controller.configImage)
-                        color: Kirigami.Theme.disabledTextColor
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumWidth: 200
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Label {
+                            text: qsTr("Tinted:")
+                            font.bold: true
+                        }
+
+                        Label {
+                            Layout.fillWidth: true
+                            font.italic: true
+                            wrapMode: Text.WrapAnywhere
+                            color: Kirigami.Theme.disabledTextColor
+                            text: page.controller.draftColor === "transparent"
+                                ? qsTr("No tint selected")
+                                : page.shortPath(page.controller.tintedImagePathFor(page.controller.selectedFile))
+                        }
+
+                        Item {
+                            id: tintedPreviewArea
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            Image {
+                                anchors.centerIn: parent
+                                source: page.controller.tintedPreviewUrl !== ""
+                                    ? page.controller.tintedPreviewUrl
+                                    : page.controller.fileUrl(page.controller.selectedFile)
+                                asynchronous: true
+                                cache: false
+                                fillMode: Image.PreserveAspectFit
+                                width: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
+                                height: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
+                            }
+                        }
                     }
                 }
             }

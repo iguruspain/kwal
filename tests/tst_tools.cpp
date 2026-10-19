@@ -19,7 +19,7 @@ private slots:
     void initTestCase();
     void testAtomicWrite();
     void testBackupRestore();
-    void testTintImage();
+    void testTintImageTo();
     void testTintedImagePath();
     void testFastfetchSetSource();
     void testFastfetchDetectImage();
@@ -94,35 +94,47 @@ void tst_Tools::testBackupRestore()
     QFile::remove(path + QStringLiteral(".bak"));
 }
 
-void tst_Tools::testTintImage()
+void tst_Tools::testTintImageTo()
 {
-    QImage source(10, 10, QImage::Format_RGB32);
-    source.fill(Qt::white);
+    // The pipeline shells out to ImageMagick; skip when it is not installed.
+    const bool hasMagick = !QStandardPaths::findExecutable(QStringLiteral("magick")).isEmpty()
+        || !QStandardPaths::findExecutable(QStringLiteral("convert")).isEmpty();
+    if (!hasMagick)
+        QSKIP("ImageMagick is not installed");
 
-    // Full strength replaces the image with the tint color.
-    const QImage full = tools::tintImage(source, QColor(200, 10, 30), 1.0);
-    QVERIFY(!full.isNull());
-    QCOMPARE(full.pixel(0, 0), qRgb(200, 10, 30));
-    QCOMPARE(full.pixel(9, 9), qRgb(200, 10, 30));
+    const QString src = QDir::tempPath() + QStringLiteral("/kwal-test-tint-src.png");
+    const QString dst = QDir::tempPath() + QStringLiteral("/kwal-test-tint-dst.png");
+    QImage source(16, 16, QImage::Format_RGB32);
+    source.fill(QColor(128, 128, 128));
+    QVERIFY(source.save(src));
 
-    // Zero strength keeps the luminance in grayscale.
-    const QImage none = tools::tintImage(source, QColor(200, 10, 30), 0.0);
-    const QRgb whiteGray = none.pixel(0, 0);
-    QCOMPARE(qRed(whiteGray), qGreen(whiteGray));
-    QCOMPARE(qGreen(whiteGray), qBlue(whiteGray));
-    QCOMPARE(qRed(whiteGray), 255);
+    // Mid-gray tinted red at the default strength: red dominates the output.
+    QVERIFY(tools::tintImageTo(src, dst, QColor(255, 0, 0)));
+    QVERIFY(QFile::exists(dst));
+    const QImage out(dst);
+    QVERIFY(!out.isNull());
+    const QRgb px = out.pixel(8, 8);
+    QVERIFY(qRed(px) > qGreen(px));
+    QVERIFY(qRed(px) > qBlue(px));
 
-    // Mid strength blends toward the tint: red channel rises, others fall.
-    QImage midSource(4, 4, QImage::Format_RGB32);
-    midSource.fill(QColor(30, 60, 90));
-    const QImage mid = tools::tintImage(midSource, QColor(255, 0, 0), 0.5);
-    const QRgb blended = mid.pixel(0, 0);
-    QVERIFY(qRed(blended) > 30);
-    QVERIFY(qGreen(blended) < 60);
+    // Preview mode writes a shrunk copy (green fill: green dominates).
+    const QString small = QDir::tempPath() + QStringLiteral("/kwal-test-tint-small.png");
+    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10), 0.8, 8));
+    const QImage preview(small);
+    QVERIFY(!preview.isNull());
+    QVERIFY(preview.width() <= 8 && preview.height() <= 8);
+    const QRgb spx = preview.pixel(0, 0);
+    QVERIFY(qGreen(spx) > qRed(spx));
+    QVERIFY(qGreen(spx) > qBlue(spx));
 
-    // Null input stays null; out-of-range strength is clamped, not an error.
-    QVERIFY(tools::tintImage(QImage(), QColor(1, 2, 3)).isNull());
-    QVERIFY(!tools::tintImage(source, QColor(1, 2, 3), 7).isNull());
+    // Missing source is a clean failure with no output written.
+    QFile::remove(dst);
+    QVERIFY(!tools::tintImageTo(QDir::tempPath() + QStringLiteral("/kwal-test-tint-missing.png"),
+        dst, Qt::red));
+    QVERIFY(!QFile::exists(dst));
+
+    QFile::remove(src);
+    QFile::remove(small);
 }
 
 void tst_Tools::testTintedImagePath()

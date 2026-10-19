@@ -1,38 +1,86 @@
 #include "tools/tintimage.h"
 
+#include <QColor>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QProcess>
+#include <QStandardPaths>
 
 namespace tools
 {
 
-QImage tintImage(const QImage &source, const QColor tint, qreal strength)
+namespace {
+
+// ImageMagick fill color, in the same form the old app passed: #rrggbb, or
+// rgba(r,g,b,a) when the tint has partial alpha.
+QString fillColor(const QColor &tint)
 {
-    if (source.isNull())
-        return QImage();
-
-    const qreal s = qBound(0.0, strength, 1.0);
-    const float inv = static_cast<float>(1.0 - s);
-    const float tr = static_cast<float>(tint.red());
-    const float tg = static_cast<float>(tint.green());
-    const float tb = static_cast<float>(tint.blue());
-    const float ta = static_cast<float>(tint.alpha()) / 255.0f;
-
-    QImage image = source.convertToFormat(QImage::Format_ARGB32);
-    for (int y = 0; y < image.height(); ++y) {
-        QRgb *line = reinterpret_cast<QRgb *>(image.scanLine(y));
-        for (int x = 0; x < image.width(); ++x) {
-            const QRgb pixel = line[x];
-            // Perceptual luminance, same weights Qt uses for grayscale.
-            const float lum = 0.2126f * static_cast<float>(qRed(pixel))
-                + 0.7152f * static_cast<float>(qGreen(pixel)) + 0.0722f * static_cast<float>(qBlue(pixel));
-            const int r = qBound(0, static_cast<int>(tr * s + lum * inv + 0.5f), 255);
-            const int g = qBound(0, static_cast<int>(tg * s + lum * inv + 0.5f), 255);
-            const int b = qBound(0, static_cast<int>(tb * s + lum * inv + 0.5f), 255);
-            const int a = qBound(0, static_cast<int>(qAlpha(pixel) * ta + 0.5f), 255);
-            line[x] = qRgba(r, g, b, a);
-        }
+    if (tint.alpha() < 255) {
+        return QStringLiteral("rgba(%1,%2,%3,%4)")
+            .arg(tint.red())
+            .arg(tint.green())
+            .arg(tint.blue())
+            .arg(tint.alpha() / 255.0, 0, 'f', 3);
     }
-    return image;
+    return tint.name(QColor::HexRgb);
+}
+
+// Prefer the IM7 `magick` binary, fall back to the IM6 `convert` shim.
+QString magickExecutable()
+{
+    const QString magick = QStandardPaths::findExecutable(QStringLiteral("magick"));
+    if (!magick.isEmpty())
+        return magick;
+    return QStandardPaths::findExecutable(QStringLiteral("convert"));
+}
+
+bool runMagick(const QString &exe, const QStringList &args)
+{
+    QProcess process;
+    process.start(exe, args);
+    if (!process.waitForFinished(60000))
+        return false;
+    if (process.exitCode() != 0)
+        return false;
+    return true;
+}
+
+}
+
+bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &tint,
+                 qreal strength, int previewMaxDim)
+{
+    const QString im = magickExecutable();
+    if (im.isEmpty())
+        return false;
+    if (!QFileInfo::exists(srcPath))
+        return false;
+
+    const int pct = qBound(0, int(qRound(strength * 100.0)), 100);
+    const QFileInfo dstInfo(dstPath);
+    const QString tmp = dstInfo.absolutePath()
+        + QStringLiteral("/.") + dstInfo.fileName() + QStringLiteral(".gray-tmp.png");
+
+    // 1. Grayscale (optionally resized for a preview).
+    QStringList grayArgs;
+    if (previewMaxDim > 0)
+        grayArgs << srcPath
+                 << QStringLiteral("-resize")
+                 << QStringLiteral("%1x%2>").arg(previewMaxDim).arg(previewMaxDim);
+    else
+        grayArgs << srcPath;
+    grayArgs << QStringLiteral("-colorspace") << QStringLiteral("gray") << tmp;
+    if (!runMagick(im, grayArgs)) {
+        QFile::remove(tmp);
+        return false;
+    }
+
+    // 2. Tint.
+    const bool ok = runMagick(im, {tmp, QStringLiteral("-fill"), fillColor(tint),
+                                   QStringLiteral("-tint"), QString::number(pct), dstPath});
+    QFile::remove(tmp);
+    return ok;
 }
 
 QString tintedImagePath(const QString &srcPath)

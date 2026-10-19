@@ -5,10 +5,9 @@
 #include "tools/tintimage.h"
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QDir>
-#include <QImage>
-#include <QImageReader>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -48,6 +47,13 @@ QString FastfetchController::configImage() const
     return m_configImage;
 }
 
+QString FastfetchController::configImageUrl() const
+{
+    if (m_configImage.isEmpty())
+        return QString();
+    return fileUrl(m_configImage) + QStringLiteral("?t=%1").arg(m_configRevision);
+}
+
 QString FastfetchController::selectedFile() const
 {
     return m_selectedFile;
@@ -60,10 +66,13 @@ QString FastfetchController::draftColor() const
 
 void FastfetchController::setDraftColor(const QString &color)
 {
-    if (m_draftColor != color) {
-        m_draftColor = color;
-        emit draftColorChanged();
-    }
+    if (m_draftColor == color)
+        return;
+    m_draftColor = color;
+    emit draftColorChanged();
+    // Keep the tinted preview in sync with the color, not just the QML dialog.
+    if (!m_selectedFile.isEmpty())
+        generateTintedPreview();
 }
 
 QString FastfetchController::tintedPreviewPath() const
@@ -71,9 +80,21 @@ QString FastfetchController::tintedPreviewPath() const
     return m_tintedPreviewPath;
 }
 
+QString FastfetchController::tintedPreviewUrl() const
+{
+    if (m_tintedPreviewPath.isEmpty())
+        return QString();
+    return fileUrl(m_tintedPreviewPath) + QStringLiteral("?t=%1").arg(m_tintedPreviewRevision);
+}
+
 bool FastfetchController::hasBackup() const
 {
     return m_hasBackup;
+}
+
+bool FastfetchController::manuallySelected() const
+{
+    return m_manuallySelected;
 }
 
 QString FastfetchController::fileUrl(const QString &path) const
@@ -83,10 +104,18 @@ QString FastfetchController::fileUrl(const QString &path) const
     return QUrl::fromLocalFile(path).toString();
 }
 
+QString FastfetchController::tintedImagePathFor(const QString &srcPath) const
+{
+    return tools::tintedImagePath(srcPath);
+}
+
 void FastfetchController::refreshConfigImage()
 {
-    const QString detected0 = tools::detectConfigImage();
-    setConfigImage(detected0);
+    // Bump the cache-buster so the same-path image reloads after external
+    // changes, even when detection returns the previous path.
+    m_configRevision++;
+    setConfigImage(tools::detectConfigImage());
+    emit configImageChanged();
     adoptConfigImage();
 }
 
@@ -101,20 +130,27 @@ void FastfetchController::adoptConfigImage()
     if (m_autoSelected || m_selectedFile.isEmpty()) {
         m_autoSelected = true;
         setSelectedFile(detected);
+        setManuallySelected(false);
         generateTintedPreview();
     }
 }
 
 void FastfetchController::selectFile(const QString &path)
 {
+    // Callers may hand over a file:// URL (e.g. QML FileDialog); normalize.
+    QString normalized = path;
+    if (normalized.startsWith(QLatin1String("file://")))
+        normalized = QUrl(normalized).toLocalFile();
     m_autoSelected = false;
-    setSelectedFile(path);
+    setManuallySelected(!normalized.isEmpty());
+    setSelectedFile(normalized);
     generateTintedPreview();
 }
 
 void FastfetchController::clearSelection()
 {
     m_autoSelected = false;
+    setManuallySelected(false);
     setSelectedFile(QString());
     setDraftColor(QStringLiteral("transparent"));
     setTintedPreviewPath(QString());
@@ -132,24 +168,20 @@ void FastfetchController::generateTintedPreview()
         setTintedPreviewPath(QString());
         return;
     }
-
-    QImageReader reader(m_selectedFile);
-    reader.setScaledSize(QSize(512, 512));
-    QImage image = reader.read();
-    if (image.isNull()) {
-        setTintedPreviewPath(QString());
-        return;
-    }
-
-    const QImage tinted = tools::tintImage(image, tint);
     const QString previewDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
         + QStringLiteral("/kwal");
     QDir().mkpath(previewDir);
     const QString previewPath = previewDir + QStringLiteral("/fastfetch-preview.png");
-    if (tinted.save(previewPath))
-        setTintedPreviewPath(previewPath);
-    else
+    // Run the ImageMagick pipeline on a shrunk copy so previewing stays fast.
+    if (!tools::tintImageTo(m_selectedFile, previewPath, tint, 0.8, 512)) {
         setTintedPreviewPath(QString());
+        return;
+    }
+    // Same cache path, new content: bump the cache-buster so the QML
+    // Image source changes and reloads.
+    m_tintedPreviewRevision++;
+    setTintedPreviewPath(previewPath);
+    emit tintedPreviewChanged();
 }
 
 void FastfetchController::applyOriginalImage()
@@ -186,14 +218,9 @@ void FastfetchController::applyTintedImage()
         return;
     }
 
-    QImage image(m_selectedFile);
-    if (image.isNull()) {
-        emit operationResult(false, tr("Failed to read the selected image."));
-        return;
-    }
-
     const QString tintedPath = tools::tintedImagePath(m_selectedFile);
-    if (!tools::tintImage(image, tint).save(tintedPath)) {
+    // Full resolution: this file becomes the actual fastfetch logo.
+    if (!tools::tintImageTo(m_selectedFile, tintedPath, tint)) {
         emit operationResult(false, tr("Failed to generate the tinted image."));
         return;
     }
@@ -250,6 +277,14 @@ void FastfetchController::setHasBackup(bool has)
     if (m_hasBackup != has) {
         m_hasBackup = has;
         emit hasBackupChanged();
+    }
+}
+
+void FastfetchController::setManuallySelected(bool manual)
+{
+    if (m_manuallySelected != manual) {
+        m_manuallySelected = manual;
+        emit manuallySelectedChanged();
     }
 }
 

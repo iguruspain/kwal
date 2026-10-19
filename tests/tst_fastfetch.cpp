@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QUrl>
 #include <QStandardPaths>
 #include <QtTest>
 
@@ -36,6 +37,13 @@ void saveImage(const QString &path, Qt::GlobalColor color)
     QImage image(8, 8, QImage::Format_RGB32);
     image.fill(color);
     QVERIFY(image.save(path));
+
+}
+
+bool hasImageMagick()
+{
+    return !QStandardPaths::findExecutable(QStringLiteral("magick")).isEmpty()
+        || !QStandardPaths::findExecutable(QStringLiteral("convert")).isEmpty();
 }
 
 }
@@ -49,6 +57,12 @@ private slots:
     void testNoConfigStaysEmpty();
     void testManualSelectionSurvivesRefresh();
     void testAutoAdoptionTracksConfigChange();
+    void testSelectFileNormalizesFileUrl();
+    void testTintedPreviewUrlBumpsCacheBuster();
+    void testConfigImageUrlBumpsOnRefresh();
+    void testSetDraftColorRegeneratesPreview();
+    void testTintedImagePathFor();
+    void testManuallySelectedTracksUserPick();
 };
 
 void tst_Fastfetch::testConstructorAdoptsConfigImage()
@@ -120,6 +134,139 @@ void tst_Fastfetch::testAutoAdoptionTracksConfigChange()
 
     QFile::remove(a);
     QFile::remove(b);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testSelectFileNormalizesFileUrl()
+{
+    cleanConfig();
+    const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-url.png");
+    saveImage(img, Qt::red);
+
+    FastfetchController controller;
+    // Pass the pick as QML's FileDialog hands it over: a file:// URL.
+    controller.selectFile(QUrl::fromLocalFile(img).toString());
+    QCOMPARE(controller.selectedFile(), QFileInfo(img).absoluteFilePath());
+
+    QFile::remove(img);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testTintedPreviewUrlBumpsCacheBuster()
+{
+    if (!hasImageMagick())
+        QSKIP("ImageMagick is not installed");
+    cleanConfig();
+    const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-cb.png");
+    saveImage(img, Qt::red);
+
+    FastfetchController controller;
+    controller.selectFile(img);
+    controller.setDraftColor(QStringLiteral("#ff0000"));
+    QVERIFY(!controller.tintedPreviewPath().isEmpty());
+    const QString first = controller.tintedPreviewUrl();
+    QVERIFY(first.startsWith(QUrl::fromLocalFile(controller.tintedPreviewPath()).toString()));
+    QVERIFY(first.contains(QStringLiteral("?t=")));
+
+    // Same cache path, new color: the URL must change so the QML Image
+    // source changes and reloads.
+    controller.setDraftColor(QStringLiteral("#00ff00"));
+    QCOMPARE(controller.tintedPreviewUrl() != first, true);
+
+    // Without a preview the URL is empty.
+    controller.clearSelection();
+    QCOMPARE(controller.tintedPreviewUrl().isEmpty(), true);
+
+    QFile::remove(img);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testConfigImageUrlBumpsOnRefresh()
+{
+    cleanConfig();
+    const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-cfgurl.png");
+    saveImage(img, Qt::red);
+    writeConfig(QStringLiteral("{ \"source\": \"%1\" }\n").arg(img));
+
+    FastfetchController controller;
+    QVERIFY(!controller.configImage().isEmpty());
+    const QString first = controller.configImageUrl();
+    QVERIFY(first.contains(QStringLiteral("?t=")));
+
+    // Re-detecting the same path must still produce a new URL.
+    controller.refreshConfigImage();
+    QCOMPARE(controller.configImage(), QFileInfo(img).absoluteFilePath());
+    QCOMPARE(controller.configImageUrl() != first, true);
+
+    // No config: both properties are empty.
+    cleanConfig();
+    controller.refreshConfigImage();
+    QCOMPARE(controller.configImage().isEmpty(), true);
+    QCOMPARE(controller.configImageUrl().isEmpty(), true);
+
+    QFile::remove(img);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testSetDraftColorRegeneratesPreview()
+{
+    if (!hasImageMagick())
+        QSKIP("ImageMagick is not installed");
+    cleanConfig();
+    const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-dc.png");
+    const QString img2 = QDir::tempPath() + QStringLiteral("/kwal-test-ff-dc2.png");
+    saveImage(img, Qt::white);
+    saveImage(img2, Qt::black);
+
+    FastfetchController controller;
+    controller.selectFile(img);
+    QCOMPARE(controller.tintedPreviewPath().isEmpty(), true); // no tint yet
+
+    controller.setDraftColor(QStringLiteral("#336699"));
+    QVERIFY(!controller.tintedPreviewPath().isEmpty());
+
+    // Selecting another image re-generates the preview automatically:
+    // same cache file, so the cache-buster must change.
+    const QString url1 = controller.tintedPreviewUrl();
+    controller.selectFile(img2);
+    QVERIFY(!controller.tintedPreviewPath().isEmpty());
+    QCOMPARE(controller.tintedPreviewUrl() != url1, true);
+
+    QFile::remove(img);
+    QFile::remove(img2);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testTintedImagePathFor()
+{
+    FastfetchController controller;
+    QCOMPARE(controller.tintedImagePathFor(QStringLiteral("/home/u/pics/wall.png")),
+        QStringLiteral("/home/u/pics/wall-tinted.png"));
+    QCOMPARE(controller.tintedImagePathFor(QStringLiteral("/home/u/pics/wall.jpg")),
+        QStringLiteral("/home/u/pics/wall-tinted.jpg"));
+}
+
+void tst_Fastfetch::testManuallySelectedTracksUserPick()
+{
+    cleanConfig();
+    const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-manual.png");
+    saveImage(img, Qt::red);
+    writeConfig(QStringLiteral("{ \"source\": \"%1\" }\n").arg(img));
+
+    FastfetchController controller;
+    // The config image is auto-adopted: not a manual pick.
+    QVERIFY(!controller.selectedFile().isEmpty());
+    QCOMPARE(controller.manuallySelected(), false);
+
+    // A user pick flips it on.
+    controller.selectFile(img);
+    QCOMPARE(controller.manuallySelected(), true);
+
+    // Clearing it flips it back off.
+    controller.clearSelection();
+    QCOMPARE(controller.manuallySelected(), false);
+
+    QFile::remove(img);
     cleanConfig();
 }
 

@@ -14,7 +14,7 @@ Kirigami.ApplicationWindow {
         : Kirigami.Theme.backgroundColor
 
     width: 960
-    height: 660
+    height: 650
     minimumWidth: 700
     minimumHeight: 400
     visible: true

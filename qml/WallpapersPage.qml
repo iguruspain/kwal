@@ -53,6 +53,8 @@ Kirigami.Page {
                     id: headerTitle
                     spacing: 0
                     Layout.fillWidth: true
+                    Layout.maximumWidth: 600
+
                     Label {
                         Layout.fillWidth: true
                         horizontalAlignment: Text.AlignHCenter
@@ -160,6 +162,17 @@ Kirigami.Page {
                         // GridView does not resize delegates; fill the cell like the old app.
                         width: gridView.cellWidth
                         height: gridView.cellHeight
+
+                        Rectangle {
+                        id: thumbBorder
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            color: "transparent"
+                            border.color: Qt.alpha(Kirigami.Theme.textColor, 0.30)
+                            border.width: 2
+                            radius: Kirigami.Units.smallSpacing
+                            z: 10
+                        }
                     }
                     onCurrentIndexChanged: page.app.selectWallpaper(
                         gridView.currentIndex >= 0 ? page.app.wallpaperModel.pathAt(gridView.currentIndex) : "")

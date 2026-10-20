@@ -8,15 +8,29 @@ pragma ComponentBehavior: Bound
 Kirigami.Page {
     id: page
     title: qsTr("Ulauncher")
-    readonly property color pageBackground: app.enableTransparency
-        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
-        : Kirigami.Theme.backgroundColor
-
     background: Rectangle {
-        color: page.pageBackground
+        color: "transparent"
     }
 
     readonly property UlauncherController controller: UlauncherController {}
+
+    // The entry currently selected in the theme combobox.
+    readonly property var selectedEntry: {
+        const entries = page.controller.themeEntries
+        const index = page.controller.selectedThemeIndex
+        return (entries && index >= 0 && index < entries.length) ? entries[index] : null
+    }
+
+    // True when no palette section holds any editable color row.
+    readonly property bool noColors: {
+        const sections = page.controller.paletteSections
+        if (!sections)
+            return true
+        for (let i = 0; i < sections.length; i++)
+            if (sections[i].colors.length > 0)
+                return false
+        return true
+    }
 
     Dialog {
         id: resultDialog
@@ -28,6 +42,34 @@ Kirigami.Page {
         contentItem: Label {
             text: resultDialog.message
             wrapMode: Text.WordWrap
+        }
+    }
+
+    Dialog {
+        id: newThemeDialog
+        title: qsTr("Create New Theme")
+        modal: true
+        visible: false
+        standardButtons: Dialog.Cancel | Dialog.Ok
+        property string themeName: ""
+        contentItem: TextField {
+            id: newThemeNameField
+            text: newThemeDialog.themeName
+            onTextChanged: newThemeDialog.themeName = text
+            placeholderText: qsTr("Theme name")
+            onAccepted: {
+                if (text.trim().length > 0)
+                    newThemeDialog.accept()
+            }
+        }
+        onAccepted: {
+            const name = newThemeDialog.themeName.trim()
+            if (name.length > 0)
+                page.controller.createTheme(name)
+        }
+        onOpened: {
+            newThemeDialog.themeName = ""
+            newThemeNameField.forceActiveFocus()
         }
     }
 
@@ -44,6 +86,7 @@ Kirigami.Page {
             page.controller.refresh()
     }
 
+    // Hide the page-level header so the window tab bar is the only chrome.
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
 
     RowLayout {
@@ -51,51 +94,123 @@ Kirigami.Page {
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
-        // --- Left pane: controls ---
-        Rectangle {
-            id: leftPane
+        // --- Left pane: settings ---
+        Kirigami.Card {
             Layout.preferredWidth: 300
+            Layout.minimumWidth: 300
+            Layout.maximumWidth: 300
             Layout.fillHeight: true
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
-            radius: Kirigami.Units.largeSpacing
-            border.color: Kirigami.Theme.highlightColor
-            border.width: 1.5
+            clip: true
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.gridUnit
-                spacing: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.smallSpacing
 
                 Label {
-                    text: qsTr("Theme")
+                    text: qsTr("Settings")
                     font.bold: true
                 }
-                Label {
-                    text: page.controller.themeName
-                    color: Kirigami.Theme.disabledTextColor
-                    elide: Text.ElideRight
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: qsTr("Select a theme")
+                        Layout.fillWidth: true
+                    }
+                    ToolButton {
+                        icon.name: "edit-clear"
+                        ToolTip.text: qsTr("Reset to current theme")
+                        ToolTip.visible: hovered
+                        onClicked: page.controller.clearSelection()
+                    }
+                }
+
+                ComboBox {
+                    id: themeCombo
+                    Layout.fillWidth: true
+                    model: page.controller.themeEntries
+                    textRole: "name"
+                    Component.onCompleted: themeCombo.currentIndex = page.controller.selectedThemeIndex
+                    onActivated: page.controller.selectTheme(currentIndex)
+                }
+
+                Connections {
+                    target: page.controller
+                    function onSelectedThemeIndexChanged() {
+                        if (themeCombo.currentIndex !== page.controller.selectedThemeIndex)
+                            themeCombo.currentIndex = page.controller.selectedThemeIndex
+                    }
+                    function onThemeEntriesChanged() {
+                        themeCombo.currentIndex = page.controller.selectedThemeIndex
+                    }
                 }
 
                 Kirigami.Separator { Layout.fillWidth: true }
 
-                Label {
-                    text: qsTr("Color")
-                }
-
-                ComboBox {
-                    id: colorCombo
+                ScrollView {
+                    id: paletteScroll
                     Layout.fillWidth: true
-                    model: page.controller.colorNames
-                    currentIndex: page.controller.colorIndex
-                    onActivated: page.controller.colorIndex = currentIndex
-                }
+                    Layout.fillHeight: true
+                    clip: true
 
-                ColorDot {
-                    color: page.controller.draftColor
-                    onAccepted: (hex) => { page.controller.draftColor = hex }
-                }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        width: paletteScroll.availableWidth
+                        spacing: Kirigami.Units.largeSpacing
 
-                Item { Layout.fillHeight: true }
+                        // paletteSections order is fixed by the controller:
+                        // index 0 = Manifest Colors, index 1 = Theme Colors.
+                        Label {
+                            text: {
+                                const s = page.controller.paletteSections
+                                return (s && s.length > 0) ? s[0].title : ""
+                            }
+                            font.bold: true
+                            Layout.fillWidth: true
+                        }
+
+                        Repeater {
+                            model: {
+                                const s = page.controller.paletteSections
+                                return (s && s.length > 0) ? s[0].colors : []
+                            }
+                            delegate: ColorRow {
+                                onColorAccepted: (hex) =>
+                                    page.controller.setColorValue(modelData.key, hex)
+                            }
+                        }
+
+                        Kirigami.Separator { Layout.fillWidth: true }
+
+                        Label {
+                            text: {
+                                const s = page.controller.paletteSections
+                                return (s && s.length > 1) ? s[1].title : ""
+                            }
+                            font.bold: true
+                            Layout.fillWidth: true
+                        }
+
+                        Repeater {
+                            model: {
+                                const s = page.controller.paletteSections
+                                return (s && s.length > 1) ? s[1].colors : []
+                            }
+                            delegate: ColorRow {
+                                onColorAccepted: (hex) =>
+                                    page.controller.setColorValue(modelData.key, hex)
+                            }
+                        }
+
+                        Label {
+                            visible: page.noColors
+                            text: qsTr("No colors found")
+                            font.italic: true
+                            Layout.alignment: Qt.AlignHCenter
+                        }
+                    }
+                }
 
                 Kirigami.Separator { Layout.fillWidth: true }
 
@@ -105,14 +220,39 @@ Kirigami.Page {
                     spacing: Kirigami.Units.largeSpacing
 
                     ToolButton {
-                        icon.name: "dialog-ok-apply"
-                        ToolTip.text: qsTr("Apply the edited colors to the theme")
+                        icon.name: "document-new"
+                        ToolTip.text: qsTr("Create New Theme")
                         ToolTip.visible: hovered
-                        onClicked: page.controller.applyConfig()
+                        onClicked: newThemeDialog.open()
+                    }
+                    ToolButton {
+                        icon.name: "document-save"
+                        ToolTip.text: qsTr("Save Theme")
+                        ToolTip.visible: hovered
+                        enabled: page.selectedEntry !== null && !page.selectedEntry.isTemplate
+                        onClicked: page.controller.saveTheme()
+                    }
+                    ToolButton {
+                        icon.name: "edit-delete"
+                        ToolTip.text: qsTr("Delete Theme")
+                        ToolTip.visible: hovered
+                        enabled: page.selectedEntry !== null
+                                 && !page.selectedEntry.isTemplate
+                                 && !page.selectedEntry.isCurrent
+                        onClicked: page.controller.deleteTheme()
+                    }
+                    ToolButton {
+                        icon.name: "dialog-ok-apply"
+                        ToolTip.text: qsTr("Apply to Ulauncher")
+                        ToolTip.visible: hovered
+                        enabled: page.selectedEntry !== null
+                                 && !page.selectedEntry.isTemplate
+                                 && !page.selectedEntry.isCurrent
+                        onClicked: page.controller.applyToUlauncher()
                     }
                     ToolButton {
                         icon.name: "document-revert"
-                        ToolTip.text: qsTr("Restore the theme from the last backup")
+                        ToolTip.text: qsTr("Restore Backups")
                         ToolTip.visible: hovered
                         enabled: page.controller.hasBackup
                         onClicked: page.controller.restoreBackup()
@@ -121,41 +261,59 @@ Kirigami.Page {
             }
         }
 
-        // --- Right pane: preview ---
-        Rectangle {
-            id: rightPane
+        // --- Right pane: previews ---
+        Kirigami.Card {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
-            radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: Kirigami.Units.gridUnit
-                spacing: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.smallSpacing
 
                 Label {
-                    text: qsTr("Preview")
+                    text: qsTr("Current Theme")
                     font.bold: true
                 }
-
                 Kirigami.Separator { Layout.fillWidth: true }
 
                 Item {
-                    id: previewArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredHeight: 350
                     UlauncherMockup {
                         anchors.fill: parent
-                        html: page.controller.previewHtml
+                        html: page.controller.currentPreviewHtml
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        text: qsTr("No active theme")
+                        color: Kirigami.Theme.disabledTextColor
+                        visible: page.controller.currentPreviewHtml === ""
                     }
                 }
 
                 Kirigami.Separator { Layout.fillWidth: true }
 
                 Label {
-                    text: qsTr("Theme: %1").arg(page.controller.themeName)
-                    color: Kirigami.Theme.disabledTextColor
+                    text: qsTr("Live Preview")
+                    font.bold: true
+                }
+                Kirigami.Separator { Layout.fillWidth: true }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: 350
+                    UlauncherMockup {
+                        anchors.fill: parent
+                        html: page.controller.previewHtml
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        text: qsTr("No theme selected")
+                        color: Kirigami.Theme.disabledTextColor
+                        visible: page.controller.previewHtml === ""
+                    }
                 }
             }
         }

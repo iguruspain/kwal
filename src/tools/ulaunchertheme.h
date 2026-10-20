@@ -1,9 +1,8 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QMap>
-#include <QList>
-#include <optional>
 
 namespace tools
 {
@@ -26,6 +25,13 @@ QString bundledTemplateDir();
 
 // Resolve the user themes directory (~/.config/ulauncher/user-themes)
 QString userThemesDir();
+
+// List theme directories (sub-directories containing a manifest.json) in
+// root, sorted by name. Returns an empty list when root does not exist.
+QStringList listThemeDirs(const QString &root);
+
+// Return the @define-color names in cssContent in order of appearance.
+QStringList cssColorOrder(const QString &cssContent);
 
 // Parse a theme directory (must contain manifest.json and theme.css)
 ThemeData parseTheme(const QString &themePath);
@@ -65,5 +71,10 @@ bool deleteTheme(const QString &themePath, const QString &activeThemePath);
 // Resolve the currently active theme path from ulauncher settings.json
 // Returns empty string if not found or not configured
 QString resolveActiveThemePath();
+
+// Set themePath as the active theme by writing its manifest name (or the
+// directory name as fallback) to theme_name in ulauncher settings.json.
+// Returns empty string on success, error message on failure.
+QString setActiveThemePath(const QString &themePath);
 
 } // namespace tools

@@ -117,13 +117,13 @@ QString resolveColor(const QString &name,
 const char *const kGenericIcon =
     R"(<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/></svg>)";
 
-QString appRow(const QString &name, const QString &desc, bool selected)
+QString appRow(const QString &nameHtml, const QString &desc, bool selected)
 {
     return QStringLiteral("<div class=\"%1row\">%2<span class=\"name\">%3</span>"
                           "<span class=\"desc\">%4</span></div>")
         .arg(selected ? QStringLiteral("sel ") : QString())
         .arg(QString::fromLatin1(kGenericIcon))
-        .arg(name, desc);
+        .arg(nameHtml, desc);
 }
 
 } // namespace
@@ -152,7 +152,6 @@ QString ulauncherPreviewHtml(const QString &themePath,
     for (const auto &[key, value] : liveColors)
         eff[key] = value;
 
-    const QString hlKey = QStringLiteral("matched_text_hl_colors_when_not_selected");
 
     // 3. Resolve the canonical colors used by the mockup.
     const auto resolve = [&eff](const QString &name) {
@@ -168,17 +167,24 @@ QString ulauncherPreviewHtml(const QString &themePath,
     const QString selBox = resolve("item_box_selected");
     const QString selName = resolve("item_name_selected");
     const QString selText = resolve("item_text_selected");
-    const QString hl = resolve(hlKey);
+    const QString hlSel =
+        resolve(QStringLiteral("matched_text_hl_colors_when_selected"));
+    const QString hlNoSel =
+        resolve(QStringLiteral("matched_text_hl_colors_when_not_selected"));
 
     const int width = windowWidth > 0 ? windowWidth : 520;
     const double s = scale > 0.0 ? scale : 0.75;
 
-    // 4. Build the self-contained launcher mockup.
+
     QString rows;
-    rows += appRow("Firefox", "Web browser", false);
-    rows += appRow("Files", "Manage your files", true);
-    rows += appRow("Terminal", "Run shell commands", false);
-    rows += appRow("Settings", "System preferences", false);
+    rows += appRow(QStringLiteral("<span class=\"hl-n\">Fi</span>refox"),
+                   QStringLiteral("Web browser"), false);
+    rows += appRow(QStringLiteral("<span class=\"hl-s\">Fi</span>les"),
+                   QStringLiteral("Manage your files"), true);
+    rows += appRow(QStringLiteral("Terminal"),
+                   QStringLiteral("Run shell commands"), false);
+    rows += appRow(QStringLiteral("Settings"),
+                   QStringLiteral("System preferences"), false);
 
     QString html = QStringLiteral(
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>\n"
@@ -206,14 +212,14 @@ QString ulauncherPreviewHtml(const QString &themePath,
         ".row.sel .ico{fill:%9;}\n"
         ".row.sel .name{color:%10;}\n"
         ".row.sel .desc{color:%9;}\n"
-        ".hl{color:%11;font-weight:700;}\n"
+        ".hl-s{color:%11;font-weight:700;}.hl-n{color:%12;font-weight:700;}\n"
         "</style></head><body><div class=\"win\">\n"
         "<div class=\"field\">"
         "<svg class=\"ico\" viewBox=\"0 0 24 24\">"
         "<path d=\"M10 2a8 8 0 1 0 4.9 14.3l5.4 5.4 1.4-1.4-5.4-5.4A8 8 0 0 0 10 2zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12z\"/></svg>"
-        "<span class=\"txt\">fire<span class=\"hl\">fox</span><span class=\"caret\"></span></span>"
+        "<span class=\"txt\">fi<span class=\"caret\"></span></span>"
         "</div>\n"
-        "<div class=\"list\">\n%12\n</div>\n"
+        "<div class=\"list\">\n%13\n</div>\n"
         "</div></body></html>")
         .arg(width)
         .arg(windowBg)
@@ -225,7 +231,8 @@ QString ulauncherPreviewHtml(const QString &themePath,
         .arg(selBox)
         .arg(selName)
         .arg(selText)
-        .arg(hl)
+        .arg(hlSel)
+        .arg(hlNoSel)
         .arg(rows);
 
     return html;

@@ -26,6 +26,29 @@ QString userThemesDir()
         + QStringLiteral("/ulauncher/user-themes");
 }
 
+QStringList listThemeDirs(const QString &root)
+{
+    QStringList dirs;
+    QDir dir(root);
+    if (!dir.exists())
+        return dirs;
+    const QFileInfoList info = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QFileInfo &fi : info)
+        if (QFileInfo::exists(fi.filePath() + QStringLiteral("/manifest.json")))
+            dirs.append(fi.filePath());
+    return dirs;
+}
+
+QStringList cssColorOrder(const QString &cssContent)
+{
+    QStringList names;
+    QRegularExpression re(QStringLiteral("@define-color\\s+([\\w-]+)\\s+([^;]+);"));
+    QRegularExpressionMatchIterator it = re.globalMatch(cssContent);
+    while (it.hasNext())
+        names.append(it.next().captured(1));
+    return names;
+}
+
 ThemeData parseTheme(const QString &themePath)
 {
     ThemeData data;
@@ -318,6 +341,33 @@ bool deleteTheme(const QString &themePath, const QString &activeThemePath)
     return dir.removeRecursively();
 }
 
+// Find the theme directory under root whose manifest name or directory
+// name matches themeName. Manifest names win over directory names.
+static QString findThemeInRoot(const QString &root, const QString &themeName)
+{
+    QDir dir(root);
+    if (!dir.exists())
+        return QString();
+    const QFileInfoList info = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+
+    for (const QFileInfo &fi : info) {
+        QFile manifestFile(fi.filePath() + QStringLiteral("/manifest.json"));
+        if (!manifestFile.open(QIODevice::ReadOnly | QIODevice::Text))
+            continue;
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(manifestFile.readAll(), &error);
+        manifestFile.close();
+        if (!error.error && doc.isObject()
+            && doc.object()[QStringLiteral("name")].toString() == themeName)
+            return fi.filePath();
+    }
+    for (const QFileInfo &fi : info)
+        if (fi.fileName() == themeName)
+            return fi.filePath();
+
+    return QString();
+}
+
 QString resolveActiveThemePath()
 {
     QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
@@ -333,34 +383,62 @@ QString resolveActiveThemePath()
     if (error.error || !doc.isObject())
         return QString();
 
-    QJsonObject obj = doc.object();
-    QString themeName = obj[QStringLiteral("theme_name")].toString();
+    const QString themeName = doc.object()[QStringLiteral("theme_name")].toString();
     if (themeName.isEmpty())
         return QString();
 
-    // Search in user-themes first
-    QString userThemes = userThemesDir();
-    QDir userDir(userThemes);
-    if (userDir.exists()) {
-        QString candidate = userDir.filePath(themeName);
-        if (QFileInfo(candidate).isDir() && QFileInfo(candidate + QStringLiteral("/manifest.json")).exists())
-            return candidate;
+    // Search in user themes first, then in system locations.
+    const QStringList roots = {
+        userThemesDir(),
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/ulauncher/themes"),
+        QStringLiteral("/usr/share/ulauncher/themes"),
+    };
+    for (const QString &root : roots) {
+        const QString found = findThemeInRoot(root, themeName);
+        if (!found.isEmpty())
+            return found;
     }
 
-    // Search in system locations
-    QStringList systemPaths = {
-        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/ulauncher/themes"),
-        QStringLiteral("/usr/share/ulauncher/themes")
-    };
+    return QString();
+}
 
-    for (const QString &sysPath : systemPaths) {
-        QDir sysDir(sysPath);
-        if (sysDir.exists()) {
-            QString candidate = sysDir.filePath(themeName);
-            if (QFileInfo(candidate).isDir() && QFileInfo(candidate + QStringLiteral("/manifest.json")).exists())
-                return candidate;
+QString setActiveThemePath(const QString &themePath)
+{
+    if (!QFileInfo(themePath).isDir())
+        return QStringLiteral("Theme directory does not exist: %1").arg(themePath);
+
+    // Prefer the manifest name; fall back to the directory name.
+    QString themeName = QFileInfo(themePath).fileName();
+    QFile manifestFile(QDir(themePath).filePath(QStringLiteral("manifest.json")));
+    if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(manifestFile.readAll(), &error);
+        manifestFile.close();
+        if (!error.error && doc.isObject()) {
+            const QString name = doc.object()[QStringLiteral("name")].toString();
+            if (!name.isEmpty())
+                themeName = name;
         }
     }
+
+    const QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+        + QStringLiteral("/ulauncher/settings.json");
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+
+    QJsonObject settings;
+    QFile settingsFile(settingsPath);
+    if (settingsFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonParseError error;
+        QJsonDocument doc = QJsonDocument::fromJson(settingsFile.readAll(), &error);
+        if (!error.error && doc.isObject())
+            settings = doc.object();
+    }
+    settingsFile.close();
+
+    settings[QStringLiteral("theme_name")] = themeName;
+    if (!writeFileAtomic(settingsPath,
+                         QString::fromUtf8(QJsonDocument(settings).toJson(QJsonDocument::Indented))))
+        return QStringLiteral("Failed to write Ulauncher settings.json");
 
     return QString();
 }

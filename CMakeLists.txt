@@ -122,6 +122,7 @@ qt_add_qml_module(kwal
  qml/UlauncherPage.qml
  qml/UlauncherMockup.qml
 qml/ColorDot.qml
+qml/ColorRow.qml
  RESOURCES
  resources/resources.qrc
 )

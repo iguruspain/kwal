@@ -18,6 +18,7 @@ namespace tools
 {
 
 namespace {
+QString resolveIcon(const QString &name);
 
 // Default color for a theme variable when it is unset (sentinel), missing, or
 // unresolvable. Keeps the mockup legible before the user applies a palette.
@@ -178,38 +179,6 @@ QString transformCss(const QString &css, const std::map<QString, QString> &eff)
     return out;
 }
 
-// Resolve an icon name to a file on disk, searching the standard icon
-// locations. Returns an empty string when no icon is found.
-QString resolveIcon(const QString &name)
-{
-    if (name.isEmpty())
-        return QString();
-    if (QFileInfo::exists(name))
-        return name;
-
-    static const std::map<QString, QStringList> candidates = {
-        {QStringLiteral("spotify"),
-         {QStringLiteral("spotify.png"), QStringLiteral("spotify-client.png")}},
-        {QStringLiteral("spectacle"), {QStringLiteral("spectacle.svg")}},
-        {QStringLiteral("firefox"), {QStringLiteral("firefox.png"), QStringLiteral("firefox.svg")}},
-    };
-    static const QStringList searchPaths = {
-        QStringLiteral("/usr/share/icons/hicolor/128x128/apps"),
-        QStringLiteral("/usr/share/icons/breeze/apps/48"),
-        QStringLiteral("/usr/share/icons/hicolor/scalable/apps"),
-    };
-
-    const auto it = candidates.find(name.toLower());
-    if (it == candidates.end())
-        return QString();
-    for (const QString &dir : searchPaths)
-        for (const QString &file : it->second) {
-            const QString path = dir + QStringLiteral("/") + file;
-            if (QFileInfo::exists(path))
-                return path;
-        }
-    return QString();
-}
 
 QString escapeHtml(const QString &text)
 {
@@ -253,7 +222,7 @@ QString iconMarkup(const QString &iconName)
         "<rect x=\"3\" y=\"3\" width=\"18\" height=\"18\" rx=\"4\"/></svg>");
 }
 
-QString rowHtml(const UlauncherRow &row)
+QString rowHtml(const UlauncherRow &row, const QString &query)
 {
     const QString hlClass = row.selected ? QStringLiteral("hl-s") : QStringLiteral("hl-n");
     return QStringLiteral(
@@ -266,20 +235,10 @@ QString rowHtml(const UlauncherRow &row)
         "</div>")
         .arg(row.selected ? QStringLiteral("selected ") : QString(),
              iconMarkup(row.icon),
-             highlightText(row.name, row.highlight, hlClass),
+             highlightText(row.name, query, hlClass),
              escapeHtml(row.shortcut));
 }
 
-// Sample items shown when no row list is given.
-QList<UlauncherRow> sampleRows()
-{
-    return {
-        UlauncherRow(QStringLiteral("spotify"), QStringLiteral("Spotify"),
-                     QStringLiteral("sptf"), QStringLiteral("Alt+1"), true),
-        UlauncherRow(QStringLiteral("spectacle"), QStringLiteral("Spectacle"),
-                     QStringLiteral("sptf"), QStringLiteral("Alt+2"), false),
-    };
-}
 
 QString gearSvg(const QString &prefsBg, const QString &prefsFg)
 {
@@ -350,14 +309,76 @@ QString gearMarkup()
     return gearSvg(QStringLiteral("transparent"), QStringLiteral("#4f4b4b"));
 }
 
+// Resolve an icon name to a file on disk, searching the standard icon theme
+// locations. The exact name (name.png / name.svg) is tried first in every
+// directory; when that fails, files whose base name starts with the given
+// name are matched alphabetically, so "unsloth" finds "unsloth-studio.png".
+// Returns an empty string when nothing is found.
+QString resolveIcon(const QString &name)
+{
+    if (name.isEmpty())
+        return QString();
+    if (QFileInfo::exists(name))
+        return name;
+
+    static const QStringList searchDirs = {
+        QStringLiteral("/usr/share/icons/hicolor/scalable/apps"),
+        QStringLiteral("/usr/share/icons/hicolor/128x128/apps"),
+        QStringLiteral("/usr/share/icons/hicolor/64x64/apps"),
+        QStringLiteral("/usr/share/icons/hicolor/48x48/apps"),
+        QStringLiteral("/usr/share/icons/hicolor/32x32/apps"),
+        QStringLiteral("/usr/share/icons/hicolor/24x24/apps"),
+        QStringLiteral("/usr/share/icons/breeze/apps/scalable"),
+        QStringLiteral("/usr/share/icons/breeze/apps/128"),
+        QStringLiteral("/usr/share/icons/breeze/apps/64"),
+        QStringLiteral("/usr/share/icons/breeze/apps/48"),
+        QStringLiteral("/usr/share/icons/breeze/apps/32"),
+        QStringLiteral("/usr/share/icons/breeze/apps/22"),
+    };
+    const QString key = name.toLower();
+
+    for (const QString &dir : searchDirs) {
+        for (const QString &ext : {QStringLiteral(".png"), QStringLiteral(".svg")}) {
+            const QString path = dir + QLatin1Char('/') + key + ext;
+            if (QFileInfo::exists(path))
+                return path;
+        }
+    }
+
+    for (const QString &dir : searchDirs) {
+        const QStringList matches = QDir(dir).entryList(
+            {key + QStringLiteral("*.png"), key + QStringLiteral("*.svg")},
+            QDir::Files, QDir::Name);
+        if (!matches.isEmpty())
+            return dir + QLatin1Char('/') + matches.first();
+    }
+    return QString();
+}
 } // namespace
+
+// Sample items and typed query shown when no row list is given.
+QList<UlauncherRow> sampleRows()
+{
+    return {
+        UlauncherRow(QStringLiteral("spotify"), QStringLiteral("Spotify"),
+                     QStringLiteral("Alt+1"), true),
+        UlauncherRow(QStringLiteral("spectacle"), QStringLiteral("Spectacle"),
+                     QStringLiteral("Alt+2"), false),
+    };
+}
+
+QString sampleQuery()
+{
+    return QStringLiteral("sptf");
+}
 
 QString ulauncherPreviewHtml(const QString &themePath,
                              const std::map<QString, QString> &liveColors,
                              double scale, int windowWidth,
                              const QString &manifestJson,
                              const QString &cssContent,
-                             const QList<UlauncherRow> &rows)
+                             const QList<UlauncherRow> &rows,
+                             const QString &query)
 {
     // 1. Obtain the theme CSS content.
     QString css = cssContent;
@@ -424,17 +445,12 @@ QString ulauncherPreviewHtml(const QString &themePath,
     //    variables and functions resolved) so its selectors style the mockup.
     const QString themeCss = transformCss(css, eff);
 
-    // 5. Build the rows and the input query (the selected row's highlight).
+    // 5. Build the rows and the input query.
     const QList<UlauncherRow> items = rows.isEmpty() ? sampleRows() : rows;
+    const QString q = rows.isEmpty() ? sampleQuery() : query;
     QString rowsHtml;
-    QString query;
-    for (const UlauncherRow &row : items) {
-        rowsHtml += rowHtml(row);
-        if (row.selected)
-            query = row.highlight;
-    }
-    if (query.isEmpty() && !items.isEmpty())
-        query = items.first().highlight;
+    for (const UlauncherRow &row : items)
+        rowsHtml += rowHtml(row, q);
 
     QString html = QStringLiteral(
         "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>\n"
@@ -500,7 +516,7 @@ QString ulauncherPreviewHtml(const QString &themePath,
         .arg(hlNoSel)
         .arg(themeCss)
         .arg(s)
-        .arg(escapeHtml(query))
+        .arg(escapeHtml(q))
         .arg(gearMarkup())
         .arg(rowsHtml);
 

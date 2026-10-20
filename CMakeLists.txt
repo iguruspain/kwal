@@ -120,6 +120,7 @@ qt_add_qml_module(kwal
  qml/StarshipPage.qml
  qml/StarshipPreview.qml
  qml/UlauncherPage.qml
+ qml/UlauncherSettingsPage.qml
  qml/UlauncherMockup.qml
 qml/ColorDot.qml
 qml/ColorRow.qml
@@ -148,6 +149,14 @@ qt_add_executable(tst_appcontroller
  src/templateinstaller.h
  src/wallpapermodel.h
  src/wallpapermodel.cpp
+ src/ulaunchercontroller.cpp
+ src/ulaunchercontroller.h
+ src/tools/fileutil.cpp
+ src/tools/fileutil.h
+ src/tools/ulaunchertheme.cpp
+ src/tools/ulaunchertheme.h
+ src/tools/ulauncherpreview.cpp
+ src/tools/ulauncherpreview.h
 )
 add_library(kwal_resources OBJECT)
 qt_add_resources(KWAL_RESOURCES_RCC resources/resources.qrc)
@@ -248,6 +257,7 @@ target_link_libraries(tst_ulauncher
  Qt6::Gui
  Qt6::Qml
  Qt6::Test
+ KF6::ConfigCore
 )
 add_test(NAME tst_ulauncher COMMAND tst_ulauncher)
 

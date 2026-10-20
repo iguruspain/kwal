@@ -3,6 +3,7 @@
 #include "tools/ulaunchertheme.h"
 #include "ulaunchercontroller.h"
 
+#include <KConfig>
 #include <QColor>
 #include <QCoreApplication>
 #include <QDir>
@@ -10,6 +11,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <QVariantMap>
 #include <QtTest>
 
@@ -75,9 +77,9 @@ private slots:
     void testPreviewResolvesReferences();
     void testStripCssComments();
     void testPreviewInjectsThemeCss();
+    void testPreviewIconFilePath();
     void testPreviewRows();
     void testPreviewEmptyUsesDefaults();
-    void testUlauncherBaseWidth();
     void testApplyThemeWritesAndBacksUp();
     void testRestoreThemeBackup();
     void testCreateAndDeleteTheme();
@@ -87,6 +89,7 @@ private slots:
     void testControllerEditUpdatesPreview();
     void testControllerPreviewScale();
     void testControllerWindowWidth();
+    void testControllerPreviewSettings();
     void testControllerSaveWritesFile();
     void testControllerCreateDelete();
     void testControllerApplyToUlauncher();
@@ -244,20 +247,22 @@ void tst_Ulauncher::testPreviewRows()
 
     const QList<tools::UlauncherRow> rows = {
         tools::UlauncherRow(QStringLiteral("no-such-icon"), QStringLiteral("Spotify"),
-                            QStringLiteral("sptf"), QStringLiteral("Alt+1"), true),
+                            QStringLiteral("Alt+1"), true),
         tools::UlauncherRow(QString(), QStringLiteral("Spectacle"),
-                            QStringLiteral("spt"), QStringLiteral("Alt+2"), false),
+                            QStringLiteral("Alt+2"), false),
     };
     const QString html =
-        tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString(), rows);
-    // Fuzzy-match highlighting, per selection state.
+        tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString(), rows,
+                                    QStringLiteral("sptf"));
+    // Fuzzy-match highlighting, per selection state, of the typed query's
+    // characters inside each name.
     QVERIFY(html.contains(QStringLiteral(
         "<span class=\"hl-s\">S</span><span class=\"hl-s\">p</span>o"
         "<span class=\"hl-s\">t</span>i<span class=\"hl-s\">f</span>y")));
     QVERIFY(html.contains(QStringLiteral(
         "<span class=\"hl-n\">S</span><span class=\"hl-n\">p</span>ec"
         "<span class=\"hl-n\">t</span>acle")));
-    // The input shows the selected row's query; shortcuts are rendered.
+    // The input shows the typed query; shortcuts are rendered.
     QVERIFY(html.contains(QStringLiteral(">sptf<span class=\"caret\">")));
     QVERIFY(html.contains(QStringLiteral(">Alt+1<")));
     QVERIFY(html.contains(QStringLiteral(">Alt+2<")));
@@ -265,28 +270,39 @@ void tst_Ulauncher::testPreviewRows()
     QVERIFY(html.contains(QStringLiteral("item-icon-svg")));
 }
 
+void tst_Ulauncher::testPreviewIconFilePath()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString dir = tmp.path();
+    writeTheme(dir);
+
+    // An existing file path is used verbatim as the icon source.
+    const QString iconPath = dir + QStringLiteral("/icon.png");
+    {
+        QFile f(iconPath);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("\x89PNG");
+    }
+    const QList<tools::UlauncherRow> rows = {
+        tools::UlauncherRow(iconPath, QStringLiteral("App"), QStringLiteral("Alt+1"), true),
+    };
+    const QString html =
+        tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString(), rows,
+                                    QStringLiteral("ap"));
+    QVERIFY(html.contains(QStringLiteral("<img class=\"item-icon\" src=\"")
+                          + QUrl::fromLocalFile(iconPath).toString(QUrl::FullyEncoded)
+                          + QStringLiteral("\">")));
+    // No placeholder markup for the resolved icon (the class name itself
+    // still appears in the CSS rules).
+    QVERIFY(!html.contains(QStringLiteral("<svg class=\"item-icon-svg\"")));
+}
+
 void tst_Ulauncher::testPreviewEmptyUsesDefaults()
 {
     const QString html = tools::ulauncherPreviewHtml(QString(), {}, 0.75, 0, QString(), QString());
     QVERIFY(html.contains(QStringLiteral("<!DOCTYPE html>")));
     QVERIFY(html.contains(QStringLiteral("#2b2b2b"))); // default window background
-}
-
-void tst_Ulauncher::testUlauncherBaseWidth()
-{
-    const QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/ulauncher/settings.json");
-    QVERIFY(!QFile::exists(settingsPath)); // no earlier test may leak settings
-    QCOMPARE(tools::ulauncherBaseWidth(), 680);
-
-    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
-    writeFile(settingsPath,
-              QStringLiteral("{\"theme_name\": \"Maugen\", \"base_width\": 777}"));
-    QCOMPARE(tools::ulauncherBaseWidth(), 777);
-
-    writeFile(settingsPath, QStringLiteral("{\"theme_name\": \"Maugen\"}"));
-    QCOMPARE(tools::ulauncherBaseWidth(), 680);
-    QFile::remove(settingsPath);
 }
 
 void tst_Ulauncher::testApplyThemeWritesAndBacksUp()
@@ -494,6 +510,51 @@ void tst_Ulauncher::testControllerWindowWidth()
     QVERIFY(controller.previewHtml().contains(QStringLiteral("width:400px")));
     controller.setPreviewWindowWidth(5000);
     QCOMPARE(controller.previewWindowWidth(), 1200);
+}
+
+void tst_Ulauncher::testControllerPreviewSettings()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString file = tmp.path() + QStringLiteral("/kwalrc");
+
+    KConfig config(file, KConfig::SimpleConfig);
+    UlauncherController controller(config.group(QStringLiteral("Ulauncher")));
+
+    // Fresh config: the preview settings fall back to the built-in defaults.
+    QCOMPARE(controller.previewWindowWidth(), 900);
+    QCOMPARE(controller.previewQuery(), QStringLiteral("sptf"));
+    QCOMPARE(controller.sampleRows().size(), 2);
+
+    controller.setPreviewWindowWidth(1050);
+    controller.setPreviewQuery(QStringLiteral("vim"));
+    controller.setSampleRow(0, QVariantMap{
+        {QStringLiteral("icon"), QStringLiteral("terminal")},
+        {QStringLiteral("name"), QStringLiteral("Vim")},
+        {QStringLiteral("shortcut"), QStringLiteral("F1")},
+        {QStringLiteral("selected"), true}});
+    controller.addSampleRow();
+    QCOMPARE(controller.sampleRows().size(), 3);
+    controller.removeSampleRow(2);
+    QCOMPARE(controller.sampleRows().size(), 2);
+
+    // The preview reflects the typed query and the edited row. The name
+    // "Vim" is fully fuzzy-matched by "vim", so it renders as highlighted
+    // characters, not a plain word.
+    QVERIFY(controller.previewHtml().contains(QStringLiteral(">vim<span class=\"caret\">")));
+    QVERIFY(controller.previewHtml().contains(
+        QStringLiteral("<span class=\"hl-s\">V</span><span class=\"hl-s\">i</span>"
+                       "<span class=\"hl-s\">m</span>")));
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("F1")));
+
+    // The edits are persisted and survive a reload.
+    UlauncherController reloaded(config.group(QStringLiteral("Ulauncher")));
+    QCOMPARE(reloaded.previewWindowWidth(), 1050);
+    QCOMPARE(reloaded.previewQuery(), QStringLiteral("vim"));
+    QCOMPARE(reloaded.sampleRows().size(), 2);
+    const QVariantMap row = reloaded.sampleRows().at(0).toMap();
+    QCOMPARE(row.value(QStringLiteral("name")).toString(), QStringLiteral("Vim"));
+    QVERIFY(row.value(QStringLiteral("selected")).toBool());
 }
 
 void tst_Ulauncher::testControllerSaveWritesFile()

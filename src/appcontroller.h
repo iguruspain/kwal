@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ulaunchercontroller.h"
 #include "wallpapermodel.h"
 
 #include <QtQml/qqmlregistration.h>
@@ -32,6 +33,7 @@ class AppController : public QObject
     Q_PROPERTY(bool fastfetchAvailable READ fastfetchAvailable CONSTANT)
     Q_PROPERTY(bool starshipAvailable READ starshipAvailable CONSTANT)
     Q_PROPERTY(bool ulauncherAvailable READ ulauncherAvailable CONSTANT)
+    Q_PROPERTY(UlauncherController *ulauncher READ ulauncher CONSTANT)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -55,6 +57,7 @@ public:
     bool fastfetchAvailable() const;
     bool starshipAvailable() const;
     bool ulauncherAvailable() const;
+    UlauncherController *ulauncher() const;
 
     Q_INVOKABLE void addFolder(const QString &path);
     Q_INVOKABLE void removeFolder(int index);
@@ -81,6 +84,10 @@ private:
     void setWallpaper(const QString &filePath);
 
     WallpaperModel *m_wallpaperModel = nullptr;
+    // Owned via the QObject child relationship; created with this app's own
+    // KConfig group so the preview settings persist in [Ulauncher] of
+    // kwalrc.
+    UlauncherController *m_ulauncher = nullptr;
     std::unique_ptr<KConfig> m_config;
     QStringList m_folders;
     int m_currentFolderIndex = 0;

@@ -18,7 +18,7 @@ Kirigami.Page {
     }
     property AppController app
 
-    readonly property UlauncherController controller: UlauncherController {}
+    required property UlauncherController controller
 
     // The entry currently selected in the theme combobox.
     readonly property var selectedEntry: {
@@ -116,7 +116,7 @@ Kirigami.Page {
                 spacing: Kirigami.Units.gridUnit
 
                 Label {
-                    text: qsTr("Settings")
+                    text: qsTr("Theme")
                     font.bold: true
                 }
                 Kirigami.Separator { Layout.fillWidth: true }
@@ -154,21 +154,6 @@ Kirigami.Page {
                         themeCombo.currentIndex = page.controller.selectedThemeIndex
                     }
                 }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label {
-                        text: qsTr("Window width")
-                        Layout.fillWidth: true
-                    }
-                    SpinBox {
-                        from: 400
-                        to: 1200
-                        stepSize: 5
-                        value: page.controller.previewWindowWidth
-                        onValueModified: page.controller.setPreviewWindowWidth(Math.round(value))
-                    }
-                }
-
                 Kirigami.Separator { Layout.fillWidth: true }
 
                 ScrollView {

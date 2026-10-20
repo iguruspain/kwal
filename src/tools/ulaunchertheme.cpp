@@ -411,25 +411,6 @@ QString resolveActiveThemePath()
     return QString();
 }
 
-int ulauncherBaseWidth()
-{
-    const QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/ulauncher/settings.json");
-
-    QFile file(settingsPath);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
-        return 680;
-
-    QJsonParseError error;
-    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &error);
-    file.close();
-    if (error.error || !doc.isObject())
-        return 680;
-
-    const int width = doc.object()[QStringLiteral("base_width")].toInt(680);
-    return width > 0 ? width : 680;
-}
-
 QString setActiveThemePath(const QString &themePath)
 {
     if (!QFileInfo(themePath).isDir())

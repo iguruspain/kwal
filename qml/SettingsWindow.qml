@@ -17,6 +17,7 @@ Kirigami.ApplicationWindow {
     color: "transparent"
 
     required property AppController app
+    required property UlauncherController ulauncher
 
     // Mirrors the main window so toggling transparency updates both live.
     readonly property color pageBackground: app.enableTransparency
@@ -117,7 +118,13 @@ Kirigami.ApplicationWindow {
     Component { id: wallpapersSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Wallpapers"); iconName: "preferences-desktop-wallpaper"; background: Rectangle { color: settingsWindow.pageBackground } } }
     Component { id: fastfetchSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Fastfetch"); iconName: "utilities-terminal"; background: Rectangle { color: settingsWindow.pageBackground } } }
     Component { id: starshipSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Starship"); iconName: "utilities-terminal"; background: Rectangle { color: settingsWindow.pageBackground } } }    
-    Component { id: ulauncherSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Ulauncher"); iconName: "ulauncher"; background: Rectangle { color: settingsWindow.pageBackground } } }
+    Component {
+        id: ulauncherSettingsPage
+        UlauncherSettingsPage {
+            controller: settingsWindow.ulauncher
+            background: Rectangle { color: settingsWindow.pageBackground }
+        }
+    }
 
     Component.onCompleted: {
         settingsWindow.pageStack.push(wallpapersSettingsPage.createObject(settingsWindow))

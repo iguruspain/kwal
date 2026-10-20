@@ -81,9 +81,4 @@ QString resolveActiveThemePath();
 // Returns empty string on success, error message on failure.
 QString setActiveThemePath(const QString &themePath);
 
-// Read base_width from ulauncher settings.json (the width of the real
-// launcher window). Returns 680, Ulauncher's own default, when the setting
-// is missing or unreadable.
-int ulauncherBaseWidth();
-
 } // namespace tools

@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -21,6 +22,33 @@ namespace {
 QString tr(const char *text)
 {
     return QCoreApplication::translate("UlauncherController", text);
+}
+
+QVariantMap rowToVariantMap(const tools::UlauncherRow &row)
+{
+    QVariantMap map;
+    map[QStringLiteral("icon")] = row.icon;
+    map[QStringLiteral("name")] = row.name;
+    map[QStringLiteral("shortcut")] = row.shortcut;
+    map[QStringLiteral("selected")] = row.selected;
+    return map;
+}
+
+QVariantList rowsToVariantList(const QList<tools::UlauncherRow> &rows)
+{
+    QVariantList list;
+    for (const tools::UlauncherRow &row : rows)
+        list.append(rowToVariantMap(row));
+    return list;
+}
+
+tools::UlauncherRow variantMapToRow(const QVariant &variant)
+{
+    const QVariantMap map = variant.toMap();
+    return tools::UlauncherRow(map.value(QStringLiteral("icon")).toString(),
+                               map.value(QStringLiteral("name")).toString(),
+                               map.value(QStringLiteral("shortcut")).toString(),
+                               map.value(QStringLiteral("selected")).toBool());
 }
 
 std::map<QString, QString> liveColors(const tools::ColorMap &themeColors,
@@ -54,7 +82,14 @@ std::map<QString, QString> liveColors(const tools::ColorMap &themeColors,
 UlauncherController::UlauncherController(QObject *parent)
     : QObject(parent)
 {
-    m_previewWindowWidth = tools::ulauncherBaseWidth();
+    refresh();
+}
+
+UlauncherController::UlauncherController(const KConfigGroup &config, QObject *parent)
+    : QObject(parent)
+    , m_config(config)
+{
+    loadPreviewConfig();
     refresh();
 }
 
@@ -339,8 +374,7 @@ void UlauncherController::setPreviewScale(double scale)
     if (qFuzzyCompare(clamped, m_previewScale))
         return;
     m_previewScale = clamped;
-    regeneratePreview();
-    regenerateCurrentPreview();
+    regeneratePreviews();
 }
 
 int UlauncherController::previewWindowWidth() const
@@ -348,15 +382,70 @@ int UlauncherController::previewWindowWidth() const
     return m_previewWindowWidth;
 }
 
+QString UlauncherController::previewQuery() const
+{
+    return m_query;
+}
+
+QVariantList UlauncherController::sampleRows() const
+{
+    return rowsToVariantList(m_rows);
+}
+
 void UlauncherController::setPreviewWindowWidth(int width)
 {
-    const int clamped = qBound(400, width, 1200);
+    const int clamped = qBound(kMinPreviewWidth, width, kMaxPreviewWidth);
     if (clamped == m_previewWindowWidth)
         return;
     m_previewWindowWidth = clamped;
     emit previewWindowWidthChanged();
-    regeneratePreview();
-    regenerateCurrentPreview();
+    savePreviewConfig();
+    regeneratePreviews();
+}
+
+void UlauncherController::setPreviewQuery(const QString &query)
+{
+    if (query == m_query)
+        return;
+    m_query = query;
+    emit previewQueryChanged();
+    savePreviewConfig();
+    regeneratePreviews();
+}
+
+void UlauncherController::setSampleRow(int index, const QVariantMap &map)
+{
+    if (index < 0 || index >= m_rows.size())
+        return;
+    const tools::UlauncherRow row(map.value(QStringLiteral("icon")).toString(),
+                                  map.value(QStringLiteral("name")).toString(),
+                                  map.value(QStringLiteral("shortcut")).toString(),
+                                  map.value(QStringLiteral("selected")).toBool());
+    if (m_rows.at(index) == row)
+        return;
+    m_rows.replace(index, row);
+    savePreviewConfig();
+    regeneratePreviews();
+}
+
+void UlauncherController::addSampleRow()
+{
+    if (m_rows.size() >= 10)
+        return;
+    m_rows.append(tools::UlauncherRow());
+    emit sampleRowsChanged();
+    savePreviewConfig();
+    regeneratePreviews();
+}
+
+void UlauncherController::removeSampleRow(int index)
+{
+    if (index < 0 || index >= m_rows.size())
+        return;
+    m_rows.removeAt(index);
+    emit sampleRowsChanged();
+    savePreviewConfig();
+    regeneratePreviews();
 }
 
 void UlauncherController::rebuildThemeEntries()
@@ -507,6 +596,12 @@ void UlauncherController::rebuildSections()
     emit paletteSectionsChanged();
 }
 
+void UlauncherController::regeneratePreviews()
+{
+    regeneratePreview();
+    regenerateCurrentPreview();
+}
+
 void UlauncherController::regeneratePreview()
 {
     m_previewHtml = tools::ulauncherPreviewHtml(m_selectedPath,
@@ -514,7 +609,9 @@ void UlauncherController::regeneratePreview()
                                                 m_previewScale,
                                                 m_previewWindowWidth,
                                                 m_manifestJson,
-                                                m_cssContent);
+                                                m_cssContent,
+                                                m_rows,
+                                                m_query);
     emit previewHtmlChanged();
 }
 
@@ -539,8 +636,60 @@ void UlauncherController::regenerateCurrentPreview()
                                       m_previewScale,
                                       m_previewWindowWidth,
                                       manifest,
-                                      css);
+                                      css,
+                                      m_rows,
+                                      m_query);
     emit currentPreviewHtmlChanged();
+}
+
+void UlauncherController::loadPreviewConfig()
+{
+    m_previewWindowWidth = qBound(kMinPreviewWidth,
+                                 m_config.readEntry(QStringLiteral("previewWindowWidth"),
+                                                    kDefaultPreviewWidth),
+                                 kMaxPreviewWidth);
+    m_query = m_config.readEntry(QStringLiteral("previewQuery"), tools::sampleQuery());
+
+    // The rows are stored as one JSON string: KConfig cannot round-trip a
+    // list of maps.
+    m_rows = tools::sampleRows();
+    const QString stored = m_config.readEntry(QStringLiteral("sampleRows"), QString());
+    if (!stored.isEmpty()) {
+        QJsonParseError error;
+        const QJsonDocument doc = QJsonDocument::fromJson(stored.toUtf8(), &error);
+        if (!error.error && doc.isArray()) {
+            m_rows.clear();
+            for (const QJsonValue &value : doc.array()) {
+                const QJsonObject obj = value.toObject();
+                m_rows.append(tools::UlauncherRow(obj.value(QStringLiteral("icon")).toString(),
+                                                  obj.value(QStringLiteral("name")).toString(),
+                                                  obj.value(QStringLiteral("shortcut")).toString(),
+                                                  obj.value(QStringLiteral("selected")).toBool()));
+            }
+            if (m_rows.isEmpty())
+                m_rows = tools::sampleRows();
+        }
+    }
+}
+
+void UlauncherController::savePreviewConfig()
+{
+    if (!m_config.isValid())
+        return;
+    m_config.writeEntry(QStringLiteral("previewWindowWidth"), m_previewWindowWidth);
+    m_config.writeEntry(QStringLiteral("previewQuery"), m_query);
+    QJsonArray rowsJson;
+    for (const tools::UlauncherRow &row : m_rows) {
+        QJsonObject obj;
+        obj[QStringLiteral("icon")] = row.icon;
+        obj[QStringLiteral("name")] = row.name;
+        obj[QStringLiteral("shortcut")] = row.shortcut;
+        obj[QStringLiteral("selected")] = row.selected;
+        rowsJson.append(obj);
+    }
+    m_config.writeEntry(QStringLiteral("sampleRows"),
+                        QString::fromUtf8(QJsonDocument(rowsJson).toJson(QJsonDocument::Compact)));
+    m_config.sync();
 }
 
 void UlauncherController::updateHasBackup()

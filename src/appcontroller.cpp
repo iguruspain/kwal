@@ -54,6 +54,7 @@ AppController::AppController(QObject *parent)
     , m_starshipAvailable(isToolInstalled(QStringLiteral("starship")))
     , m_ulauncherAvailable(isToolInstalled(QStringLiteral("ulauncher")))
 {
+    m_ulauncher = new UlauncherController(m_config->group(QStringLiteral("Ulauncher")), this);
     loadConfig();
     applyCurrentFolder();
     tools::installTemplates();
@@ -150,6 +151,11 @@ bool AppController::starshipAvailable() const
 bool AppController::ulauncherAvailable() const
 {
     return m_ulauncherAvailable;
+}
+
+UlauncherController *AppController::ulauncher() const
+{
+    return m_ulauncher;
 }
 
 void AppController::setDefaultWindowWidth(int width)

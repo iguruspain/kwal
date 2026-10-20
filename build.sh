@@ -43,7 +43,8 @@ case "$cmd" in
     run)
         ensure_configured
         cmake --build --preset "$PRESET"
-        exec ./build/kwal
+        # Skip the broken Lossless Scaling Vulkan layer (logs vkDebug noise on startup).
+        DISABLE_LSFGVK=1 exec ./build/kwal
         ;;
     config)
         cmake --preset "$PRESET" "$@"

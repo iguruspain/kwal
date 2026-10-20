@@ -16,6 +16,7 @@ Kirigami.Page {
     background: Rectangle {
         color: page.pageBackground
     }
+    property AppController app
 
     readonly property UlauncherController controller: UlauncherController {}
 
@@ -151,6 +152,20 @@ Kirigami.Page {
                     }
                     function onThemeEntriesChanged() {
                         themeCombo.currentIndex = page.controller.selectedThemeIndex
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label {
+                        text: qsTr("Window width")
+                        Layout.fillWidth: true
+                    }
+                    SpinBox {
+                        from: 400
+                        to: 1200
+                        stepSize: 5
+                        value: page.controller.previewWindowWidth
+                        onValueModified: page.controller.setPreviewWindowWidth(Math.round(value))
                     }
                 }
 
@@ -293,8 +308,11 @@ Kirigami.Page {
                     Layout.fillHeight: true
                     Layout.preferredHeight: 350
                     UlauncherMockup {
+                        id: currentMockup
                         anchors.fill: parent
                         html: page.controller.currentPreviewHtml
+                        launcherWidth: page.controller.previewWindowWidth
+                        onFitScaleChanged: page.controller.setPreviewScale(currentMockup.fitScale)
                     }
                     Label {
                         anchors.centerIn: parent
@@ -317,8 +335,11 @@ Kirigami.Page {
                     Layout.fillHeight: true
                     Layout.preferredHeight: 350
                     UlauncherMockup {
+                        id: liveMockup
                         anchors.fill: parent
                         html: page.controller.previewHtml
+                        launcherWidth: page.controller.previewWindowWidth
+                        onFitScaleChanged: page.controller.setPreviewScale(liveMockup.fitScale)
                     }
                     Label {
                         anchors.centerIn: parent

@@ -30,6 +30,10 @@ QString userThemesDir();
 // root, sorted by name. Returns an empty list when root does not exist.
 QStringList listThemeDirs(const QString &root);
 
+// Remove /* ... */ comment blocks from CSS content, so commented-out
+// declarations are never parsed.
+QString stripCssComments(const QString &cssContent);
+
 // Return the @define-color names in cssContent in order of appearance.
 QStringList cssColorOrder(const QString &cssContent);
 
@@ -76,5 +80,10 @@ QString resolveActiveThemePath();
 // directory name as fallback) to theme_name in ulauncher settings.json.
 // Returns empty string on success, error message on failure.
 QString setActiveThemePath(const QString &themePath);
+
+// Read base_width from ulauncher settings.json (the width of the real
+// launcher window). Returns 680, Ulauncher's own default, when the setting
+// is missing or unreadable.
+int ulauncherBaseWidth();
 
 } // namespace tools

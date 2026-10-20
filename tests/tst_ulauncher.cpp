@@ -73,7 +73,11 @@ private slots:
     void testPreviewReflectsTheme();
     void testPreviewLiveOverride();
     void testPreviewResolvesReferences();
+    void testStripCssComments();
+    void testPreviewInjectsThemeCss();
+    void testPreviewRows();
     void testPreviewEmptyUsesDefaults();
+    void testUlauncherBaseWidth();
     void testApplyThemeWritesAndBacksUp();
     void testRestoreThemeBackup();
     void testCreateAndDeleteTheme();
@@ -81,6 +85,8 @@ private slots:
     void testControllerLoadsSections();
     void testControllerThemeEntries();
     void testControllerEditUpdatesPreview();
+    void testControllerPreviewScale();
+    void testControllerWindowWidth();
     void testControllerSaveWritesFile();
     void testControllerCreateDelete();
     void testControllerApplyToUlauncher();
@@ -190,11 +196,97 @@ void tst_Ulauncher::testPreviewResolvesReferences()
     QVERIFY(html.contains(QStringLiteral("#1a2b3c")));
 }
 
+void tst_Ulauncher::testStripCssComments()
+{
+    const QString css = QStringLiteral(
+        "@define-color a #111111;\n"
+        "/* @define-color a #222222; */\n"
+        ".foo { color: @a; }\n");
+    // Commented-out declarations must not be parsed.
+    const auto colors = tools::extractCssColors(css);
+    QCOMPARE(colors.size(), 1);
+    QCOMPARE(colors.value("a"), QStringLiteral("#111111"));
+    QVERIFY(!tools::stripCssComments(css)
+                 .contains(QStringLiteral("@define-color a #222222")));
+    QVERIFY(tools::cssColorOrder(css) == QStringList({QStringLiteral("a")}));
+}
+
+void tst_Ulauncher::testPreviewInjectsThemeCss()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString dir = tmp.path();
+    writeFile(dir + QStringLiteral("/theme.css"),
+              QStringLiteral("@define-color window_bg rgba(1, 2, 3, 0.5);\n"
+                             ".selected.item-box {\n"
+                             "    background-image: linear-gradient(to right, #3e4388, #125e68);\n"
+                             "    border-radius: 10px;\n"
+                             "}\n"));
+    writeFile(dir + QStringLiteral("/manifest.json"), QStringLiteral("{}"));
+
+    const QString html = tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString());
+    // The real theme CSS is injected: the selected-row gradient survives,
+    // the translucent window background (rgba) passes through, and the
+    // window shadow is drawn over a transparent page background.
+    QVERIFY(html.contains(QStringLiteral("linear-gradient")));
+    QVERIFY(html.contains(QStringLiteral("rgba(1, 2, 3, 0.5)")));
+    QVERIFY(html.contains(QStringLiteral("background:transparent")));
+    QVERIFY(html.contains(QStringLiteral("box-shadow")));
+    QVERIFY(!html.contains(QStringLiteral("@define-color")));
+}
+
+void tst_Ulauncher::testPreviewRows()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString dir = tmp.path();
+    writeTheme(dir);
+
+    const QList<tools::UlauncherRow> rows = {
+        tools::UlauncherRow(QStringLiteral("no-such-icon"), QStringLiteral("Spotify"),
+                            QStringLiteral("sptf"), QStringLiteral("Alt+1"), true),
+        tools::UlauncherRow(QString(), QStringLiteral("Spectacle"),
+                            QStringLiteral("spt"), QStringLiteral("Alt+2"), false),
+    };
+    const QString html =
+        tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString(), rows);
+    // Fuzzy-match highlighting, per selection state.
+    QVERIFY(html.contains(QStringLiteral(
+        "<span class=\"hl-s\">S</span><span class=\"hl-s\">p</span>o"
+        "<span class=\"hl-s\">t</span>i<span class=\"hl-s\">f</span>y")));
+    QVERIFY(html.contains(QStringLiteral(
+        "<span class=\"hl-n\">S</span><span class=\"hl-n\">p</span>ec"
+        "<span class=\"hl-n\">t</span>acle")));
+    // The input shows the selected row's query; shortcuts are rendered.
+    QVERIFY(html.contains(QStringLiteral(">sptf<span class=\"caret\">")));
+    QVERIFY(html.contains(QStringLiteral(">Alt+1<")));
+    QVERIFY(html.contains(QStringLiteral(">Alt+2<")));
+    // Unknown icons fall back to the placeholder.
+    QVERIFY(html.contains(QStringLiteral("item-icon-svg")));
+}
+
 void tst_Ulauncher::testPreviewEmptyUsesDefaults()
 {
     const QString html = tools::ulauncherPreviewHtml(QString(), {}, 0.75, 0, QString(), QString());
     QVERIFY(html.contains(QStringLiteral("<!DOCTYPE html>")));
     QVERIFY(html.contains(QStringLiteral("#2b2b2b"))); // default window background
+}
+
+void tst_Ulauncher::testUlauncherBaseWidth()
+{
+    const QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+        + QStringLiteral("/ulauncher/settings.json");
+    QVERIFY(!QFile::exists(settingsPath)); // no earlier test may leak settings
+    QCOMPARE(tools::ulauncherBaseWidth(), 680);
+
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    writeFile(settingsPath,
+              QStringLiteral("{\"theme_name\": \"Maugen\", \"base_width\": 777}"));
+    QCOMPARE(tools::ulauncherBaseWidth(), 777);
+
+    writeFile(settingsPath, QStringLiteral("{\"theme_name\": \"Maugen\"}"));
+    QCOMPARE(tools::ulauncherBaseWidth(), 680);
+    QFile::remove(settingsPath);
 }
 
 void tst_Ulauncher::testApplyThemeWritesAndBacksUp()
@@ -360,6 +452,48 @@ void tst_Ulauncher::testControllerEditUpdatesPreview()
     QVERIFY(controller.previewHtml().contains(QStringLiteral("#00ff00")));
     // Unsaved edits must not touch the file.
     QVERIFY(readFile(dir + QStringLiteral("/theme.css")).contains(QStringLiteral("#ff8800")));
+}
+
+void tst_Ulauncher::testControllerPreviewScale()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString dir = tmp.path() + QStringLiteral("/theme");
+    writeTheme(dir);
+
+    UlauncherController controller;
+    controller.setThemePath(dir);
+
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("scale(0.75)")));
+    controller.setPreviewScale(0.5);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("scale(0.5)")));
+    // Out-of-range values are clamped.
+    controller.setPreviewScale(5.0);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("scale(2)")));
+    // Re-setting the same scale does not regenerate.
+    const QString before = controller.previewHtml();
+    controller.setPreviewScale(2.0);
+    QCOMPARE(controller.previewHtml(), before);
+}
+
+void tst_Ulauncher::testControllerWindowWidth()
+{
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString dir = tmp.path() + QStringLiteral("/theme");
+    writeTheme(dir);
+
+    UlauncherController controller;
+    controller.setThemePath(dir);
+    controller.setPreviewWindowWidth(800);
+    QCOMPARE(controller.previewWindowWidth(), 800);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("width:800px")));
+    // Out-of-range values are clamped.
+    controller.setPreviewWindowWidth(100);
+    QCOMPARE(controller.previewWindowWidth(), 400);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("width:400px")));
+    controller.setPreviewWindowWidth(5000);
+    QCOMPARE(controller.previewWindowWidth(), 1200);
 }
 
 void tst_Ulauncher::testControllerSaveWritesFile()

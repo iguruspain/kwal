@@ -54,6 +54,7 @@ std::map<QString, QString> liveColors(const tools::ColorMap &themeColors,
 UlauncherController::UlauncherController(QObject *parent)
     : QObject(parent)
 {
+    m_previewWindowWidth = tools::ulauncherBaseWidth();
     refresh();
 }
 
@@ -332,6 +333,32 @@ void UlauncherController::restoreBackup()
     }
 }
 
+void UlauncherController::setPreviewScale(double scale)
+{
+    const double clamped = qBound(0.2, scale, 2.0);
+    if (qFuzzyCompare(clamped, m_previewScale))
+        return;
+    m_previewScale = clamped;
+    regeneratePreview();
+    regenerateCurrentPreview();
+}
+
+int UlauncherController::previewWindowWidth() const
+{
+    return m_previewWindowWidth;
+}
+
+void UlauncherController::setPreviewWindowWidth(int width)
+{
+    const int clamped = qBound(400, width, 1200);
+    if (clamped == m_previewWindowWidth)
+        return;
+    m_previewWindowWidth = clamped;
+    emit previewWindowWidthChanged();
+    regeneratePreview();
+    regenerateCurrentPreview();
+}
+
 void UlauncherController::rebuildThemeEntries()
 {
     m_entries.clear();
@@ -484,8 +511,8 @@ void UlauncherController::regeneratePreview()
 {
     m_previewHtml = tools::ulauncherPreviewHtml(m_selectedPath,
                                                 liveColors(m_themeColors, m_manifestColors),
-                                                0.75,
-                                                0,
+                                                m_previewScale,
+                                                m_previewWindowWidth,
                                                 m_manifestJson,
                                                 m_cssContent);
     emit previewHtmlChanged();
@@ -509,8 +536,8 @@ void UlauncherController::regenerateCurrentPreview()
         : tools::ulauncherPreviewHtml(m_currentPath,
                                       liveColors(tools::extractCssColors(css),
                                                  tools::parseManifestColors(manifest)),
-                                      0.75,
-                                      0,
+                                      m_previewScale,
+                                      m_previewWindowWidth,
                                       manifest,
                                       css);
     emit currentPreviewHtmlChanged();

@@ -158,7 +158,7 @@ Kirigami.ApplicationWindow {
         }
     }
     Component { id: starshipPage; StarshipPage {} }
-    Component { id: ulauncherPage; UlauncherPage {} }
+    Component { id: ulauncherPage; UlauncherPage { app: window.app } }
 
 
     Connections {

@@ -28,6 +28,9 @@ class UlauncherController : public QObject
     // Launcher mockup of the applied (active) theme.
     Q_PROPERTY(QString currentPreviewHtml READ currentPreviewHtml NOTIFY currentPreviewHtmlChanged)
     Q_PROPERTY(bool hasBackup READ hasBackup NOTIFY hasBackupChanged)
+    // Width in px of the launcher window in the preview mockups, initialized
+    // from Ulauncher's own base_width setting.
+    Q_PROPERTY(int previewWindowWidth READ previewWindowWidth NOTIFY previewWindowWidthChanged)
 
 public:
     explicit UlauncherController(QObject *parent = nullptr);
@@ -39,6 +42,7 @@ public:
     QString previewHtml() const;
     QString currentPreviewHtml() const;
     bool hasBackup() const;
+    int previewWindowWidth() const;
 
     // Point the controller at a specific theme directory (used by tests);
     // reloads colors and regenerates the preview.
@@ -64,7 +68,13 @@ public slots:
     void deleteTheme();
     // Restores the selected theme from its .bak backups.
     void restoreBackup();
-
+    // Sets the scale used to render both preview mockups (clamped to
+    // 0.2..2.0) and regenerates them. Called by the QML mockups with the
+    // scale that fits the launcher window into the available pane.
+    void setPreviewScale(double scale);
+    // Sets the launcher window width in the preview mockups (clamped to
+    // 400..1200) and regenerates them.
+    void setPreviewWindowWidth(int width);
 signals:
     void themeEntriesChanged();
     void selectedThemeIndexChanged();
@@ -73,6 +83,7 @@ signals:
     void previewHtmlChanged();
     void currentPreviewHtmlChanged();
     void hasBackupChanged();
+    void previewWindowWidthChanged();
     void operationResult(bool success, QString message);
 
 private:
@@ -105,6 +116,8 @@ private:
     // manifest key (root key or its matched_text_hl_colors entry).
     QMap<QString, QString> m_manifestRowKey;
     QStringList m_themeColorOrder;
+    double m_previewScale = 0.75;
+    int m_previewWindowWidth = 680;
     QVariantList m_sections;
     QString m_previewHtml;
     QString m_currentPreviewHtml;

@@ -76,7 +76,7 @@ Debian = "󰣚"
 Redhat = "󱄛"
 RedHatEnterprise = "󱄛"
 Pop = ""
-CachyOS = ""
+CachyOS = ""
 
 [username]
 show_always = true
@@ -88,19 +88,23 @@ format = '[$user](bold $style)'
 style = "fg:dir_text bg:dir_bg"
 format = "[ $path ]($style)"
 truncation_length = 3
-truncation_symbol = " /"
+truncation_symbol = " /"
 
 [directory.substitutions]
-"Documents" = "󰈙 "
-"Documentos" = "󰈙 "
-"Downloads" = " "
-"Descargas" = " "
-"Music" = "󰝚 "
-"Música" = "󰝚 "
-"Pictures" = " "
-"Imágenes" = " "
-"Developer" = "󰲋 "
-"Scripts" = "󰲋 "
+"~/Documents" = "󰈙 "
+"~/Documentos" = "󰈙 "
+"~/Downloads" = " "
+"~/Descargas" = " "
+"~/Music" = "󰝚 "
+"~/Música" = "󰝚 "
+"~/Pictures" = " "
+"~/Imágenes" = " "
+"~/Vídeos" = "󰕧 "
+"~/Developer" = "󰲋 "
+"~/VSCode" = " "
+"~/Scripts" = "󰲋 "
+"~/.config" = " "
+"~" = "󰋜 "
 
 [git_branch]
 symbol = ""

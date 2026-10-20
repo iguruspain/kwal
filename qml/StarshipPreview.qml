@@ -13,10 +13,12 @@ Item {
         id: view
         anchors.fill: parent
         focus: false
+        backgroundColor: "transparent"
+        settings.localContentCanAccessFileUrls: true
         Component.onCompleted: if (root.html !== "")
-            loadHtml(root.html)
+            loadHtml(root.html, "file:///")
     }
 
     onHtmlChanged: if (html !== "")
-        view.loadHtml(html)
+        view.loadHtml(html, "file:///")
 }

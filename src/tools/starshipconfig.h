@@ -62,4 +62,8 @@ QString getActivePaletteName(const toml::table &doc);
 // Updates the top-level `palette` key to `activePalette` if provided.
 void replacePalettesInDoc(toml::table &doc, const PaletteMap &palettes, const QString &activePalette = QString());
 
+// Writes the whole TOML document to `configPath` (used when applying a
+// template: the document itself is the new config).
+bool writeStarshipDoc(const QString &configPath, const toml::table &doc);
+
 } // namespace tools

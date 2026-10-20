@@ -140,12 +140,36 @@ void tst_Starship::testControllerLoadsAndApplies()
 {
     const QString path = tools::starshipConfigPath();
     QDir(QFileInfo(path).absolutePath()).mkpath(QStringLiteral("."));
-    writeFile(path, QStringLiteral("palette=\"Test\"\n[palettes.Test]\nbg=\"#111111\"\nfg=\"#ffffff\"\n"));
+    writeFile(path, QStringLiteral(
+        "palette=\"Test\"\n"
+        "format=\"$username $directory\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#111111\"\n"
+        "fg=\"#ffffff\"\n"
+        "[username]\n"
+        "format=\"[$user]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
 
     StarshipController controller;
     QCOMPARE(controller.hasConfig(), true);
     QVERIFY(controller.paletteNames().contains(QStringLiteral("Test")));
     QVERIFY(!controller.previewHtml().isEmpty());
+    // The prompt is rendered from the parsed file (regression: the preview
+    // used to come out empty because the parse validity was never recorded).
+    QVERIFY(controller.previewHtml().contains("dev/scripts"));
+    QVERIFY(controller.currentPreviewHtml().contains("dev/scripts"));
+
+    // Edit a row by key (the QML color rows use this path).
+    controller.setColorValue("fg", "#33aaff");
+    QCOMPARE(controller.draftColor(), QStringLiteral("#33aaff"));
+    QCOMPARE(controller.paletteValues().at(0).toList().at(1).toString(),
+             QStringLiteral("#33aaff"));
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#33aaff")));
+    // The on-disk file is untouched until apply.
+    QVERIFY(!controller.currentPreviewHtml().contains(QStringLiteral("#33aaff")));
 
     controller.setDraftColorIndex(0); // the "bg" key
     controller.setDraftColor(QStringLiteral("#aabbcc"));
@@ -156,6 +180,7 @@ void tst_Starship::testControllerLoadsAndApplies()
     QCOMPARE(spy.takeFirst().at(0).toBool(), true);
 
     QVERIFY(readFile(path).contains(QStringLiteral("#aabbcc")));
+    QVERIFY(readFile(path).contains(QStringLiteral("#33aaff")));
     QVERIFY(controller.hasBackup());
 
     QFile::remove(path);

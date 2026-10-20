@@ -145,6 +145,24 @@ bool applyStarshipPalettes(const QString &configPath,
     return writeFileAtomic(cfgPath, QString::fromStdString(tomlString));
 }
 
+bool writeStarshipDoc(const QString &configPath, const toml::table &doc)
+{
+    const QString cfgPath = configPath.isEmpty() ? starshipConfigPath() : configPath;
+
+    QFileInfo info(cfgPath);
+    QDir dir = info.absoluteDir();
+    if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
+        return false;
+    }
+
+    // Create backup if this is the first write
+    backupFile(cfgPath);
+
+    std::ostringstream oss;
+    oss << toml::toml_formatter{ doc };
+    return writeFileAtomic(cfgPath, QString::fromStdString(oss.str()));
+}
+
 bool restoreStarshipBackup(const QString &configPath)
 {
     const QString cfgPath = configPath.isEmpty() ? starshipConfigPath() : configPath;

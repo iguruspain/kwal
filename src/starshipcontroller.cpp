@@ -16,6 +16,36 @@ QString tr(const char *text)
 }
 }
 
+// Fill the palette draft lists from `palettes`, putting the document's active
+// palette first (parity with the original app: index 0 edits the active one).
+void fillPaletteDrafts(const tools::PaletteMap &palettes, const QString &activeName,
+                       QStringList &names, QList<QVariantList> &values, QList<QVariantList> &keys)
+{
+    names.clear();
+    values.clear();
+    keys.clear();
+
+    QStringList ordered;
+    if (!activeName.isEmpty() && palettes.contains(activeName))
+        ordered.append(activeName);
+    for (const auto &[pname, colors] : palettes) {
+        if (pname != activeName)
+            ordered.append(pname);
+    }
+
+    for (const QString &pname : ordered) {
+        names.append(pname);
+        QVariantList keyList;
+        QVariantList valueList;
+        for (const auto &[ckey, cval] : palettes.at(pname)) {
+            keyList.append(ckey);
+            valueList.append(cval);
+        }
+        keys.append(keyList);
+        values.append(valueList);
+    }
+}
+
 StarshipController::StarshipController(QObject *parent)
     : QObject(parent)
 {
@@ -125,6 +155,16 @@ QString StarshipController::previewHtml() const
     return m_previewHtml;
 }
 
+QString StarshipController::currentPreviewHtml() const
+{
+    return m_currentPreviewHtml;
+}
+
+double StarshipController::previewScale() const
+{
+    return m_previewScale;
+}
+
 bool StarshipController::hasBackup() const
 {
     return m_hasBackup;
@@ -153,7 +193,7 @@ QVariantList StarshipController::paletteValues() const
 {
     QVariantList result;
     for (const QVariantList &list : m_paletteValues) {
-        result.append(list);
+        result.append(QVariant::fromValue(list));
     }
     return result;
 }
@@ -162,7 +202,7 @@ QVariantList StarshipController::paletteKeys() const
 {
     QVariantList result;
     for (const QVariantList &list : m_paletteKeys) {
-        result.append(list);
+        result.append(QVariant::fromValue(list));
     }
     return result;
 }
@@ -170,43 +210,38 @@ QVariantList StarshipController::paletteKeys() const
 void StarshipController::refresh()
 {
     const tools::StarshipConfigResult result = tools::readStarshipConfig(m_configPath);
+    m_configValid = result.valid;
 
+    m_doc = toml::table();
     if (result.valid) {
-        m_paletteNames.clear();
-        m_paletteValues.clear();
-        m_paletteKeys.clear();
-
-        for (const auto &[pname, colors] : result.palettes) {
-            m_paletteNames.append(pname);
-            QVariantList values;
-            QVariantList keys;
-            for (const auto &[ckey, cval] : colors) {
-                keys.append(ckey);
-                values.append(cval);
-            }
-            m_paletteKeys.append(keys);
-            m_paletteValues.append(values);
+        try {
+            m_doc = toml::parse_file(m_configPath.toStdString());
+        } catch (const std::exception &) {
+            m_configValid = false;
+            m_doc = toml::table();
         }
+    }
 
-        emit paletteNamesChanged();
-        emit paletteValuesChanged();
-        emit paletteKeysChanged();
+    tools::PaletteMap palettes;
+    QString active;
+    if (result.valid) {
+        palettes = result.palettes;
+        active = result.activePalette;
+    }
+    fillPaletteDrafts(palettes, active, m_paletteNames, m_paletteValues, m_paletteKeys);
 
-        // Select first palette by default
-        if (!m_paletteNames.isEmpty()) {
-            setDraftPaletteIndex(0);
-        }
-    } else {
-        m_paletteNames.clear();
-        m_paletteValues.clear();
-        m_paletteKeys.clear();
-        emit paletteNamesChanged();
-        emit paletteValuesChanged();
-        emit paletteKeysChanged();
+    emit paletteNamesChanged();
+    emit paletteValuesChanged();
+    emit paletteKeysChanged();
+
+    // Select the active palette by default
+    if (!m_paletteNames.isEmpty()) {
+        setDraftPaletteIndex(0);
     }
 
     updateHasBackup();
     updateHasConfig();
+    regenerateCurrentPreview();
     regeneratePreview();
 }
 
@@ -220,33 +255,18 @@ void StarshipController::loadTemplate(const QString &name)
         return;
     }
 
+    m_doc = doc;
     m_selectedTemplate = name;
     emit selectedTemplateChanged();
 
-    // Extract palettes from template
-    auto palettes = tools::extractPalettes(doc);
-
-    m_paletteNames.clear();
-    m_paletteValues.clear();
-    m_paletteKeys.clear();
-
-    for (const auto &[pname, colors] : palettes) {
-        m_paletteNames.append(pname);
-        QVariantList values;
-        QVariantList keys;
-        for (const auto &[ckey, cval] : colors) {
-            keys.append(ckey);
-            values.append(cval);
-        }
-        m_paletteKeys.append(keys);
-        m_paletteValues.append(values);
-    }
+    fillPaletteDrafts(tools::extractPalettes(doc), tools::getActivePaletteName(doc),
+                      m_paletteNames, m_paletteValues, m_paletteKeys);
 
     emit paletteNamesChanged();
     emit paletteValuesChanged();
     emit paletteKeysChanged();
 
-    // Select first palette by default
+    // Select the active palette by default
     if (!m_paletteNames.isEmpty()) {
         setDraftPaletteIndex(0);
     }
@@ -267,29 +287,27 @@ void StarshipController::clearSelection()
 
 void StarshipController::applyConfig()
 {
-    // Build PaletteMap from current palette values
-    tools::PaletteMap palettes;
-    for (int i = 0; i < m_paletteNames.size(); ++i) {
-        std::map<QString, QString> colors;
-        const QVariantList &keys = m_paletteKeys[i];
-        const QVariantList &values = m_paletteValues[i];
-        for (int j = 0; j < keys.size() && j < values.size(); ++j) {
-            colors[keys[j].toString()] = values[j].toString();
-        }
-        palettes[m_paletteNames[i]] = std::move(colors);
+    if (m_paletteNames.isEmpty()) {
+        emit operationResult(false, tr("No palette data available to apply."));
+        return;
     }
 
-    // Determine active palette name
-    QString activePalette;
-    if (m_draftPaletteIndex >= 0 && m_draftPaletteIndex < m_paletteNames.size()) {
-        activePalette = m_paletteNames[m_draftPaletteIndex];
-    }
+    const tools::PaletteMap palettes = draftPalettes();
+    // The first palette in the draft list is the document's active one.
+    const QString activePalette = m_paletteNames.first();
 
-    bool ok = tools::applyStarshipPalettes(m_configPath, palettes, activePalette);
+    bool ok;
+    if (!m_selectedTemplate.isEmpty()) {
+        // Template mode: the template document becomes the new config file.
+        toml::table doc = m_doc;
+        tools::replacePalettesInDoc(doc, palettes, activePalette);
+        ok = tools::writeStarshipDoc(m_configPath, doc);
+    } else {
+        ok = tools::applyStarshipPalettes(m_configPath, palettes, activePalette);
+    }
 
     if (ok) {
-        updateHasBackup();
-        m_configValid = tools::readStarshipConfig(m_configPath).valid;
+        refresh();
         emit operationResult(true, tr("Starship configuration applied successfully."));
     } else {
         emit operationResult(false, tr("Failed to apply starship configuration."));
@@ -309,42 +327,70 @@ void StarshipController::restoreBackup()
     }
 }
 
+void StarshipController::setColorValue(const QString &key, const QString &color)
+{
+    if (m_draftPaletteIndex < 0 || m_draftPaletteIndex >= m_paletteValues.size())
+        return;
+
+    const QVariantList &keys = m_paletteKeys[m_draftPaletteIndex];
+    for (int i = 0; i < keys.size(); ++i) {
+        if (keys[i].toString() != key)
+            continue;
+        setDraftColorIndex(i);
+        setDraftColor(color);
+        return;
+    }
+}
+
+void StarshipController::setPreviewScale(double scale)
+{
+    if (m_previewScale == scale)
+        return;
+    m_previewScale = scale;
+    emit previewScaleChanged();
+    regeneratePreview();
+    regenerateCurrentPreview();
+}
+
 void StarshipController::regeneratePreview()
 {
-    // Build a toml::table from current palette data for preview
-    toml::table doc;
+    // Draft preview of the selected source document (template, or the current
+    // config when no template is selected): the document's own format and
+    // modules with the draft palettes substituted in. Colors follow the
+    // document's `palette` key (paletteIndex -1), as in the original app.
+    QString html;
+    if (!m_doc.empty()) {
+        toml::table doc = m_doc;
+        if (!m_paletteNames.isEmpty())
+            // Replace the palettes table but keep the document's own key.
+            tools::replacePalettesInDoc(doc, draftPalettes(), tools::getActivePaletteName(m_doc));
+        html = tools::starshipPreviewHtml(doc, -1, m_previewScale, 800);
+    }
 
-    // Copy format and other config from current config if available
+    if (m_previewHtml != html) {
+        m_previewHtml = html;
+        emit previewHtmlChanged();
+    }
+}
+
+void StarshipController::regenerateCurrentPreview()
+{
+    // Renders the file on disk as-is: no draft palettes applied, and the
+    // file's own active palette selects the colors (paletteIndex -1).
+    QString html;
     if (m_configValid) {
         try {
-            doc = toml::parse_file(m_configPath.toStdString());
-        } catch (...) {
-            doc.clear();
+            const toml::table doc = toml::parse_file(m_configPath.toStdString());
+            html = tools::starshipPreviewHtml(doc, -1, m_previewScale, 800);
+        } catch (const std::exception &) {
+            html.clear();
         }
     }
 
-    // Replace palettes with current draft state
-    tools::PaletteMap palettes;
-    for (int i = 0; i < m_paletteNames.size(); ++i) {
-        std::map<QString, QString> colors;
-        const QVariantList &keys = m_paletteKeys[i];
-        const QVariantList &values = m_paletteValues[i];
-        for (int j = 0; j < keys.size() && j < values.size(); ++j) {
-            colors[keys[j].toString()] = values[j].toString();
-        }
-        palettes[m_paletteNames[i]] = std::move(colors);
+    if (m_currentPreviewHtml != html) {
+        m_currentPreviewHtml = html;
+        emit currentPreviewHtmlChanged();
     }
-
-    QString activePalette;
-    if (m_draftPaletteIndex >= 0 && m_draftPaletteIndex < m_paletteNames.size()) {
-        activePalette = m_paletteNames[m_draftPaletteIndex];
-    }
-
-    tools::replacePalettesInDoc(doc, palettes, activePalette);
-
-    // Generate HTML preview
-    m_previewHtml = tools::starshipPreviewHtml(doc, m_draftPaletteIndex, 1.0, 800, {});
-    emit previewHtmlChanged();
 }
 
 void StarshipController::updateHasBackup()
@@ -370,4 +416,19 @@ void StarshipController::loadTemplateList()
 {
     m_templateNames = tools::listStarshipTemplates();
     emit templateNamesChanged();
+}
+
+tools::PaletteMap StarshipController::draftPalettes() const
+{
+    tools::PaletteMap palettes;
+    for (int i = 0; i < m_paletteNames.size(); ++i) {
+        std::map<QString, QString> colors;
+        const QVariantList &keys = m_paletteKeys[i];
+        const QVariantList &values = m_paletteValues[i];
+        for (int j = 0; j < keys.size() && j < values.size(); ++j) {
+            colors[keys[j].toString()] = values[j].toString();
+        }
+        palettes[m_paletteNames[i]] = std::move(colors);
+    }
+    return palettes;
 }

@@ -2,13 +2,17 @@
 
 #include <toml++/toml.hpp>
 
+#include <QHash>
 #include <QMap>
-#include <QString>
-#include <QRegularExpression>
-#include <QDateTime>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
+#include <QSet>
+#include <QString>
+#include <QTime>
+
 #include <map>
 #include <string>
+#include <vector>
 
 namespace tools
 {
@@ -16,674 +20,740 @@ namespace tools
 namespace
 {
 
-// CSS constants matching the Python implementation
-constexpr const char *CSS_FONT_FAMILY = "'CaskaydiaCove Nerd Font', monospace";
-constexpr int CSS_SHADOW_BLUR = 40;
-constexpr int CSS_SHADOW_Y = 20;
-constexpr const char *CSS_SHADOW_COLOR = "rgba(0,0,0,0.8)";
-constexpr const char *CSS_TERMINAL_BACKGROUND = "#181818";
-constexpr const char *CSS_TERMINAL_BORDER = "#303030";
-constexpr int CSS_TERMINAL_BORDER_RADIUS = 8;
-constexpr int CSS_TERMINAL_PADDING_Y = 15;
-constexpr int CSS_TERMINAL_PADDING_X = 20;
-constexpr int CSS_PROMPT_LINE_HEIGHT = 32;
-constexpr int CSS_TEXT_NODE_FONT_SIZE = 14;
-constexpr const char *CSS_GLYPH_FONT_SIZE = "27px";
+// ---------------------------------------------------------------------------
+// Constants (port of the original app's starship_preview.py)
+// ---------------------------------------------------------------------------
 
-// Powerline glyphs
-constexpr const char *POWERLINE_GLYPHS = "";
-constexpr const char *TRIANGLE_CONNECTORS = "";
-
-// Fallback ANSI colors (Gruvbox-style) for the preview
+// Fallback ANSI colors (Gruvbox-style) for the preview.
 const QMap<QString, QString> STANDARD_COLORS = {
-    {"black", "#282828"}, {"red", "#cc241d"}, {"green", "#98971a"}, {"yellow", "#d79921"},
-    {"blue", "#458588"}, {"magenta", "#b16286"}, {"cyan", "#689d6a"}, {"white", "#a89984"},
-    {"bright_black", "#928374"}, {"bright_red", "#fb4934"}, {"bright_green", "#b8bb26"},
-    {"bright_yellow", "#fabd2f"}, {"bright_blue", "#83a598"}, {"bright_magenta", "#d3869b"},
-    {"bright_cyan", "#8ec07c"}, {"bright_white", "#ebdbbb"},
-    {"color_fg0", "#fbf1c7"}, {"color_bg1", "#3c3836"}, {"color_bg3", "#665c54"},
-    {"color_blue", "#458588"}, {"color_aqua", "#689d6a"}, {"color_green", "#98971a"},
-    {"color_orange", "#d65d0e"}, {"color_purple", "#b16286"}, {"color_red", "#cc241d"},
-    {"color_yellow", "#d79921"}
+    {"black", "#000000"},
+    {"red", "#cc241d"},
+    {"green", "#98971a"},
+    {"yellow", "#d79921"},
+    {"blue", "#458588"},
+    {"purple", "#b16286"},
+    {"cyan", "#689d6a"},
+    {"white", "#a89984"},
+    {"orange", "#fe8019"},
+    {"gray", "#928374"},
+    {"grey", "#928374"},
 };
 
-// Modules that may be expanded when encountered as $module_name in a format string
+// Font family of the rendered terminal.
+const char *const CSS_FONT_FAMILY = "'CaskaydiaCove Nerd Font', monospace";
+
+// Nerd Font powerline connectors, built from code points so no editor or
+// formatter can drop the private-use-area characters.
+const QSet<QChar> POWERLINE_GLYPHS = {
+    QChar(0xE0B0), QChar(0xE0B2), QChar(0xE0B4), QChar(0xE0B6), QChar(0xE0BC), QChar(0xE0BE),
+};
+
+// Triangle connectors get the `glyph2` CSS class for independent styling.
+const QSet<QChar> TRIANGLE_CONNECTORS = {QChar(0xE0B0), QChar(0xE0B2)};
+
+// The git status symbol shown in the demo context.
+const QChar GIT_STATUS_SYMBOL = QChar(0xF42E);
+
+// Modules that may be expanded when encountered as $module_name in a format string.
 const QSet<QString> WHITELIST_MODULES = {
-    "os", "username", "directory", "git_branch", "git_status", "git_commit",
-    "nodejs", "python", "rust", "golang", "c", "cpp", "php", "java", "kotlin",
-    "haskell", "docker_context", "conda", "pixi", "time", "cmd_duration",
-    "line_break", "character", "memory_usage", "cpu", "battery"
+    "os", "username", "directory", "python", "time", "git_branch", "git_status", "character",
 };
 
-// Default format templates per module when `format` key is absent
+// Default format templates per module when the format key is absent.
 const QMap<QString, QString> DEFAULT_MODULE_FORMATS = {
-    {"os", "$symbol"},
-    {"username", "[$user]($style)"},
-    {"directory", "[$path]($style)"},
-    {"git_branch", "[[$symbol $branch](fg:black)]($style)"},
-    {"git_status", "[($all_status$ahead_behind)](fg:black bg:green)"},
-    {"nodejs", "[[$symbol( $version)](fg:black)]($style)"},
-    {"python", "[[$symbol( $version)( ($virtualenv))](fg:black)]($style)"},
-    {"rust", "[[$symbol( $version)](fg:black)]($style)"},
-    {"golang", "[[$symbol( $version)](fg:black)]($style)"},
-    {"c", "[[$symbol( $version)](fg:black)]($style)"},
-    {"cpp", "[[$symbol( $version)](fg:black)]($style)"},
-    {"php", "[[$symbol( $version)](fg:black)]($style)"},
-    {"java", "[[$symbol( $version)](fg:black)]($style)"},
-    {"kotlin", "[[$symbol( $version)](fg:black)]($style)"},
-    {"haskell", "[[$symbol( $version)](fg:black)]($style)"},
-    {"docker_context", "[[$symbol( $context)](fg:black)]($style)"},
-    {"conda", "[[$symbol$environment](fg:black)]($style)"},
-    {"pixi", "[[$symbol( $version)( $environment)](fg:black)]($style)"},
-    {"time", "[[ $time ](fg:black)]($style)"},
-    {"cmd_duration", "[[ $duration ](fg:black)]($style)"},
-    {"line_break", "\n"},
-    {"character", "[$symbol]($style)"},
-    {"memory_usage", "$symbol$usage"},
-    {"cpu", "$symbol$usage"},
-    {"battery", "$symbol$percentage"}
+    {"os", "[$symbol]($style)"},
+    {"character", "$symbol"},
 };
+const QString DEFAULT_FORMAT_FALLBACK = "$symbol$version";
 
-// Regex patterns (compiled once for performance)
-const QRegularExpression RE_UNRESOLVED_VAR(R"(\$[a-zA-Z_0-9]+)");
-const QRegularExpression RE_UNRESOLVED_VAR_BRACE(R"(\$\{[a-zA-Z_0-9]+\})");
-const QRegularExpression RE_EMPTY_GROUP(R"(?<!\]\()\s*\)");
-const QRegularExpression RE_EMPTY_GROUP_SPACES(R"(?<!\]\()\s+\)");
-const QRegularExpression RE_INTERNAL_GROUP(R"(?<!\]\()([^()]*)\)");
-const QRegularExpression RE_VAR_IN_GROUP(R"(\$[a-zA-Z_0-9]+|\$\{[a-zA-Z_0-9]+\})");
-const QRegularExpression RE_DOUBLE_SPACES(R"(\s{2,})");
-const QRegularExpression RE_FG_COLOR(R"(fg:([a-zA-Z0-9_#]+))");
-const QRegularExpression RE_BG_COLOR(R"(bg:([a-zA-Z0-9_#]+))");
-const QRegularExpression RE_TRIANGLE_CONNECTOR(R"([])");
-const QRegularExpression RE_VAR_NAME(R"(^\$([a-zA-Z0-9_]+))");
+// Python version the original app ran on; kept for the venv cleanup patterns.
+const QString PYTHON_VERSION = "v3.14";
 
-// Helper: format a color value to CSS (handles hex, rgb, rgba, named colors)
-QString formatCssColor(const QString &val)
+// ---------------------------------------------------------------------------
+// Regexes (port of the original app)
+// ---------------------------------------------------------------------------
+
+const QRegularExpression RE_UNRESOLVED_VAR("\\$[a-zA-Z_0-9]+");
+const QRegularExpression RE_UNRESOLVED_VAR_BRACE("\\$\\{[a-zA-Z_0-9]+\\}");
+const QRegularExpression RE_EMPTY_GROUP("(?<!\\])\\(\\s*\\)");
+const QRegularExpression RE_EMPTY_GROUP_SPACES("(?<!\\])\\(\\s+\\)");
+const QRegularExpression RE_INTERNAL_GROUP("(?<!\\])\\(([^()]*)\\)");
+const QRegularExpression RE_VAR_IN_GROUP("\\$[a-zA-Z_0-9]+|\\$\\{[a-zA-Z_0-9]+\\}");
+const QRegularExpression RE_DOUBLE_SPACES("\\s{2,}");
+const QRegularExpression RE_FG_COLOR("fg:([a-zA-Z0-9_#]+)");
+const QRegularExpression RE_BG_COLOR("bg:([a-zA-Z0-9_#]+)");
+const QRegularExpression RE_VAR_NAME("\\$([a-zA-Z0-9_]+)");
+
+// ---------------------------------------------------------------------------
+// Color resolution
+// ---------------------------------------------------------------------------
+
+QString formatCssColor(const QString &value)
 {
-    QString v = val.trimmed();
-    if (v.isEmpty()) return "inherit";
-
-    // Already a valid CSS color format
-    if (v.startsWith('#') || v.startsWith("rgb") || v.startsWith("rgba") ||
-        v.startsWith("hsl") || v.startsWith("hsla") || v == "transparent" ||
-        v == "inherit" || v == "currentColor") {
-        return v;
-    }
-
-    // Named color - pass through
-    return v;
+    const QString v = value.trimmed();
+    return v.isEmpty() ? QStringLiteral("inherit") : v;
 }
 
-// Build the CSS style block
-QString buildPreviewCss(double scale, int width)
+QString resolveColor(const QString &key, const std::map<QString, QString> &palette)
 {
-    // The CSS from the Python implementation, adapted for Qt WebEngine
-    return QString(R"(
-            <style>
-                body {
-                    background: transparent;
-                    margin: 0;
-                    padding: 0;
-                    font-family: %1;
-                }
-                .scaler {
-                    transform: scale(%2);
-                    transform-origin: top left;
-                    width: %3px;
-                }
-                .terminal {
-                    background: %4;
-                    border: 1px solid %5;
-                    border-radius: %6px;
-                    padding: %7px %8px;
-                    min-height: %9px;
-                    line-height: %9px;
-                    font-size: %10px;
-                    display: inline-block;
-                    white-space: pre;
-                    box-shadow: 0 %11px %12px %13;
-                }
-                .prompt-line {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: center;
-                }
-                .text-node {
-                    font-size: %10px;
-                }
-                .glyph {
-                    font-size: %14;
-                    line-height: %9px;
-                }
-                .glyph2 {
-                    /* triangle connectors get independent styling if needed */
-                }
-                span {
-                    display: inline-flex;
-                    align-items: center;
-                }
-            </style>
-        )")
-        .arg(CSS_FONT_FAMILY)
-        .arg(scale, 0, 'f', 2)
-        .arg(width)
-        .arg(CSS_TERMINAL_BACKGROUND)
-        .arg(CSS_TERMINAL_BORDER)
-        .arg(CSS_TERMINAL_BORDER_RADIUS)
-        .arg(CSS_TERMINAL_PADDING_Y)
-        .arg(CSS_TERMINAL_PADDING_X)
-        .arg(CSS_PROMPT_LINE_HEIGHT)
-        .arg(CSS_TEXT_NODE_FONT_SIZE)
-        .arg(CSS_SHADOW_Y)
-        .arg(CSS_SHADOW_BLUR)
-        .arg(CSS_SHADOW_COLOR)
-        .arg(CSS_GLYPH_FONT_SIZE);
-}
+    if (key.isEmpty())
+        return QStringLiteral("inherit");
 
-// Build complete HTML wrapper
-QString buildHtmlWrapper(const QString &innerHtml, double scale, int width)
-{
-    return QStringLiteral("<html><head>") + buildPreviewCss(scale, width) +
-           QStringLiteral("</head><body><div class=\"scaler\"><div class=\"terminal\"><div class=\"prompt-line\">") +
-           innerHtml +
-           QStringLiteral("</div></div></div></body></html>");
-}
+    QString cleanKey = key;
+    cleanKey.remove(QStringLiteral("fg:"));
+    cleanKey.remove(QStringLiteral("bg:"));
+    cleanKey = cleanKey.trimmed().toLower();
 
-// Resolve a color key using active palette and standard colors
-QString resolveColor(const QString &key, const std::map<QString, QString> &activePalette)
-{
-    if (key.isEmpty()) return "inherit";
-
-    QString cleanKey = key.toLower().remove("fg:").remove("bg:").trimmed();
-
-    auto it = activePalette.find(cleanKey);
-    if (it != activePalette.end()) {
+    const auto it = palette.find(cleanKey);
+    if (it != palette.end())
         return formatCssColor(it->second);
-    }
-
-    auto stdIt = STANDARD_COLORS.find(cleanKey);
-    if (stdIt != STANDARD_COLORS.end()) {
+    const auto stdIt = STANDARD_COLORS.constFind(cleanKey);
+    if (stdIt != STANDARD_COLORS.constEnd())
         return formatCssColor(stdIt.value());
-    }
-
     return formatCssColor(cleanKey);
 }
 
-// Build CSS declarations from a Starship style string
-QStringList buildElementCss(const QString &styleStr, const std::map<QString, QString> &activePalette)
+QStringList buildElementCss(const QString &style, const std::map<QString, QString> &palette)
 {
     QStringList css;
-
-    if (styleStr.contains("bold", Qt::CaseInsensitive)) {
+    if (style.toLower().contains(QStringLiteral("bold")))
         css.append(QStringLiteral("font-weight: bold"));
-    }
 
-    QRegularExpressionMatch bgMatch = RE_BG_COLOR.match(styleStr);
-    QRegularExpressionMatch fgMatch = RE_FG_COLOR.match(styleStr);
+    const QRegularExpressionMatch bgMatch = RE_BG_COLOR.match(style);
+    const QRegularExpressionMatch fgMatch = RE_FG_COLOR.match(style);
 
-    if (bgMatch.hasMatch()) {
-        css.append(QStringLiteral("background-color: %1").arg(resolveColor(bgMatch.captured(1), activePalette)));
+    if (bgMatch.hasMatch())
+        css.append(QStringLiteral("background-color: %1")
+            .arg(resolveColor(bgMatch.captured(1), palette)));
+    if (fgMatch.hasMatch())
+        css.append(QStringLiteral("color: %1").arg(resolveColor(fgMatch.captured(1), palette)));
+    else if (!style.isEmpty() && !style.contains(QStringLiteral("bg:"))) {
+        QString bareColor = style;
+        bareColor.remove(QStringLiteral("bold"));
+        bareColor = bareColor.trimmed();
+        if (!bareColor.isEmpty())
+            css.append(QStringLiteral("color: %1").arg(resolveColor(bareColor, palette)));
     }
-    if (fgMatch.hasMatch()) {
-        css.append(QStringLiteral("color: %1").arg(resolveColor(fgMatch.captured(1), activePalette)));
-    } else if (!styleStr.trimmed().isEmpty() && !styleStr.contains("bg:")) {
-        QString bareColor = styleStr;
-        bareColor = bareColor.remove("bold").trimmed();
-        if (!bareColor.isEmpty()) {
-            css.append(QStringLiteral("color: %1").arg(resolveColor(bareColor, activePalette)));
-        }
-    }
-
     return css;
 }
 
-// Classify content as glyph or text-node
-QString classifyContentClass(const QString &content)
-{
-    // Check for powerline glyphs
-    bool hasGlyph = false;
-    bool hasTriangle = false;
-    for (const QChar &ch : content) {
-        if (QString(POWERLINE_GLYPHS).contains(ch)) {
-            hasGlyph = true;
-            if (QString(TRIANGLE_CONNECTORS).contains(ch)) {
-                hasTriangle = true;
-            }
-        }
-    }
-    if (hasGlyph) {
-        return hasTriangle ? QStringLiteral("glyph glyph2") : QStringLiteral("glyph");
-    }
-    return QStringLiteral("text-node");
-}
+// ---------------------------------------------------------------------------
+// Prompt document model and parsing
+// ---------------------------------------------------------------------------
 
-// Find a [content](style) block
-struct BracketBlock {
+struct Element
+{
+    enum Type { Text, LineBreak } type = Text;
+    QString style;
+    QString content; // Text: already cleaned; LineBreak: unused
+};
+
+struct Segment
+{
+    enum Type { Block, LineBreak, Variable } type;
+    QString content; // Block: inner text
+    QString name;    // Block: style; Variable: module name
+    int start = 0;
+    int end = 0;
+};
+
+struct Block
+{
+    bool valid = false;
     QString content;
     QString style;
-    int start;
-    int end;
-    bool valid = false;
+    int end = 0; // index just past the closing bracket
 };
 
-BracketBlock findBracketBlock(const QString &text, int start)
+// Matches [content] or [content](style) starting at text[i] == '['.
+// Returns the parsed block and the index just past the closing bracket.
+Block findBlock(const QString &text, int i)
 {
-    BracketBlock result;
-    if (start >= text.length() || text[start] != '[') return result;
+    Block block;
+    int depth = 0;
+    int j = i;
 
-    int depth = 1;
-    int j = start + 1;
-    while (j < text.length() && depth > 0) {
-        if (text[j] == '[') depth++;
-        else if (text[j] == ']') depth--;
-        j++;
+    for (; j < text.length(); ++j) {
+        const QChar c = text.at(j);
+        if (c == QChar('['))
+            ++depth;
+        else if (c == QChar(']')) {
+            --depth;
+            if (depth == 0)
+                break;
+        }
+    }
+    if (depth != 0 || j >= text.length())
+        return block;
+
+    const QString content = text.mid(i + 1, j - i - 1);
+    int styleEnd = j + 1;
+
+    // Optional (style) part after the closing bracket.
+    if (j + 1 < text.length() && text.at(j + 1) == QChar('(')) {
+        int k = j + 1;
+        while (k < text.length() && text.at(k) != QChar(')'))
+            ++k;
+        if (k < text.length()) {
+            block.style = text.mid(j + 2, k - j - 2);
+            styleEnd = k + 1;
+        }
     }
 
-    if (depth != 0 || j >= text.length() || text[j] != '(') return result;
-
-    QString content = text.mid(start + 1, j - start - 2);
-    int k = j + 1;
-    while (k < text.length() && text[k] != ')') k++;
-    if (k >= text.length()) return result;
-
-    QString style = text.mid(j + 1, k - j - 1);
-    result.content = content;
-    result.style = style;
-    result.start = start;
-    result.end = k + 1;
-    result.valid = true;
-    return result;
+    block.valid = true;
+    block.content = content;
+    block.end = styleEnd;
+    return block;
 }
 
-// Find a $variable
-struct VariableMatch {
-    QString name;
-    int end;
-    bool valid = false;
-};
-
-VariableMatch findVariable(const QString &text, int start)
+// The $name starting at text[i] (caller must check text[i] == '$').
+bool findVariable(const QString &text, int i, QString &name, int &end)
 {
-    VariableMatch result;
-    if (start >= text.length() || text[start] != '$') return result;
-
-    QRegularExpressionMatch match = RE_VAR_NAME.match(text.mid(start));
-    if (match.hasMatch()) {
-        result.name = match.captured(1);
-        result.end = start + match.capturedEnd();
-        result.valid = true;
-    }
-    return result;
+    const QRegularExpressionMatch m = RE_VAR_NAME.match(text, i);
+    if (!m.hasMatch() || m.capturedStart() != i)
+        return false;
+    name = m.captured(1);
+    end = m.capturedEnd();
+    return true;
 }
 
-// Tokenize a format string into segments
-struct Segment {
-    enum Type { Block, LineBreak, Variable, Text } type;
-    QString content;   // for Block: inner content; for Variable: var name
-    QString style;     // for Block: style
-    int start;
-    int end;
-};
-
-QVector<Segment> getSegments(const QString &text)
+// Splits a format string into [blocks], $line_break and $variables.
+std::vector<Segment> getSegments(const QString &text)
 {
-    QVector<Segment> segments;
+    std::vector<Segment> segments;
     int i = 0;
-    int len = text.length();
-
-    while (i < len) {
-        QChar ch = text[i];
-
-        if (ch == '[') {
-            BracketBlock block = findBracketBlock(text, i);
-            if (block.valid) {
-                segments.append({Segment::Block, block.content, block.style, block.start, block.end});
-                i = block.end;
+    while (i < text.length()) {
+        if (text.at(i) == QChar('[')) {
+            const Block blk = findBlock(text, i);
+            if (blk.valid) {
+                Segment seg;
+                seg.type = Segment::Block;
+                seg.content = blk.content;
+                seg.name = blk.style;
+                seg.start = i;
+                seg.end = blk.end;
+                segments.push_back(seg);
+                i = blk.end;
                 continue;
             }
         }
-
-        if (text.mid(i).startsWith("$line_break")) {
-            segments.append({Segment::LineBreak, QString(), QString(), i, i + 11});
+        if (text.mid(i).startsWith(QStringLiteral("$line_break"))) {
+            Segment seg;
+            seg.type = Segment::LineBreak;
+            seg.start = i;
+            seg.end = i + 11;
+            segments.push_back(seg);
             i += 11;
             continue;
         }
-
-        if (ch == '$') {
-            VariableMatch var = findVariable(text, i);
-            if (var.valid) {
-                segments.append({Segment::Variable, QString(), var.name, var.end - static_cast<int>(var.name.length()) - 1, var.end});
-                i = var.end;
+        if (text.at(i) == QChar('$')) {
+            QString name;
+            int end = -1;
+            if (findVariable(text, i, name, end)) {
+                Segment seg;
+                seg.type = Segment::Variable;
+                seg.name = name;
+                seg.start = i;
+                seg.end = end;
+                segments.push_back(seg);
+                i = end;
                 continue;
             }
         }
-
-        i++;
+        ++i;
     }
-
     return segments;
 }
 
-// Clean Starship formatting artifacts from rendered text
+// ---------------------------------------------------------------------------
+// Content cleaning
+// ---------------------------------------------------------------------------
+
+QString removeUnresolvedVars(const QString &text)
+{
+    QString out = text;
+    out.replace(RE_UNRESOLVED_VAR, QString());
+    out.replace(RE_UNRESOLVED_VAR_BRACE, QString());
+    return out;
+}
+
+QString unescapeStarship(const QString &text)
+{
+    QString out = text;
+    out.replace(QStringLiteral("\\("), QStringLiteral("("));
+    out.replace(QStringLiteral("\\)"), QStringLiteral(")"));
+    out.replace(QStringLiteral("\\["), QStringLiteral("["));
+    out.replace(QStringLiteral("\\]"), QStringLiteral("]"));
+    out.replace(QStringLiteral("\\ "), QStringLiteral(" "));
+    return out;
+}
+
+// Removes empty optional groups and the venv/git-status artifacts that result
+// from them (port of _strip_empty_optional_groups).
+QString stripEmptyOptionalGroups(const QString &text)
+{
+    QString out = text;
+    for (int i = 0; i < 4; ++i) {
+        out.replace(RE_EMPTY_GROUP, QString());
+        out.replace(RE_EMPTY_GROUP_SPACES, QString());
+        out.replace(QStringLiteral("(("), QStringLiteral("("));
+        out.replace(QStringLiteral("))"), QStringLiteral(")"));
+        out.replace(QStringLiteral("()"), QString());
+        out.replace(QStringLiteral("( )"), QString());
+        out.replace(QStringLiteral("(") + GIT_STATUS_SYMBOL + QStringLiteral(" )"),
+                    QStringLiteral(" ") + GIT_STATUS_SYMBOL);
+        out.replace(QStringLiteral("( ") + PYTHON_VERSION,
+                    PYTHON_VERSION + QStringLiteral(" (.venv)"));
+        out.replace(PYTHON_VERSION + QStringLiteral(" )"),
+                    QStringLiteral(" ") + PYTHON_VERSION + QStringLiteral(" (.venv)"));
+    }
+    return out;
+}
+
 QString cleanFinalContent(const QString &text)
 {
-    if (text.isEmpty()) return QString();
-
-    QString result = text;
-
-    // 1. Remove unresolved variables
-    result.replace(RE_UNRESOLVED_VAR, QString());
-    result.replace(RE_UNRESOLVED_VAR_BRACE, QString());
-
-    // 2. Unescape Starship escape sequences
-    result.replace("\\(", "(").replace("\\)", ")");
-    result.replace("\\[", "[").replace("\\]", "]");
-    result.replace("\\ ", " ");
-
-    // 3. Strip residual empty optional groups
-    int pythonMajor = 3;
-    int pythonMinor = 12; // reasonable default
-    QString pythonVer = QString("v%1.%2").arg(pythonMajor).arg(pythonMinor);
-
-    for (int iter = 0; iter < 4; ++iter) {
-        result.replace(RE_EMPTY_GROUP, QString());
-        result.replace(RE_EMPTY_GROUP_SPACES, QString());
-        result.replace("((", "(").replace("))", ")");
-        result.replace("()", "").replace("( )", "");
-        result.replace("( )", " ");
-        result.replace(QString(" (%1)").arg(pythonVer), QString("%1 (.venv)").arg(pythonVer));
-        result.replace(QString("(%1 )").arg(pythonVer), QString(" %1 (.venv)").arg(pythonVer));
-    }
-
-    // 4. Normalize whitespace
-    result.replace(RE_DOUBLE_SPACES, " ");
-    return result.trimmed();
+    if (text.isEmpty())
+        return {};
+    QString out = removeUnresolvedVars(text);
+    out = unescapeStarship(out);
+    out = stripEmptyOptionalGroups(out);
+    out.replace(RE_DOUBLE_SPACES, QStringLiteral(" "));
+    return out.trimmed();
 }
 
-// Substitute variables in text
-QString substituteVariables(const QString &text, const QMap<QString, QString> &subs)
+// True when a text run is insignificant and should produce no element.
+bool isInsufficientText(const QString &content)
 {
-    QString result = text;
-    for (auto it = subs.constBegin(); it != subs.constEnd(); ++it) {
-        result.replace(QString("$%1").arg(it.key()), it.value());
-        result.replace(QString("${%1}").arg(it.key()), it.value());
-    }
-    return result;
+    return content.trimmed().isEmpty() && content != QStringLiteral(" ");
 }
 
-// Evaluate optional groups (...)
-QString evaluateOptionalGroups(QString text)
+// ---------------------------------------------------------------------------
+// Module format resolution
+// ---------------------------------------------------------------------------
+
+// Substitutes $name / ${name} tokens in one pass (port of substituteVariables).
+QString substituteVariables(const QString &text, const QHash<QString, QString> &values)
 {
+    auto isNameChar = [](QChar c) {
+        return c.isLetterOrNumber() || c == QChar('_');
+    };
+
+    QString out;
+    out.reserve(text.length());
+    int i = 0;
+    while (i < text.length()) {
+        if (text.at(i) == QChar('$')) {
+            QString name;
+            int end = -1;
+            if (i + 1 < text.length() && text.at(i + 1) == QChar('{')) {
+                const int close = text.indexOf(QChar('}'), i + 2);
+                if (close > i) {
+                    name = text.mid(i + 2, close - i - 2);
+                    end = close + 1;
+                }
+            } else {
+                int j = i + 1;
+                while (j < text.length() && isNameChar(text.at(j)))
+                    ++j;
+                if (j > i + 1) {
+                    name = text.mid(i + 1, j - i - 1);
+                    end = j;
+                }
+            }
+            if (end > 0) {
+                out += values.value(name);
+                i = end;
+                continue;
+            }
+        }
+        out += text.at(i);
+        ++i;
+    }
+    return out;
+}
+
+// Collapses optional groups whose content is only variables (port of
+// _evaluate_optional_groups): a group with no static text disappears.
+QString evaluateOptionalGroups(const QString &text)
+{
+    QString out = text;
     bool changed = true;
     while (changed) {
         changed = false;
-        QRegularExpressionMatch match = RE_INTERNAL_GROUP.match(text);
-        if (!match.hasMatch()) break;
+        const QRegularExpressionMatch m = RE_INTERNAL_GROUP.match(out);
+        if (!m.hasMatch())
+            break;
 
-        QString inner = match.captured(1);
-        QString contentCheck = inner;
-        contentCheck = contentCheck.replace(RE_VAR_IN_GROUP, QString())
-            .replace("\\(", "").replace("\\)", "")
-            .replace("\\[", "").replace("\\]", "").trimmed();
-
-        if (contentCheck.isEmpty()) {
-            // Group is empty -> remove entirely
-            text = text.left(match.capturedStart()) + text.mid(match.capturedEnd());
-        } else {
-            // Mark with control chars to skip next iteration
-            text = text.left(match.capturedStart()) + QChar(0x0001) + inner + QChar(0x0002) + text.mid(match.capturedEnd());
-        }
+        QString inner = m.captured(1);
+        const QString check = inner.replace(RE_VAR_IN_GROUP, QString())
+                                    .replace(QStringLiteral("\\("), QString())
+                                    .replace(QStringLiteral("\\)"), QString())
+                                    .replace(QStringLiteral("\\["), QString())
+                                    .replace(QStringLiteral("\\]"), QString())
+                                    .trimmed();
+        if (check.isEmpty())
+            out.remove(m.capturedStart(), m.capturedLength());
+        else
+            out.replace(m.capturedStart(), m.capturedLength(),
+                        QString(QChar(0x01)) + inner + QString(QChar(0x02)));
         changed = true;
     }
-
-    text.replace(QChar(0x0001), "(").replace(QChar(0x0002), ")");
-    return text;
+    out.replace(QChar(0x01), QChar('('));
+    out.replace(QChar(0x02), QChar(')'));
+    return out;
 }
 
-// Build module substitutions
-QMap<QString, QString> buildModuleSubstitutions(const QString &moduleName,
-                                                 const toml::table &moduleCfg,
-                                                 const QMap<QString, QString> &context)
+// ---------------------------------------------------------------------------
+// Runtime context
+// ---------------------------------------------------------------------------
+
+// Build the runtime context for the preview (port of _build_context): a fixed
+// demo environment plus user overrides.
+QMap<QString, QString> buildContext(const std::map<QString, QString> &overrides)
 {
-    QMap<QString, QString> subs;
-
-    // Base: all scalar keys from the module config
-    for (const auto &[key, val] : moduleCfg) {
-        if (val.is_string() || val.is_integer() || val.is_floating_point() || val.is_boolean()) {
-            subs[QString::fromStdString(std::string(key))] = QString::fromStdString(val.as_string()->get());
-        }
-    }
-
-    // Fallback for missing `style` key
-    if (!subs.contains("style")) {
-        if (moduleName == "username" && moduleCfg.contains("style_user")) {
-            subs["style"] = QString::fromStdString(moduleCfg["style_user"].as_string()->get());
-        } else if (moduleCfg.contains("style")) {
-            subs["style"] = QString::fromStdString(moduleCfg["style"].as_string()->get());
-        }
-    }
-
-    // Runtime values derived from context
-    QString vVal = context.value(moduleName, QString());
-    if (moduleName == "os") vVal = QString(); // Don't leak "Arch" as the OS module version
-
-    QMap<QString, QString> runtimeValues;
-    runtimeValues["path"] = context.value("directory", QString());
-    runtimeValues["user"] = context.value("username", QString());
-    runtimeValues["username"] = context.value("username", QString());
-    runtimeValues["time"] = context.value("time", QString());
-    runtimeValues["version"] = vVal;
-    runtimeValues["branch"] = context.value("git_branch", QString());
-    runtimeValues["all_status"] = context.value("git_status", QString());
-    runtimeValues["ahead_behind"] = QString();
-    runtimeValues["virtualenv"] = QString();
-
-    // Module-specific symbol resolution
-    if (moduleName == "character") {
-        QString symbol = moduleCfg.contains("success_symbol")
-            ? QString::fromStdString(moduleCfg["success_symbol"].as_string()->get())
-            : (moduleCfg.contains("symbol") ? QString::fromStdString(moduleCfg["symbol"].as_string()->get()) : QString("❯"));
-        runtimeValues["symbol"] = symbol;
-    }
-
-    if (moduleName == "os") {
-        QString osVal = context.value("os", QString("Arch"));
-        if (moduleCfg.contains("symbols") && moduleCfg["symbols"].is_table()) {
-            auto symbolsTable = moduleCfg["symbols"].as_table();
-            if (symbolsTable->contains(osVal.toStdString())) {
-                runtimeValues["symbol"] = QString::fromStdString((*symbolsTable)[osVal.toStdString()].as_string()->get());
-            }
-        }
-        runtimeValues["os"] = QString(); // Hide the literal OS name
-    }
-
-    // Merge runtime values (they override config values)
-    for (auto it = runtimeValues.constBegin(); it != runtimeValues.constEnd(); ++it) {
-        subs[it.key()] = it.value();
-    }
-
-    return subs;
-}
-
-// Solve a module's format string into rendered text
-QString solveModuleFormat(const QString &moduleName,
-                          const toml::table &moduleCfg,
-                          const QMap<QString, QString> &context)
-{
-    if (!moduleCfg.is_table()) return QString();
-
-    // 1. Resolve format template
-    QString defaultFmt = DEFAULT_MODULE_FORMATS.value(moduleName, "$symbol$version");
-    QString fmt = moduleCfg.contains("format")
-        ? QString::fromStdString(moduleCfg["format"].as_string()->get())
-        : defaultFmt;
-
-    // 2. Build substitution map
-    QMap<QString, QString> subs = buildModuleSubstitutions(moduleName, moduleCfg, context);
-
-    // 3. First pass: substitute variables
-    QString result = substituteVariables(fmt, subs);
-
-    // 4. Evaluate optional groups
-    result = evaluateOptionalGroups(result);
-
-    // 5. Final pass: catch any remaining variables from outer scope
-    result = substituteVariables(result, subs);
-
-    // 6. Cleanup
-    result.replace(RE_DOUBLE_SPACES, " ");
-    if (moduleName == "os") result = result.trimmed();
-
-    return result;
-}
-
-// Recursive text segment processor
-void processTextSegment(const QString &text,
-                        const QString &defaultStyle,
-                        const QString &group,
-                        bool isStarship,
-                        const toml::table &doc,
-                        const QMap<QString, QString> &context,
-                        const std::map<QString, QString> &activePalette,
-                        QString &htmlOutput)
-{
-    QVector<Segment> segments = getSegments(text);
-
-    if (segments.isEmpty()) {
-        QString cleaned = cleanFinalContent(text);
-        if (!cleaned.isEmpty() || text == " ") {
-            QStringList css = buildElementCss(defaultStyle, activePalette);
-            QString cls = classifyContentClass(cleaned);
-            QString escaped = cleaned.replace(" ", "&nbsp;");
-            htmlOutput += QString("<span class=\"%1\" style=\"%2\">%3</span>")
-                              .arg(cls)
-                              .arg(css.join("; "))
-                              .arg(escaped);
-        }
-        return;
-    }
-
-    int lastIdx = 0;
-    for (const Segment &seg : segments) {
-        // Text before this segment
-        QString pre = text.mid(lastIdx, seg.start - lastIdx);
-        if (!pre.isEmpty()) {
-            processTextSegment(pre, defaultStyle, group, isStarship, doc, context, activePalette, htmlOutput);
-        }
-
-        if (seg.type == Segment::Block) {
-            QString innerStyle = seg.style;
-            if (innerStyle == "$style" || innerStyle == "${style}") {
-                innerStyle = defaultStyle;
-            }
-            processTextSegment(seg.content, innerStyle, group, isStarship, doc, context, activePalette, htmlOutput);
-        } else if (seg.type == Segment::LineBreak) {
-            htmlOutput += QStringLiteral("</div><div class=\"prompt-line\">");
-        } else if (seg.type == Segment::Variable) {
-            if (WHITELIST_MODULES.contains(seg.content)) {
-                if (doc.contains(seg.content.toStdString())) {
-                    auto moduleNode = doc[seg.content.toStdString()];
-                    if (moduleNode.is_table()) {
-                        auto moduleTable = moduleNode.as_table();
-                        bool disabled = false;
-                        if (moduleTable->contains("disabled")) {
-                            disabled = (*moduleTable)["disabled"].as_boolean()->get();
-                        }
-                        if (!disabled) {
-                            QString expanded = solveModuleFormat(seg.content, *moduleTable, context);
-                            QString moduleStyle = moduleTable->contains("style")
-                                ? QString::fromStdString((*moduleTable)["style"].as_string()->get())
-                                : QString();
-                            processTextSegment(expanded, moduleStyle, seg.content, true, doc, context, activePalette, htmlOutput);
-                        }
-                    }
-                }
-            }
-        }
-
-        lastIdx = seg.end;
-    }
-
-    // Trailing text after the last segment
-    QString post = text.mid(lastIdx);
-    if (!post.isEmpty()) {
-        processTextSegment(post, defaultStyle, group, isStarship, doc, context, activePalette, htmlOutput);
-    }
-}
-
-} // anonymous namespace
-
-QString starshipPreviewHtml(const toml::table &doc,
-                                   int paletteIndex,
-                                   double scale,
-                                   int width,
-                                   const std::map<QString, QString> &overrides)
-{
-    // Build runtime context with defaults
     QMap<QString, QString> context;
-    context["os"] = QStringLiteral("Arch");
-    context["username"] = QProcessEnvironment::systemEnvironment().value("USER", QStringLiteral("user"));
-    context["directory"] = QStringLiteral("~/dev/scripts");
-    context["python"] = QStringLiteral("v3.12");
-    context["time"] = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm"));
-    context["git_branch"] = QStringLiteral("main");
-    context["git_status"] = QStringLiteral("");
+    context[QStringLiteral("os")] = QStringLiteral("Arch");
 
-    // Apply overrides
-    for (const auto &[key, val] : overrides) {
-        context[key] = val;
+    const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    QString username = env.value(QStringLiteral("USER"));
+    if (username.isEmpty())
+        username = env.value(QStringLiteral("LOGNAME"));
+    context[QStringLiteral("username")] = username;
+
+    context[QStringLiteral("directory")] = QStringLiteral("~/dev/scripts");
+    context[QStringLiteral("python")] = QStringLiteral("v3.14");
+    context[QStringLiteral("time")] = QTime::currentTime().toString(QStringLiteral("HH:mm"));
+    context[QStringLiteral("git_branch")] = QStringLiteral("main");
+    context[QStringLiteral("git_status")].append(GIT_STATUS_SYMBOL);
+
+    for (const auto &[key, value] : overrides)
+        context.insert(key, value);
+    return context;
+}
+
+// ---------------------------------------------------------------------------
+// Prompt renderer
+// ---------------------------------------------------------------------------
+
+// Helpers defined below, used by PromptRenderer::toHtml().
+QString classifyContentClass(const QString &content);
+QString buildHtmlWrapper(const QString &innerHtml, double scale, int width);
+class PromptRenderer
+{
+public:
+    PromptRenderer(const toml::table &doc, const QMap<QString, QString> &context,
+                   const std::map<QString, QString> &palette, double scale, int width)
+        : m_doc(doc), m_context(context), m_palette(palette), m_scale(scale), m_width(width)
+    {
     }
 
-    // Resolve active palette
-    std::map<QString, QString> activePalette;
-    if (auto palettesNode = doc.get("palettes"); palettesNode && palettesNode->is_table()) {
-        auto palettesTable = palettesNode->as_table();
-        QString activePaletteName;
+    QString render() const
+    {
+        QString format;
+        if (const auto node = m_doc.get("format"); node && node->is_string())
+            format = QString::fromStdString(node->as_string()->get());
+        format.replace(QStringLiteral("\\\n"), QString());
+        format.remove(QChar('\n'));
 
-        if (paletteIndex >= 0) {
-            // Use palette by index
-            int idx = 0;
-            for (const auto &[pname, pval] : *palettesTable) {
-                if (idx == paletteIndex) {
-                    activePaletteName = QString::fromStdString(std::string(pname));
-                    break;
-                }
-                idx++;
-            }
-        } else {
-            // Use document's active palette
-            if (auto paletteNode = doc.get("palette"); paletteNode && paletteNode->is_value()) {
-                activePaletteName = QString::fromStdString(paletteNode->as_string()->get());
-            }
+        std::vector<Element> elements;
+        processTextSegment(format, QString(), elements);
+        return toHtml(elements);
+    }
+
+private:
+    void processTextSegment(const QString &text, const QString &defaultStyle,
+                            std::vector<Element> &elements) const
+    {
+        const std::vector<Segment> segments = getSegments(text);
+        if (segments.empty()) {
+            if (!isInsufficientText(text))
+                elements.push_back({Element::Text, defaultStyle, cleanFinalContent(text)});
+            return;
         }
 
-        if (!activePaletteName.isEmpty() && palettesTable->contains(activePaletteName.toStdString())) {
-            auto paletteNode = (*palettesTable)[activePaletteName.toStdString()];
-            if (paletteNode.is_table()) {
-                for (const auto &[ckey, cval] : *paletteNode.as_table()) {
-                    if (cval.is_string()) {
-                        activePalette[QString::fromStdString(std::string(ckey))] = QString::fromStdString(cval.as_string()->get());
+        int lastIdx = 0;
+        for (const Segment &seg : segments) {
+            const QString pre = text.mid(lastIdx, seg.start - lastIdx);
+            if (!isInsufficientText(pre))
+                elements.push_back({Element::Text, defaultStyle, cleanFinalContent(pre)});
+
+            if (seg.type == Segment::Block) {
+                const QString innerStyle =
+                    (seg.name == QStringLiteral("$style") || seg.name == QStringLiteral("${style}"))
+                        ? defaultStyle
+                        : seg.name;
+                processTextSegment(seg.content, innerStyle, elements);
+            } else if (seg.type == Segment::LineBreak) {
+                elements.push_back({Element::LineBreak, QString(), QString()});
+            } else if (seg.type == Segment::Variable) {
+                if (WHITELIST_MODULES.contains(seg.name)) {
+                    const auto node = m_doc.get(seg.name.toStdString());
+                    if (node && node->is_table()) {
+                        const auto &cfg = *node->as_table();
+                        bool disabled = false;
+                        if (cfg.contains("disabled") && cfg["disabled"].is_boolean())
+                            disabled = cfg["disabled"].as_boolean()->get();
+                        if (!disabled) {
+                            const QString expanded = solveModuleFormat(seg.name, cfg);
+                            QString moduleStyle;
+                            if (cfg.contains("style") && cfg["style"].is_string())
+                                moduleStyle = QString::fromStdString(cfg["style"].as_string()->get());
+                            processTextSegment(expanded, moduleStyle, elements);
+                        }
                     }
                 }
             }
+            lastIdx = seg.end;
+        }
+
+        const QString post = text.mid(lastIdx);
+        if (!isInsufficientText(post))
+            elements.push_back({Element::Text, defaultStyle, cleanFinalContent(post)});
+    }
+
+    QString solveModuleFormat(const QString &name, const toml::table &cfg) const
+    {
+        QString fmt;
+        if (cfg.contains("format") && cfg["format"].is_string())
+            fmt = QString::fromStdString(cfg["format"].as_string()->get());
+        else
+            fmt = DEFAULT_MODULE_FORMATS.value(name, DEFAULT_FORMAT_FALLBACK);
+
+        const QHash<QString, QString> subs = buildModuleSubstitutions(name, cfg);
+
+        QString result = substituteVariables(fmt, subs);
+        result = evaluateOptionalGroups(result);
+        result = substituteVariables(result, subs);
+        result.replace(RE_DOUBLE_SPACES, QStringLiteral(" "));
+        if (name == QStringLiteral("os"))
+            result = result.trimmed();
+        return result;
+    }
+
+    QHash<QString, QString> buildModuleSubstitutions(const QString &name,
+                                                     const toml::table &cfg) const
+    {
+        // Base: every scalar key of the module configuration.
+        QHash<QString, QString> subs;
+        for (const auto &[key, val] : cfg) {
+            const QString k = QString::fromStdString(std::string(key));
+            if (val.is_string())
+                subs.insert(k, QString::fromStdString(val.as_string()->get()));
+            else if (val.is_boolean())
+                subs.insert(k, val.as_boolean()->get() ? QStringLiteral("True")
+                                                       : QStringLiteral("False"));
+            else if (val.is_integer())
+                subs.insert(k, QString::number(val.as_integer()->get()));
+            else if (val.is_floating_point())
+                subs.insert(k, QString::number(val.as_floating_point()->get()));
+        }
+
+        // Fallback for a missing style key (username uses style_user).
+        if (!subs.contains(QStringLiteral("style"))) {
+            QString style;
+            if (name == QStringLiteral("username") && cfg.contains("style_user")
+                && cfg["style_user"].is_string())
+                style = QString::fromStdString(cfg["style_user"].as_string()->get());
+            subs.insert(QStringLiteral("style"), style);
+        }
+
+        // Runtime values derived from the demo context; these override any
+        // scalars of the same name.
+        QString version = m_context.value(name);
+        if (name == QStringLiteral("os"))
+            version.clear(); // do not leak the OS name as a version
+
+        subs.insert(QStringLiteral("path"), m_context.value(QStringLiteral("directory")));
+        subs.insert(QStringLiteral("user"), m_context.value(QStringLiteral("username")));
+        subs.insert(QStringLiteral("username"), m_context.value(QStringLiteral("username")));
+        subs.insert(QStringLiteral("time"), m_context.value(QStringLiteral("time")));
+        subs.insert(QStringLiteral("version"), version);
+        subs.insert(QStringLiteral("branch"), m_context.value(QStringLiteral("git_branch")));
+        subs.insert(QStringLiteral("all_status"), m_context.value(QStringLiteral("git_status")));
+        subs.insert(QStringLiteral("ahead_behind"), QString());
+        subs.insert(QStringLiteral("virtualenv"), QString());
+
+        // Module-specific symbol resolution.
+        if (name == QStringLiteral("character")) {
+            QString symbol = QStringLiteral("❯");
+            if (cfg.contains("success_symbol") && cfg["success_symbol"].is_string())
+                symbol = QString::fromStdString(cfg["success_symbol"].as_string()->get());
+            else if (cfg.contains("symbol") && cfg["symbol"].is_string())
+                symbol = QString::fromStdString(cfg["symbol"].as_string()->get());
+            subs.insert(QStringLiteral("symbol"), symbol);
+        }
+        if (name == QStringLiteral("os")) {
+            const QString osVal = m_context.value(QStringLiteral("os"), QStringLiteral("Arch"));
+            if (cfg.contains("symbols") && cfg["symbols"].is_table()) {
+                const auto &symbols = *cfg["symbols"].as_table();
+                const auto it = symbols.find(osVal.toStdString());
+                if (it != symbols.end() && it->second.is_string())
+                    subs.insert(QStringLiteral("symbol"),
+                                QString::fromStdString(it->second.as_string()->get()));
+            }
+            subs.insert(QStringLiteral("os"), QString()); // hide the literal OS name
+        }
+
+        return subs;
+    }
+
+    QString toHtml(const std::vector<Element> &elements) const
+    {
+        QString inner;
+        for (const Element &el : elements) {
+            if (el.type == Element::LineBreak) {
+                inner += QStringLiteral("</div><div class=\"prompt-line\">");
+                continue;
+            }
+            if (el.content.isEmpty())
+                continue;
+
+            const QStringList css = buildElementCss(el.style, m_palette);
+            QString escaped = el.content;
+            escaped.replace(QStringLiteral(" "), QStringLiteral("&nbsp;"));
+            inner += QStringLiteral("<span class=\"%1\" style=\"%2\">%3</span>")
+                .arg(classifyContentClass(el.content),
+                     css.join(QStringLiteral("; ")), escaped);
+        }
+        return buildHtmlWrapper(inner, m_scale, m_width);
+    }
+
+    const toml::table &m_doc;
+    const QMap<QString, QString> &m_context;
+    const std::map<QString, QString> &m_palette;
+    double m_scale = 1.0;
+    int m_width = 800;
+};
+
+QString classifyContentClass(const QString &content)
+{
+    bool hasGlyph = false;
+    bool hasTriangle = false;
+    for (const QChar &ch : content) {
+        if (POWERLINE_GLYPHS.contains(ch)) {
+            hasGlyph = true;
+            if (TRIANGLE_CONNECTORS.contains(ch))
+                hasTriangle = true;
         }
     }
+    if (!hasGlyph)
+        return QStringLiteral("text-node");
+    return hasTriangle ? QStringLiteral("glyph glyph2") : QStringLiteral("glyph");
+}
 
-    // Get format string
-    QString formatStr;
-    if (auto fmtNode = doc.get("format"); fmtNode && fmtNode->is_value()) {
-        formatStr = QString::fromStdString(fmtNode->as_string()->get());
-        formatStr.replace("\\\n", "").replace("\n", "");
-    } else {
-        formatStr = QString();
+// ---------------------------------------------------------------------------
+// HTML wrapper
+// ---------------------------------------------------------------------------
+
+QString buildPreviewCss(double scale, int width)
+{
+    return QStringLiteral(
+        "<style>"
+        "body {"
+        "background: transparent;"
+        "margin: 0;"
+        "padding: 0;"
+        "display: flex;"
+        "justify-content: center;"
+        "align-items: flex-start;"
+        "width: 100vw;"
+        "overflow: hidden;"
+        "font-family: %3;"
+        "}"
+        "body::-webkit-scrollbar { display: none; }"
+        ".scaler {"
+        "padding: 40px;"
+        "transform: scale(%1);"
+        "transform-origin: top center;"
+        "display: inline-block;"
+        "}"
+        ".terminal {"
+        "display: inline-block;"
+        "width: %2px;"
+        "background: #181818;"
+        "border: 1px solid #303030;"
+        "border-radius: 8px;"
+        "padding: 15px 20px;"
+        "box-shadow: 0 20px 40px rgba(0,0,0,0.8);"
+        "white-space: nowrap;"
+        "overflow: hidden;"
+        "}"
+        ".prompt-line {"
+        "display: flex; align-items: center;"
+        "height: 32px; line-height: 32px;"
+        "}"
+        "span { display: inline-flex; align-items: center; justify-content: center; height: 100%; }"
+        ".text-node {"
+        "padding: 0 4px; font-size: 14px;"
+        "white-space: pre; line-height: 1;"
+        "}"
+        ".glyph:not(.glyph2) {"
+        "display: inline-flex; align-items: center; justify-content: center;"
+        "font-size: 27px; margin: 0px -0.5px 0 -0.5px; line-height: 1;"
+        "}"
+        ".glyph2 {"
+        "display: inline-flex; align-items: center; justify-content: center;"
+        "font-size: 27px; margin: 0 -0.5px; line-height: 1;"
+        "}"
+        "</style>")
+        .arg(scale, 0, 'g', 15)
+        .arg(width)
+        .arg(CSS_FONT_FAMILY);
+}
+
+QString buildHtmlWrapper(const QString &innerHtml, double scale, int width)
+{
+    return QStringLiteral("<html><head>")
+        + buildPreviewCss(scale, width)
+        + QStringLiteral("</head><body><div class=\"scaler\"><div class=\"terminal\">"
+                        "<div class=\"prompt-line\">")
+        + innerHtml
+        + QStringLiteral("</div></div></div></body></html>");
+}
+
+// Resolves the palette to use for the preview: the palette table at the given
+// index, or the document's active `palette` when the index is negative.
+std::map<QString, QString> resolveActivePalette(const toml::table &doc, int paletteIndex)
+{
+    std::map<QString, QString> palette;
+    const auto palettesNode = doc.get("palettes");
+    if (!palettesNode || !palettesNode->is_table())
+        return palette;
+    const auto &palettesTable = *palettesNode->as_table();
+
+    QString paletteName;
+    if (paletteIndex >= 0) {
+        int idx = 0;
+        for (const auto &[pname, pval] : palettesTable) {
+            if (idx == paletteIndex) {
+                paletteName = QString::fromStdString(std::string(pname));
+                break;
+            }
+            ++idx;
+        }
+    } else if (const auto paletteKey = doc.get("palette"); paletteKey && paletteKey->is_string()) {
+        paletteName = QString::fromStdString(paletteKey->as_string()->get());
     }
 
-    // Process format string
-    QString htmlSegments;
-    processTextSegment(formatStr, QString(), QStringLiteral("root"), false, doc, context, activePalette, htmlSegments);
+    const auto it = palettesTable.find(paletteName.toStdString());
+    if (it != palettesTable.end() && it->second.is_table()) {
+        for (const auto &[ckey, cval] : *it->second.as_table())
+            if (cval.is_string())
+                palette[QString::fromStdString(std::string(ckey))] =
+                    QString::fromStdString(cval.as_string()->get());
+    }
+    return palette;
+}
 
-    // Wrap in HTML
-    return buildHtmlWrapper(htmlSegments, scale, width);
+} // namespace
+
+QString starshipPreviewHtml(const toml::table &doc, int paletteIndex, double scale, int width,
+                            const std::map<QString, QString> &overrides)
+{
+    const QMap<QString, QString> context = buildContext(overrides);
+    const std::map<QString, QString> palette = resolveActivePalette(doc, paletteIndex);
+    PromptRenderer renderer(doc, context, palette, scale, width);
+    return renderer.render();
 }
 
 } // namespace tools

@@ -8,11 +8,60 @@ pragma ComponentBehavior: Bound
 Kirigami.Page {
     id: page
     title: qsTr("Starship")
+
+    readonly property color pageBackground: app.enableTransparency
+        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        : Kirigami.Theme.backgroundColor
+
     background: Rectangle {
-        color: "transparent"
+        color: page.pageBackground
     }
+    property AppController app
 
     readonly property StarshipController controller: StarshipController {}
+
+    // Rows of the palette being edited (draft): one {key, display} map per
+    // color key, in the order stored in the config file.
+    readonly property var paletteRows: {
+        const index = page.controller.draftPaletteIndex
+        const keys = page.controller.paletteKeys
+        const values = page.controller.paletteValues
+        if (!keys || index < 0 || index >= keys.length)
+            return []
+        const rows = []
+        for (let i = 0; i < keys[index].length; i++)
+            rows.push({
+                key: keys[index][i],
+                display: values && index < values.length && i < values[index].length
+                    ? values[index][i] : ""
+            })
+        return rows
+    }
+
+    // Status line under "Status:", mirroring the old app's mode labels.
+    readonly property string statusText: {
+        const c = page.controller
+        if (c.selectedTemplate !== "")
+            return qsTr("Template Mode: %1").arg(c.selectedTemplate)
+        if (c.hasConfig)
+            return qsTr("Local Config Mode: %1").arg(c.configPath)
+        return qsTr("No current starship.toml")
+    }
+
+    // The palette section starts expanded, as in the old app.
+    property bool paletteExpanded: true
+
+    // Scale that fits the natural-size terminal (800x200) into the current
+    // config preview area; the same formula the original app used.
+    readonly property real previewScale: {
+        if (currentPreviewArea.width <= 0 || currentPreviewArea.height <= 0)
+            return 0.9
+        return Math.min(currentPreviewArea.width / 800,
+                        currentPreviewArea.height / 200) * 0.9
+    }
+
+    onPreviewScaleChanged: page.controller.setPreviewScale(page.previewScale)
+    Component.onCompleted: page.controller.setPreviewScale(page.previewScale)
 
     Dialog {
         id: resultDialog
@@ -48,30 +97,32 @@ Kirigami.Page {
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
-        // --- Left pane: controls ---
-        Kirigami.Card {
+        // --- Left pane: settings ---
+        Rectangle {
+            id: leftPane
             Layout.preferredWidth: 300
-            Layout.minimumWidth: 300
-            Layout.maximumWidth: 300
             Layout.fillHeight: true
-            clip: true
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            radius: Kirigami.Units.largeSpacing
+            border.color: Kirigami.Theme.highlightColor
+            border.width: 1.5
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.gridUnit
 
                 Label {
                     text: qsTr("Settings")
                     font.bold: true
                 }
-
                 Kirigami.Separator { Layout.fillWidth: true }
 
                 RowLayout {
                     Layout.fillWidth: true
                     Label {
-                        Layout.fillWidth: true
                         text: qsTr("Select a template")
+                        Layout.fillWidth: true
                     }
                     ToolButton {
                         icon.name: "edit-clear"
@@ -84,7 +135,10 @@ Kirigami.Page {
                 ComboBox {
                     id: templateCombo
                     Layout.fillWidth: true
-                    model: [qsTr("Current configuration")] + page.controller.templateNames
+                    model: [page.controller.hasConfig
+                                ? page.controller.configPath.split("/").pop()
+                                : qsTr("No starship.toml")]
+                            .concat(page.controller.templateNames)
                     currentIndex: page.controller.templateIndex >= 0
                         ? page.controller.templateIndex + 1
                         : 0
@@ -111,30 +165,63 @@ Kirigami.Page {
                     onActivated: page.controller.draftPaletteIndex = currentIndex
                 }
 
-                Label {
-                    text: qsTr("Color")
-                    visible: page.controller.paletteNames.length > 0
-                }
-
-                ComboBox {
-                    id: colorKeyCombo
+                ScrollView {
+                    id: paletteScroll
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
                     visible: page.controller.paletteNames.length > 0
-                    model: page.controller.draftPaletteIndex >= 0
-                        && page.controller.draftPaletteIndex < page.controller.paletteKeys.length
-                        ? page.controller.paletteKeys[page.controller.draftPaletteIndex]
-                        : []
-                    currentIndex: page.controller.draftColorIndex
-                    onActivated: page.controller.draftColorIndex = currentIndex
-                }
 
-                ColorDot {
-                    visible: page.controller.paletteNames.length > 0
-                    color: page.controller.draftColor
-                    onAccepted: (hex) => { page.controller.draftColor = hex }
-                }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        width: paletteScroll.availableWidth
+                        spacing: Kirigami.Units.largeSpacing
 
-                Item { Layout.fillHeight: true }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ToolButton {
+                                icon.name: page.paletteExpanded ? "arrow-down" : "arrow-right"
+                                onClicked: page.paletteExpanded = !page.paletteExpanded
+                                ToolTip.text: page.paletteExpanded
+                                    ? qsTr("Collapse palette")
+                                    : qsTr("Expand palette")
+                                ToolTip.visible: hovered
+                            }
+                            Label {
+                                text: page.controller.draftPaletteIndex >= 0
+                                        && page.controller.draftPaletteIndex < page.controller.paletteNames.length
+                                    ? page.controller.paletteNames[page.controller.draftPaletteIndex]
+                                    : qsTr("No palette")
+                                font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                        }
+                        Kirigami.Separator {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Kirigami.Units.smallSpacing
+                            color: Qt.alpha(Kirigami.Theme.disabledTextColor, 0.4)
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: page.paletteExpanded
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Repeater {
+                                model: page.paletteRows
+                                delegate: ColorRow {
+                                    onColorAccepted: (hex) =>
+                                        page.controller.setColorValue(modelData.key, hex)
+                                }
+                            }
+                        }
+                        Label {
+                            visible: page.paletteRows.length === 0
+                            text: qsTr("No colors found")
+                            font.italic: true
+                            Layout.alignment: Qt.AlignHCenter
+                        }
+                    }
+                }
 
                 Kirigami.Separator { Layout.fillWidth: true }
 
@@ -160,52 +247,73 @@ Kirigami.Page {
             }
         }
 
-        // --- Right pane: preview ---
-        Kirigami.Card {
+        // --- Right pane: previews ---
+        Rectangle {
+            id: rightPane
             Layout.fillWidth: true
             Layout.fillHeight: true
+            color: "transparent"
+            radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: Kirigami.Units.smallSpacing
+                anchors.margins: Kirigami.Units.gridUnit
+                spacing: Kirigami.Units.gridUnit
 
                 Label {
-                    text: qsTr("Preview")
+                    text: qsTr("Starship config file:")
                     font.bold: true
                 }
-
-                Kirigami.Separator { Layout.fillWidth: true }
+                Label {
+                    Layout.fillWidth: true
+                    text: page.controller.hasConfig
+                        ? page.controller.configPath
+                        : qsTr("No starship.toml found")
+                    font.italic: true
+                    wrapMode: Text.WrapAnywhere
+                }
 
                 Item {
-                    id: previewArea
+                    id: currentPreviewArea
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    Layout.preferredHeight: 200
+                    StarshipPreview {
+                        anchors.fill: parent
+                        html: page.controller.currentPreviewHtml
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        text: qsTr("No starship configuration found")
+                        color: Kirigami.Theme.disabledTextColor
+                        visible: page.controller.currentPreviewHtml === ""
+                    }
+                }
+
+                Label {
+                    text: qsTr("Status:")
+                    font.bold: true
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: page.statusText
+                    elide: Text.ElideMiddle
+                }
+
+                Item {
+                    id: livePreviewArea
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: 200
                     StarshipPreview {
                         anchors.fill: parent
                         html: page.controller.previewHtml
                     }
                     Label {
-                        anchors.centerIn: previewArea
-                        text: qsTr("No starship configuration found")
+                        anchors.centerIn: parent
+                        text: qsTr("No preview available")
                         color: Kirigami.Theme.disabledTextColor
                         visible: page.controller.previewHtml === ""
-                    }
-                }
-
-                Kirigami.Separator { Layout.fillWidth: true }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label {
-                        text: qsTr("Configuration:")
-                        color: Kirigami.Theme.disabledTextColor
-                    }
-                    Item { Layout.fillWidth: true }
-                    Label {
-                        text: page.controller.selectedTemplate === ""
-                            ? page.controller.configPath
-                            : page.controller.selectedTemplate
-                        color: Kirigami.Theme.disabledTextColor
                     }
                 }
             }

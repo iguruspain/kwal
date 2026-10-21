@@ -258,7 +258,7 @@ Kirigami.Page {
                 spacing: Kirigami.Units.gridUnit
 
                 Label {
-                    text: qsTr("Starship config file:")
+                    text: qsTr("Current config:")
                     font.bold: true
                 }
                 Label {
@@ -267,6 +267,7 @@ Kirigami.Page {
                         ? page.controller.configPath
                         : qsTr("No starship.toml found")
                     font.italic: true
+                    color: Kirigami.Theme.disabledTextColor
                     wrapMode: Text.WrapAnywhere
                 }
 
@@ -294,6 +295,8 @@ Kirigami.Page {
                 Label {
                     Layout.fillWidth: true
                     text: page.statusText
+                    font.italic: true
+                    color: Kirigami.Theme.disabledTextColor
                     elide: Text.ElideMiddle
                 }
 

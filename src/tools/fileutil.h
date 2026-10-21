@@ -11,10 +11,10 @@ namespace tools
 // rename). Returns false on failure.
 bool writeFileAtomic(const QString &path, const QString &content);
 
-// Creates path.bak from path if no backup exists yet (the first backup is
-// kept, so restore always goes back to the pre-kwal state).
-// Returns the backup path on success, or an empty string when path does not
-// exist or the backup already exists.
+// Creates path.bak as a copy of the current path, refreshing it on every
+// call so the backup always holds the state right before the next
+// modification. Returns the backup path on success, or an empty string
+// when path does not exist or the copy failed.
 QString backupFile(const QString &path);
 
 // Whether a .bak backup for path exists.

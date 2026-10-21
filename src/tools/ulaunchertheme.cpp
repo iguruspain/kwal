@@ -238,7 +238,7 @@ QString applyTheme(const QString &themePath, const ColorMap &manifestColors, con
         cssFile.close();
     }
 
-    // Create backups (only if they don't exist)
+    // Back up the current files before overwriting them
     backupFile(manifestPath);
     backupFile(cssPath);
 

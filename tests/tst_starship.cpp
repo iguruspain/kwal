@@ -116,10 +116,15 @@ void tst_Starship::testRestoreStarshipBackup()
     palettes["New"]["bg"] = QStringLiteral("#123456");
     QVERIFY(tools::applyStarshipPalettes(path, palettes, QStringLiteral("New")));
 
+    // A second apply backs up the first applied state, not the original.
+    palettes["New"]["bg"] = QStringLiteral("#abcdef");
+    QVERIFY(tools::applyStarshipPalettes(path, palettes, QStringLiteral("New")));
+
     QVERIFY(tools::restoreStarshipBackup(path));
     const auto result = tools::readStarshipConfig(path);
-    QCOMPARE(result.activePalette, QStringLiteral("Old"));
-    QCOMPARE(result.palettes.at("Old").at("bg"), QStringLiteral("#000000"));
+    QVERIFY(result.valid);
+    QCOMPARE(result.activePalette, QStringLiteral("New"));
+    QCOMPARE(result.palettes.at("New").at("bg"), QStringLiteral("#123456"));
 }
 
 void tst_Starship::testPreviewHtml()

@@ -33,9 +33,10 @@ bool writeFileAtomic(const QString &path, const QString &content)
 QString backupFile(const QString &path)
 {
     const QString backup = path + QStringLiteral(".bak");
-    if (!QFileInfo::exists(path) || QFileInfo::exists(backup))
+    if (!QFileInfo::exists(path))
         return QString();
 
+    QFile::remove(backup);
     return QFile::copy(path, backup) ? backup : QString();
 }
 

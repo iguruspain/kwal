@@ -120,7 +120,7 @@ bool applyStarshipPalettes(const QString &configPath,
         return false;
     }
 
-    // Create backup if this is the first write
+    // Back up the current config before overwriting it
     backupFile(cfgPath);
 
     toml::table doc;
@@ -155,7 +155,7 @@ bool writeStarshipDoc(const QString &configPath, const toml::table &doc)
         return false;
     }
 
-    // Create backup if this is the first write
+    // Back up the current config before overwriting it
     backupFile(cfgPath);
 
     std::ostringstream oss;

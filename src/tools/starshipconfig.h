@@ -33,8 +33,8 @@ struct StarshipConfigResult
 StarshipConfigResult readStarshipConfig(const QString &path = QString());
 
 // Applies the given palettes to the starship config atomically.
-// Creates a .bak backup on first write. `activePalette` sets the top-level `palette` key.
-// Returns true on success.
+// Backs up the current file to .bak before writing. `activePalette` sets
+// the top-level `palette` key. Returns true on success.
 bool applyStarshipPalettes(const QString &configPath,
                            const PaletteMap &palettes,
                            const QString &activePalette = QString());

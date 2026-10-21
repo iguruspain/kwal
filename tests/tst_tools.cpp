@@ -81,13 +81,13 @@ void tst_Tools::testBackupRestore()
     QCOMPARE(tools::backupFile(path), path + QStringLiteral(".bak"));
     QCOMPARE(tools::hasBackup(path), true);
 
-    // A second backup does not clobber the first one.
+    // A second backup refreshes the backup to the current state.
     writeFile(path, QStringLiteral("modified"));
-    QCOMPARE(tools::backupFile(path), QString());
-    QCOMPARE(readFile(path + QStringLiteral(".bak")), QStringLiteral("original"));
+    QCOMPARE(tools::backupFile(path), path + QStringLiteral(".bak"));
+    QCOMPARE(readFile(path + QStringLiteral(".bak")), QStringLiteral("modified"));
 
     QVERIFY(tools::restoreBackup(path));
-    QCOMPARE(readFile(path), QStringLiteral("original"));
+    QCOMPARE(readFile(path), QStringLiteral("modified"));
     QCOMPARE(tools::restoreBackup(path + QStringLiteral(".missing")), false);
 
     QFile::remove(path);

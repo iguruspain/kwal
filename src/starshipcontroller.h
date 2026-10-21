@@ -59,7 +59,8 @@ public slots:
     void loadTemplate(const QString &name);
     // Clear template selection, go back to editing the current config.
     void clearSelection();
-    // Apply the current draft palette to ~/.config/starship.toml (creates .bak on first write).
+    // Apply the current draft palette to ~/.config/starship.toml (the current
+    // config is backed up to .bak first).
     void applyConfig();
     // Restore starship.toml from its .bak backup.
     void restoreBackup();

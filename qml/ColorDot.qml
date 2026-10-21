@@ -27,7 +27,7 @@ Item {
             ? root.color
             : "transparent"
         border.color: Kirigami.Theme.textColor //Kirigami.Theme.highlightColor
-        border.width: 1.5
+        border.width: 1
 
         ToolTip.text: root.color.startsWith("#")
             ? root.color.toUpperCase()

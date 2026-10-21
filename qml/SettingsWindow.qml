@@ -21,7 +21,7 @@ Kirigami.ApplicationWindow {
 
     // Mirrors the main window so toggling transparency updates both live.
     readonly property color pageBackground: app.enableTransparency
-        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
         : Kirigami.Theme.backgroundColor
 
     // Returns whether a drawer section matches the settings search: the query

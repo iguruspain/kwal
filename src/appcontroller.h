@@ -28,6 +28,7 @@ class AppController : public QObject
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(bool enableTransparency READ enableTransparency WRITE setEnableTransparency NOTIFY enableTransparencyChanged)
+    Q_PROPERTY(int transparencyLevel READ transparencyLevel WRITE setTransparencyLevel NOTIFY transparencyLevelChanged)
     Q_PROPERTY(int defaultWindowWidth READ defaultWindowWidth WRITE setDefaultWindowWidth NOTIFY defaultWindowWidthChanged)
     Q_PROPERTY(int defaultWindowHeight READ defaultWindowHeight WRITE setDefaultWindowHeight NOTIFY defaultWindowHeightChanged)
     Q_PROPERTY(bool fastfetchAvailable READ fastfetchAvailable CONSTANT)
@@ -50,6 +51,8 @@ public:
     QString selectedWallpaperSize() const;
     bool enableTransparency() const;
     void setEnableTransparency(bool enabled);
+    int transparencyLevel() const;
+    void setTransparencyLevel(int level);
     int defaultWindowWidth() const;
     int defaultWindowHeight() const;
     void setDefaultWindowWidth(int width);
@@ -74,6 +77,7 @@ signals:
     void selectedWallpaperChanged();
 
     void enableTransparencyChanged();
+    void transparencyLevelChanged();
     void defaultWindowWidthChanged();
     void defaultWindowHeightChanged();
 private:
@@ -97,6 +101,9 @@ private:
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
     bool m_enableTransparency = true;
+    // Window background opacity in percent (0-100) used when transparency
+    // is enabled; steps of 5 in the settings SpinBox.
+    int m_transparencyLevel = kTransparencyLevelDefault;
     bool m_fastfetchAvailable = false;
     bool m_starshipAvailable = false;
     bool m_ulauncherAvailable = false;
@@ -111,4 +118,7 @@ private:
     static constexpr int kMinimumWindowHeight = 400;
     static constexpr int kMaximumWindowWidth = 3840;
     static constexpr int kMaximumWindowHeight = 2160;
+    static constexpr int kTransparencyLevelDefault = 80;
+    static constexpr int kTransparencyLevelMin = 0;
+    static constexpr int kTransparencyLevelMax = 100;
 };

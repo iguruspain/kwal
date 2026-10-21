@@ -13,7 +13,7 @@ Rectangle {
 
     Layout.preferredWidth: 300
     Layout.fillHeight: true
-    color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+    color: Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
     radius: Kirigami.Units.largeSpacing
     border.color: Kirigami.Theme.highlightColor
     border.width: 1.5

@@ -9,7 +9,7 @@ Kirigami.ApplicationWindow {
     id: window
     readonly property AppController app: AppController {}
     readonly property color appBackground: app.enableTransparency
-        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
         : Kirigami.Theme.backgroundColor
 
     // Header tabs; tools not installed on the system are excluded from the

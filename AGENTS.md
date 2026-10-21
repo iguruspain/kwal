@@ -69,7 +69,7 @@ Tests sandbox the user dirs: `tst_appcontroller` sets `HOME`/`XDG_*` to a temp d
 - Two windows: `Main` (tabs: Wallpapers, Fastfetch, Starship, Ulauncher) and a lazily-created `SettingsWindow` from the header menu. SettingsWindow pages: General and Ulauncher are implemented (Ulauncher: preview-mockup settings); Wallpapers, Fastfetch and Starship are placeholders.
 - Settings via KConfig (`kwalrc`); identity: `OrganizationName "KDE"`, domain `kde.org`. Groups:
   - `[Wallpapers]`: `folders`, `currentFolderIndex`, `currentWallpaper(+Size)`.
-  - `[General]`: `windowWidth`/`windowHeight` — applied **at startup only** (window default 960×650, clamped to 700×400–3840×2160); no live resize. `transparency` — window background opacity.
+  - `[General]`: `windowWidth`/`windowHeight` — applied **at startup only** (window default 960×650, clamped to 700×400–3840×2160); no live resize. `transparency` — window background opacity. `transparencyLevel` — background opacity in percent (0–100, default 80, SpinBox step 5); only applied while `transparency` is on.
   - `[Ulauncher]`: `previewWindowWidth` (launcher width in the preview mockup, default 900, clamped 400–1200), `previewQuery` (text typed in the mockup input, default `sptf`), `sampleRows` (list of `{icon, name, shortcut, selected}` maps shown in the mockup; empty falls back to the built-in samples).
 - QML: `qsTr()` for all user strings, `Kirigami.Units` for spacing/sizing, semantic `Kirigami.Theme` colors, Kirigami semantic components over raw Controls.
 - Install (ECM): desktop file (→ `kwal.desktop`) + hicolor icon; the executable itself is not installed yet.

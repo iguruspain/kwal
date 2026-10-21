@@ -10,7 +10,7 @@ Kirigami.Page {
     title: qsTr("Ulauncher")
 
     readonly property color pageBackground: app.enableTransparency
-        ? Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+        ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
         : Kirigami.Theme.backgroundColor
 
     background: Rectangle {
@@ -105,7 +105,7 @@ Kirigami.Page {
             id: leftPane
             Layout.preferredWidth: 300
             Layout.fillHeight: true
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: page.pageBackground
             radius: Kirigami.Units.largeSpacing
             border.color: Kirigami.Theme.highlightColor
             border.width: 1.5

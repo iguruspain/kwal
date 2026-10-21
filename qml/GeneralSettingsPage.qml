@@ -15,6 +15,7 @@ Kirigami.ScrollablePage {
     // with the controls below.
     property var searchKeys: [
         qsTr("Enable transparency"),
+        qsTr("Transparency level"),
         qsTr("Default width"),
         qsTr("Default height")
     ]
@@ -32,6 +33,21 @@ Kirigami.ScrollablePage {
                 subtitle: qsTr("Draw window backgrounds with reduced opacity")
                 checked: page.app.enableTransparency
                 onToggled: page.app.enableTransparency = checked
+            }
+
+            Kirigami.FormLayout {
+                SpinBox {
+                    Kirigami.FormData.label: qsTr("Transparency level")
+                    from: 0
+                    to: 100
+                    stepSize: 5
+                    textFromValue: function(value) {
+                        return value + "%"
+                    }
+                    value: page.app.transparencyLevel
+                    enabled: page.app.enableTransparency
+                    onValueModified: page.app.transparencyLevel = value
+                }
             }
 
             Kirigami.Heading {

@@ -21,6 +21,7 @@ private slots:
     void testSelectionAndApply();
     void testWindowSettings();
     void testTransparencyPersistence();
+    void testTransparencyLevelPersistence();
     void testToolDetection();
 
 private:
@@ -184,6 +185,32 @@ void tst_AppController::testTransparencyPersistence()
     QCOMPARE(app2.enableTransparency(), false);
 
     app2.setEnableTransparency(true); // restore default
+}
+
+void tst_AppController::testTransparencyLevelPersistence()
+{
+    AppController app;
+    QCOMPARE(app.transparencyLevel(), 80); // default 80%
+
+    QSignalSpy spy(&app, &AppController::transparencyLevelChanged);
+    app.setTransparencyLevel(40);
+    QCOMPARE(app.transparencyLevel(), 40);
+    QCOMPARE(spy.count(), 1);
+
+    app.setTransparencyLevel(40); // unchanged value does not re-emit
+    QCOMPARE(spy.count(), 1);
+
+    // Out-of-range values are clamped to the 0-100 percent range.
+    app.setTransparencyLevel(120);
+    QCOMPARE(app.transparencyLevel(), 100);
+    app.setTransparencyLevel(-5);
+    QCOMPARE(app.transparencyLevel(), 0);
+
+    // Persisted to the same kwalrc file and visible to a fresh controller.
+    app.setTransparencyLevel(55);
+    AppController app2;
+    QCOMPARE(app2.transparencyLevel(), 55);
+    app2.setTransparencyLevel(80); // restore default
 }
 
 void tst_AppController::testToolDetection()

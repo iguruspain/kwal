@@ -128,6 +128,22 @@ void AppController::setEnableTransparency(bool enabled)
     emit enableTransparencyChanged();
 }
 
+int AppController::transparencyLevel() const
+{
+    return m_transparencyLevel;
+}
+
+void AppController::setTransparencyLevel(int level)
+{
+    const int clamped = qBound(kTransparencyLevelMin, level, kTransparencyLevelMax);
+    if (m_transparencyLevel == clamped) {
+        return;
+    }
+    m_transparencyLevel = clamped;
+    saveConfig();
+    emit transparencyLevelChanged();
+}
+
 int AppController::defaultWindowWidth() const
 {
     return m_defaultWindowWidth;
@@ -322,6 +338,9 @@ void AppController::loadConfig()
                                    generalGroup.readEntry("windowHeight", kDefaultWindowHeight),
                                    kMaximumWindowHeight);
     m_enableTransparency = generalGroup.readEntry("transparency", true);
+    m_transparencyLevel = qBound(kTransparencyLevelMin,
+                                generalGroup.readEntry("transparencyLevel", kTransparencyLevelDefault),
+                                kTransparencyLevelMax);
 }
 
 void AppController::saveConfig()
@@ -335,6 +354,7 @@ void AppController::saveConfig()
     generalGroup.writeEntry("windowWidth", m_defaultWindowWidth);
     generalGroup.writeEntry("windowHeight", m_defaultWindowHeight);
     generalGroup.writeEntry("transparency", m_enableTransparency);
+    generalGroup.writeEntry("transparencyLevel", m_transparencyLevel);
     m_config->sync();
 }
 

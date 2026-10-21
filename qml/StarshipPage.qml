@@ -196,11 +196,8 @@ Kirigami.Page {
                             }
                             Item { Layout.fillWidth: true }
                         }
-                        Kirigami.Separator {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: Kirigami.Units.smallSpacing
-                            color: Qt.alpha(Kirigami.Theme.disabledTextColor, 0.4)
-                        }
+                        Kirigami.Separator { Layout.fillWidth: true }
+                        Item { Layout.fillWidth: true }
                         ColumnLayout {
                             Layout.fillWidth: true
                             visible: page.paletteExpanded

@@ -123,6 +123,8 @@ void StarshipController::setDraftPaletteIndex(int index)
         } else {
             setDraftColorIndex(-1);
         }
+
+        regeneratePreview();
     }
 }
 
@@ -357,13 +359,19 @@ void StarshipController::regeneratePreview()
     // Draft preview of the selected source document (template, or the current
     // config when no template is selected): the document's own format and
     // modules with the draft palettes substituted in. Colors follow the
-    // document's `palette` key (paletteIndex -1), as in the original app.
+    // selected draft palette, or the document's active palette when nothing
+    // is selected (paletteIndex -1).
     QString html;
     if (!m_doc.empty()) {
         toml::table doc = m_doc;
-        if (!m_paletteNames.isEmpty())
-            // Replace the palettes table but keep the document's own key.
-            tools::replacePalettesInDoc(doc, draftPalettes(), tools::getActivePaletteName(m_doc));
+        if (!m_paletteNames.isEmpty()) {
+            QString active = tools::getActivePaletteName(m_doc);
+            if (m_draftPaletteIndex >= 0 && m_draftPaletteIndex < m_paletteNames.size())
+                active = m_paletteNames[m_draftPaletteIndex];
+            // Replace the palettes table and point the document's `palette`
+            // key at the palette being previewed.
+            tools::replacePalettesInDoc(doc, draftPalettes(), active);
+        }
         html = tools::starshipPreviewHtml(doc, -1, m_previewScale, 800);
     }
 

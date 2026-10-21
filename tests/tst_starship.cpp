@@ -41,6 +41,7 @@ private slots:
     void testRestoreStarshipBackup();
     void testPreviewHtml();
     void testControllerLoadsAndApplies();
+    void testPreviewFollowsPaletteSelection();
 };
 
 void tst_Starship::testExtractPalettes()
@@ -187,6 +188,42 @@ void tst_Starship::testControllerLoadsAndApplies()
     QVERIFY(readFile(path).contains(QStringLiteral("#aabbcc")));
     QVERIFY(readFile(path).contains(QStringLiteral("#33aaff")));
     QVERIFY(controller.hasBackup());
+
+    QFile::remove(path);
+    QFile::remove(path + QStringLiteral(".bak"));
+}
+
+void tst_Starship::testPreviewFollowsPaletteSelection()
+{
+    const QString path = tools::starshipConfigPath();
+    QDir(QFileInfo(path).absolutePath()).mkpath(QStringLiteral("."));
+    writeFile(path, QStringLiteral(
+        "palette=\"A\"\n"
+        "format=\"$directory\"\n"
+        "[palettes.A]\n"
+        "fg=\"#a00000\"\n"
+        "bg=\"#111111\"\n"
+        "[palettes.B]\n"
+        "fg=\"#00aa00\"\n"
+        "bg=\"#222222\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
+
+    StarshipController controller;
+    // The document's active palette (A) is listed first and previewed first.
+    QCOMPARE(controller.draftPaletteIndex(), 0);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#a00000")));
+    QVERIFY(!controller.previewHtml().contains(QStringLiteral("#00aa00")));
+
+    // Switching the palette (as the combo does) re-renders the draft
+    // preview with that palette's colors.
+    controller.setDraftPaletteIndex(1);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#00aa00")));
+    QVERIFY(!controller.previewHtml().contains(QStringLiteral("#a00000")));
+
+    // The on-disk preview is unaffected by the draft selection.
+    QVERIFY(controller.currentPreviewHtml().contains(QStringLiteral("#a00000")));
 
     QFile::remove(path);
     QFile::remove(path + QStringLiteral(".bak"));

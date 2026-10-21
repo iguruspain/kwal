@@ -156,7 +156,7 @@ Kirigami.Page {
                         color: categorySwatch.modelData.hex
                         border.color: page.selectedCategories.indexOf(categorySwatch.modelData.name) !== -1
                             ? Kirigami.Theme.highlightColor
-                            : Qt.alpha(Kirigami.Theme.textColor, 0.3)
+                            : Kirigami.Theme.textColor
                         border.width: page.selectedCategories.indexOf(categorySwatch.modelData.name) !== -1 ? 3 : 1
                         ToolTip.text: categorySwatch.modelData.label
                         ToolTip.visible: filterHover.hovered

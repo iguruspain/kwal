@@ -160,11 +160,12 @@ ItemDelegate {
             visible: root.isSelected
                 && root.app.matugenDotsEnabled
                 && root.sourceColors.length > 0
-            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
-            border.color: Kirigami.Theme.highlightColor
-            border.width: 0.5
+            color: "transparent"
+            // color: Kirigami.Theme.alternateBackgroundColor
+            // border.color: Kirigami.Theme.highlightColor
+            // border.width: 0.5
             width: colorDots.implicitWidth + Kirigami.Units.smallSpacing * 2
-            height: colorDots.implicitHeight + Kirigami.Units.smallSpacing
+            height: colorDots.implicitHeight + Kirigami.Units.smallSpacing * 2
 
             RowLayout {
                 id: colorDots
@@ -184,7 +185,7 @@ ItemDelegate {
                         readonly property bool dotSelected: root.app.selectedSourceColorIndex === sourceDot.index
                         border.color: dotSelected
                             ? Kirigami.Theme.positiveTextColor
-                            : Qt.alpha(Kirigami.Theme.textColor, 0.5)
+                            : Kirigami.Theme.textColor
                         border.width: dotSelected ? 2 : 1
                         ToolTip.text: sourceDot.modelData.toUpperCase()
                         ToolTip.visible: dotHover.hovered

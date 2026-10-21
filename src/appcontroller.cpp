@@ -1,6 +1,7 @@
 #include "appcontroller.h"
 #include "templateinstaller.h"
 #include "wallpapermodel.h"
+#include "wallpapersinfo.h"
 #include <KConfig>
 #include <KConfigGroup>
 
@@ -56,6 +57,19 @@ AppController::AppController(QObject *parent)
 {
     m_ulauncher = new UlauncherController(m_config->group(QStringLiteral("Ulauncher")), this);
     loadConfig();
+    // Kick the media info cache (first frames, ...) after every folder
+    // re-scan. Must precede applyCurrentFolder(): the initial scan is
+    // synchronous and its "scanned" signal would otherwise be missed.
+    connect(m_wallpaperModel, &WallpaperModel::scanned, this, [this]() {
+        WallpapersInfo *info = WallpapersInfo::instance();
+        if (!info) {
+            return;
+        }
+        const QStringList paths = m_wallpaperModel->filePaths();
+        for (const QString &path : paths) {
+            info->refreshFile(path, WallpaperModel::isVideo(path) ? QStringLiteral("video") : QStringLiteral("image"));
+        }
+    });
     applyCurrentFolder();
     tools::installTemplates();
 }
@@ -111,6 +125,20 @@ QString AppController::selectedWallpaper() const
 QString AppController::selectedWallpaperSize() const
 {
     return m_selectedWallpaperSize;
+}
+
+int AppController::selectedSourceColorIndex() const
+{
+    return m_selectedSourceColorIndex;
+}
+
+void AppController::setSelectedSourceColorIndex(int index)
+{
+    if (m_selectedSourceColorIndex == index) {
+        return;
+    }
+    m_selectedSourceColorIndex = index;
+    emit selectedSourceColorIndexChanged();
 }
 
 bool AppController::enableTransparency() const
@@ -172,6 +200,48 @@ bool AppController::ulauncherAvailable() const
 UlauncherController *AppController::ulauncher() const
 {
     return m_ulauncher;
+}
+
+bool AppController::matugenDotsEnabled() const
+{
+    return m_matugenDots;
+}
+
+void AppController::setMatugenDotsEnabled(bool enabled)
+{
+    if (m_matugenDots == enabled) {
+        return;
+    }
+    m_matugenDots = enabled;
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        info->setMatugenEnabled(m_matugenDots || m_colorCategories);
+    }
+    saveConfig();
+    emit matugenDotsEnabledChanged();
+}
+
+bool AppController::colorCategoriesEnabled() const
+{
+    return m_colorCategories;
+}
+
+void AppController::setColorCategoriesEnabled(bool enabled)
+{
+    if (m_colorCategories == enabled) {
+        return;
+    }
+    m_colorCategories = enabled;
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        info->setMatugenEnabled(m_matugenDots || m_colorCategories);
+    }
+    saveConfig();
+    emit colorCategoriesEnabledChanged();
+}
+
+bool AppController::matugenAvailable() const
+{
+    const WallpapersInfo *info = WallpapersInfo::instance();
+    return info != nullptr && info->matugenAvailable();
 }
 
 void AppController::setDefaultWindowWidth(int width)
@@ -250,7 +320,19 @@ void AppController::selectWallpaper(const QString &filePath)
     }
     m_selectedWallpaper = filePath;
     m_selectedWallpaperSize = filePath.isEmpty() ? QString() : imageResolution(filePath);
+    if (m_selectedSourceColorIndex != -1) {
+        m_selectedSourceColorIndex = -1;
+        emit selectedSourceColorIndexChanged();
+    }
     emit selectedWallpaperChanged();
+}
+
+QString AppController::fileUrl(const QString &path) const
+{
+    if (path.isEmpty()) {
+        return {};
+    }
+    return QUrl::fromLocalFile(path).toString();
 }
 
 void AppController::applyWallpaper()
@@ -330,6 +412,14 @@ void AppController::loadConfig()
     m_currentWallpaper = group.readEntry("currentWallpaper", QString());
     m_currentWallpaperSize = group.readEntry("currentWallpaperSize", QString());
 
+    // Both color features are on by default when matugen is installed; the
+    // keys are absent on first run. Extraction runs while either is on.
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        m_matugenDots = group.readEntry("matugenDots", info->matugenAvailable());
+        m_colorCategories = group.readEntry("colorCategories", info->matugenAvailable());
+        info->setMatugenEnabled(m_matugenDots || m_colorCategories);
+    }
+
     const KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
     m_defaultWindowWidth = qBound(kMinimumWindowWidth,
                                   generalGroup.readEntry("windowWidth", kDefaultWindowWidth),
@@ -350,6 +440,8 @@ void AppController::saveConfig()
     group.writeEntry("currentFolderIndex", m_currentFolderIndex);
     group.writeEntry("currentWallpaper", m_currentWallpaper);
     group.writeEntry("currentWallpaperSize", m_currentWallpaperSize);
+    group.writeEntry("matugenDots", m_matugenDots);
+    group.writeEntry("colorCategories", m_colorCategories);
     KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
     generalGroup.writeEntry("windowWidth", m_defaultWindowWidth);
     generalGroup.writeEntry("windowHeight", m_defaultWindowHeight);

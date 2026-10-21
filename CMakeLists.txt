@@ -14,7 +14,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Test Widgets WebEngineQuick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Multimedia Qml Quick QuickControls2 Test Widgets WebEngineQuick)
 find_package(KF6 REQUIRED COMPONENTS Config Kirigami KirigamiPlatform)
 
 # KF6 6.31's installed CMake package creates imported targets for the Kirigami
@@ -82,6 +82,8 @@ qt_add_executable(kwal
  src/main.cpp
  src/starshipcontroller.cpp
  src/starshipcontroller.h
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
  src/templateinstaller.cpp
  src/templateinstaller.h
  src/tools/fileutil.cpp
@@ -122,8 +124,9 @@ qt_add_qml_module(kwal
  qml/UlauncherPage.qml
  qml/UlauncherSettingsPage.qml
  qml/UlauncherMockup.qml
-qml/ColorDot.qml
-qml/ColorRow.qml
+    qml/WallpapersSettingsPage.qml
+    qml/ColorDot.qml
+    qml/ColorRow.qml
  RESOURCES
  resources/resources.qrc
 )
@@ -133,8 +136,9 @@ target_link_libraries(kwal
  Qt6::Core
  Qt6::DBus
  Qt6::Gui
+ Qt6::Multimedia
  Qt6::Widgets
- Qt6::WebEngineQuick
+Qt6::WebEngineQuick
  KF6::ConfigCore
  KF6::Kirigami
  tomlplusplus::tomlplusplus
@@ -149,6 +153,8 @@ qt_add_executable(tst_appcontroller
  src/templateinstaller.h
  src/wallpapermodel.h
  src/wallpapermodel.cpp
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
  src/ulaunchercontroller.cpp
  src/ulaunchercontroller.h
  src/tools/fileutil.cpp
@@ -174,6 +180,22 @@ target_link_libraries(tst_appcontroller
  KF6::ConfigCore
 )
 add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
+qt_add_executable(tst_wallpapersinfo
+ tests/tst_wallpapersinfo.cpp
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
+)
+target_include_directories(tst_wallpapersinfo PRIVATE src)
+target_link_libraries(tst_wallpapersinfo
+ PRIVATE
+ Qt6::Core
+ Qt6::Gui
+ Qt6::Qml
+ Qt6::Test
+)
+add_test(NAME tst_wallpapersinfo COMMAND tst_wallpapersinfo)
 qt_add_executable(tst_tools
  tests/tst_tools.cpp
  src/tools/fileutil.cpp

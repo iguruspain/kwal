@@ -1,6 +1,10 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import QtMultimedia
+
+pragma ComponentBehavior: Bound
 
 ItemDelegate {
     id: root
@@ -9,6 +13,10 @@ ItemDelegate {
     required property string name
     required property url thumbnail
     required property string extension
+    required property bool isVideo
+    // Matugen source colors of this wallpaper (from the cache index);
+    // shown as dots on the selected cell.
+    required property var sourceColors
     required property GridView grid
     required property int index
 
@@ -22,6 +30,27 @@ ItemDelegate {
     rightPadding: 2
 
     readonly property bool isSelected: root.path === root.app.selectedWallpaper
+    // Whether the wallpapers page is currently visible; passed down by the page.
+    property bool pageVisible: true
+    // The selected video cell plays live (muted, looping) instead of the still.
+    // Media only exists while the cell is the active video, so at most one
+    // MediaPlayer/VideoOutput exists at a time; switching tabs, folders or
+    // selection stops playback and releases the GPU resources.
+    readonly property bool videoActive: root.isVideo && root.isSelected && root.pageVisible
+
+    // Copies a source color's hex to the clipboard and notifies the user,
+    // like ColorDot on the tool pages.
+    function copyDotColor(hex) {
+        dotClipboard.text = hex
+        dotClipboard.selectAll()
+        dotClipboard.copy()
+        // qmllint disable unqualified
+        const win = applicationWindow()
+        // qmllint enable unqualified
+        if (win)
+            win.showPassiveNotification(
+                qsTr("Copied: %1").arg(hex), "short")
+    }
 
     activeFocusOnTab: false
     hoverEnabled: true
@@ -52,15 +81,39 @@ ItemDelegate {
                         mass: 1.0
                     }
                 }
+                visible: !root.videoActive
                 opacity: status === Image.Ready ? 1.0 : 0.0
                 Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
+            }
+            Loader {
+                id: videoLoader
+                anchors.fill: parent
+                active: root.videoActive
+                asynchronous: false
+                sourceComponent: Component {
+                    Item {
+                        VideoOutput {
+                            id: videoSurface
+                            anchors.fill: parent
+                            fillMode: VideoOutput.PreserveAspectCrop
+                        }
+                        MediaPlayer {
+                            id: mediaPlayer
+                            source: root.app.fileUrl(root.path)
+                            autoPlay: true
+                            loops: MediaPlayer.Infinite
+                            activeAudioTrack: -1
+                            videoOutput: videoSurface
+                        }
+                    }
+                }
             }
         }
         Kirigami.Icon {
             anchors.centerIn: parent
             source: "image-x-generic"
             color: Kirigami.Theme.disabledTextColor
-            visible: root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error
+            visible: !root.videoActive && (root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error)
         }
         ToolButton {
             anchors.right: parent.right
@@ -94,6 +147,65 @@ ItemDelegate {
                 rightPadding: Kirigami.Units.smallSpacing
                 topPadding: Kirigami.Units.gridUnit / 4
                 bottomPadding: Kirigami.Units.gridUnit / 4
+            }
+        }
+        // The matugen source colors of the selected wallpaper, like the old
+        // app's colorDotsContainer: bottom-left, above the extension badge row.
+        Rectangle {
+            id: colorDotsContainer
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.margins: Kirigami.Units.smallSpacing * 2
+            radius: Kirigami.Units.smallSpacing
+            visible: root.isSelected
+                && root.app.matugenDotsEnabled
+                && root.sourceColors.length > 0
+            color: Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            border.color: Kirigami.Theme.highlightColor
+            border.width: 0.5
+            width: colorDots.implicitWidth + Kirigami.Units.smallSpacing * 2
+            height: colorDots.implicitHeight + Kirigami.Units.smallSpacing
+
+            RowLayout {
+                id: colorDots
+                anchors.centerIn: parent
+                spacing: 2
+
+                Repeater {
+                    model: root.sourceColors
+                    delegate: Rectangle {
+                        id: sourceDot
+                        required property string modelData
+                        required property int index
+                        width: Kirigami.Units.gridUnit * 0.8
+                        height: width
+                        radius: Kirigami.Units.smallSpacing
+                        color: sourceDot.modelData
+                        readonly property bool dotSelected: root.app.selectedSourceColorIndex === sourceDot.index
+                        border.color: dotSelected
+                            ? Kirigami.Theme.positiveTextColor
+                            : Qt.alpha(Kirigami.Theme.textColor, 0.5)
+                        border.width: dotSelected ? 2 : 1
+                        ToolTip.text: sourceDot.modelData.toUpperCase()
+                        ToolTip.visible: dotHover.hovered
+                        HoverHandler {
+                            id: dotHover
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.LeftButton
+                            onTapped: root.app.selectedSourceColorIndex = sourceDot.index
+                        }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: root.copyDotColor(sourceDot.modelData)
+                        }
+                    }
+                }
+            }
+            // Invisible TextEdit used to copy a dot's hex color.
+            TextEdit {
+                id: dotClipboard
+                visible: false
             }
         }
     }

@@ -115,7 +115,7 @@ Kirigami.ApplicationWindow {
             color: settingsWindow.pageBackground
         }
     }
-    Component { id: wallpapersSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Wallpapers"); iconName: "preferences-desktop-wallpaper"; background: Rectangle { color: settingsWindow.pageBackground } } }
+    Component { id: wallpapersSettingsPage; WallpapersSettingsPage { app: settingsWindow.app; background: Rectangle { color: settingsWindow.pageBackground } } }
     Component { id: fastfetchSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Fastfetch"); iconName: "utilities-terminal"; background: Rectangle { color: settingsWindow.pageBackground } } }
     Component { id: starshipSettingsPage; SettingsPlaceholderPage { sectionName: qsTr("Starship"); iconName: "utilities-terminal"; background: Rectangle { color: settingsWindow.pageBackground } } }    
     Component {

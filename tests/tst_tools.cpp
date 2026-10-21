@@ -237,7 +237,7 @@ void tst_Tools::testFastfetchBackup()
 
 void tst_Tools::testFastfetchClearCache()
 {
-    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
         + QStringLiteral("/fastfetch");
     QVERIFY(QDir().mkpath(cacheDir));
     writeFile(cacheDir + QStringLiteral("/fetch_cache.json"), QByteArray("{}"));

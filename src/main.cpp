@@ -3,6 +3,7 @@
 #include <QMessageLogger>
 #include <QtWebEngineQuick>
 #include "fdothumbnailprovider.h"
+#include "wallpapersinfo.h"
 #include <QQmlApplicationEngine>
 #include <cstdio>
 
@@ -46,6 +47,7 @@ int main(int argc, char *argv[])
     app.setOrganizationDomain(QStringLiteral("kde.org"));
     app.setApplicationName(QStringLiteral("kwal"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
+    WallpapersInfo::initialize(&app);
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("fdo_thumbnail"), new FdoThumbnailProvider());
     engine.loadFromModule(QStringLiteral("org.kde.kwal"), QStringLiteral("Main"));

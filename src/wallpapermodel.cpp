@@ -1,4 +1,5 @@
 #include "wallpapermodel.h"
+#include "wallpapersinfo.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -19,6 +20,19 @@ const QStringList &imageExtensions()
     };
     return extensions;
 }
+
+const QStringList &videoExtensions()
+{
+    static const QStringList extensions = {
+        QStringLiteral("mp4"),
+        QStringLiteral("webm"),
+        QStringLiteral("mkv"),
+        QStringLiteral("mov"),
+        QStringLiteral("m4v"),
+        QStringLiteral("avi"),
+    };
+    return extensions;
+}
 } // namespace
 
 WallpaperModel::WallpaperModel(QObject *parent)
@@ -29,6 +43,9 @@ WallpaperModel::WallpaperModel(QObject *parent)
     m_debounce->setSingleShot(true);
     m_debounce->setInterval(kRefreshDebounceMs);
     connect(m_debounce, &QTimer::timeout, this, &WallpaperModel::refresh);
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        connect(info, &WallpapersInfo::entryChanged, this, &WallpaperModel::onEntryChanged);
+    }
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this](const QString &) {
         // Re-arm in case the directory was deleted and recreated meanwhile.
         if (!m_directory.isEmpty() && !m_watcher->directories().contains(m_directory)) {
@@ -45,6 +62,8 @@ QHash<int, QByteArray> WallpaperModel::roleNames() const
         {NameRole, "name"},
         {ThumbnailRole, "thumbnail"},
         {ExtensionRole, "extension"},
+        {IsVideoRole, "isVideo"},
+        {SourceColorsRole, "sourceColors"},
     };
 }
 
@@ -68,6 +87,12 @@ QVariant WallpaperModel::data(const QModelIndex &index, int role) const
         return entry.thumbnail;
     case ExtensionRole:
         return entry.extension;
+    case IsVideoRole:
+        return isVideo(entry.path);
+    case SourceColorsRole: {
+        const WallpapersInfo *info = WallpapersInfo::instance();
+        return info ? info->sourceColorsFor(entry.path) : QStringList();
+    }
     default:
         return {};
     }
@@ -79,6 +104,21 @@ QString WallpaperModel::pathAt(int row) const
         return {};
     }
     return m_entries.at(row).path;
+}
+
+QStringList WallpaperModel::filePaths() const
+{
+    QStringList paths;
+    paths.reserve(m_entries.size());
+    for (const Entry &entry : m_entries) {
+        paths.append(entry.path);
+    }
+    return paths;
+}
+
+bool WallpaperModel::isVideo(const QString &filePath)
+{
+    return videoExtensions().contains(QFileInfo(filePath).suffix(), Qt::CaseInsensitive);
 }
 
 void WallpaperModel::setSourceDirectory(const QString &directory)
@@ -116,6 +156,25 @@ void WallpaperModel::setFilterText(const QString &text)
     emit countChanged();
 }
 
+QStringList WallpaperModel::categoryFilter() const
+{
+    return QStringList(m_categoryFilter.begin(), m_categoryFilter.end());
+}
+
+void WallpaperModel::setCategoryFilter(const QStringList &categories)
+{
+    const QSet<QString> next(categories.begin(), categories.end());
+    if (next == m_categoryFilter) {
+        return;
+    }
+    m_categoryFilter = next;
+    beginResetModel();
+    applyFilter();
+    endResetModel();
+    emit countChanged();
+    emit categoryFilterChanged();
+}
+
 void WallpaperModel::refresh()
 {
     m_all.clear();
@@ -123,30 +182,107 @@ void WallpaperModel::refresh()
     const QDir dir(m_directory);
     const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     for (const QString &fileName : files) {
-        if (!imageExtensions().contains(QFileInfo(fileName).suffix(), Qt::CaseInsensitive)) {
+        const QString suffix = QFileInfo(fileName).suffix();
+        if (!imageExtensions().contains(suffix, Qt::CaseInsensitive)
+            && !videoExtensions().contains(suffix, Qt::CaseInsensitive)) {
             continue;
         }
         const QString filePath = dir.filePath(fileName);
-        m_all.append({filePath, QFileInfo(filePath).fileName(), thumbnailFor(filePath), QFileInfo(filePath).suffix()});
+        const QFileInfo info(filePath);
+        const Entry entry{filePath,
+                          info.fileName(),
+                          isVideo(filePath) ? videoThumbnailFor(filePath) : thumbnailFor(filePath),
+                          suffix};
+        m_all.append(entry);
     }
 
     beginResetModel();
     applyFilter();
     endResetModel();
     emit countChanged();
+    // Every folder scan also drops cache entries whose file was deleted
+    // (images, videos and their first-frame artifacts) from any folder.
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        info->sweep();
+    }
+    emit scanned();
 }
 
 void WallpaperModel::applyFilter()
 {
     m_entries.clear();
-    if (m_filterText.isEmpty()) {
-        m_entries = m_all;
+    const WallpapersInfo *info = WallpapersInfo::instance();
+    for (const Entry &entry : m_all) {
+        if (!m_filterText.isEmpty()) {
+            bool match = entry.name.contains(m_filterText, Qt::CaseInsensitive);
+            if (!match && info) {
+                for (const QString &tag : info->tagsFor(entry.path)) {
+                    if (tag.contains(m_filterText, Qt::CaseInsensitive)) {
+                        match = true;
+                        break;
+                    }
+                }
+            }
+            if (!match) {
+                continue;
+            }
+        }
+        if (!m_categoryFilter.isEmpty()) {
+            const QStringList categories = info ? info->colorCategoriesFor(entry.path)
+                                                : QStringList();
+            bool match = true;
+            for (const QString &category : m_categoryFilter) {
+                if (!categories.contains(category)) {
+                    match = false;
+                    break;
+                }
+            }
+            if (!match) {
+                continue;
+            }
+        }
+        m_entries.append(entry);
+    }
+}
+
+void WallpaperModel::onEntryChanged(const QString &path)
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    if (!info) {
         return;
     }
-    for (const Entry &entry : m_all) {
-        if (entry.name.contains(m_filterText, Qt::CaseInsensitive)) {
-            m_entries.append(entry);
+    const WallpapersInfo::Entry entry = info->entryFor(path);
+    const QUrl frameThumbnail = entry.type == QLatin1String("video") && !entry.firstFrame.isEmpty()
+        ? QUrl(QStringLiteral("image://fdo_thumbnail/") + entry.firstFrame)
+        : QUrl();
+    for (int row = 0; row < m_entries.size(); ++row) {
+        if (m_entries.at(row).path != path) {
+            continue;
         }
+        QVector<int> roles{SourceColorsRole};
+        if (!frameThumbnail.isEmpty()) {
+            m_entries[row].thumbnail = frameThumbnail;
+            roles.prepend(ThumbnailRole);
+        }
+        emit dataChanged(index(row), index(row), roles);
+        break;
+    }
+    // Not visible in the current filter; the next re-scan picks it up.
+    if (!frameThumbnail.isEmpty()) {
+        for (Entry &full : m_all) {
+            if (full.path == path) {
+                full.thumbnail = frameThumbnail;
+                break;
+            }
+        }
+    }
+    // New metadata (colors, tags) may change which entries match the active
+    // category filter.
+    if (!m_categoryFilter.isEmpty()) {
+        beginResetModel();
+        applyFilter();
+        endResetModel();
+        emit countChanged();
     }
 }
 
@@ -155,4 +291,19 @@ QUrl WallpaperModel::thumbnailFor(const QString &filePath) const
     // The "fdo_thumbnail" provider (FdoThumbnailProvider) resolves the FreeDesktop
     // thumbnail cache and generates a 256 px thumbnail on a miss.
     return QUrl(QStringLiteral("image://fdo_thumbnail/") + filePath);
+}
+
+QUrl WallpaperModel::videoThumbnailFor(const QString &filePath) const
+{
+    // Video thumbnail: the cached first frame (wallpapers_info.json), served
+    // through the same "fdo_thumbnail" provider; empty while it is missing.
+    const WallpapersInfo *info = WallpapersInfo::instance();
+    if (!info) {
+        return {};
+    }
+    const QString frame = info->firstFrameFor(filePath);
+    if (frame.isEmpty()) {
+        return {};
+    }
+    return QUrl(QStringLiteral("image://fdo_thumbnail/") + frame);
 }

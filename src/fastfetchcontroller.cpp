@@ -168,7 +168,7 @@ void FastfetchController::generateTintedPreview()
         setTintedPreviewPath(QString());
         return;
     }
-    const QString previewDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+    const QString previewDir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
         + QStringLiteral("/kwal");
     QDir().mkpath(previewDir);
     const QString previewPath = previewDir + QStringLiteral("/fastfetch-preview.png");

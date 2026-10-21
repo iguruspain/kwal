@@ -76,8 +76,8 @@ QString FdoThumbnailProvider::cacheFilePath(const QString &path)
     const QString fileUri = QStringLiteral("file://") + QUrl::toPercentEncoding(path, QByteArrayLiteral("/"));
     const QString hash = QString::fromLatin1(
         QCryptographicHash::hash(fileUri.toUtf8(), QCryptographicHash::Md5).toHex());
-    return QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
-         + QStringLiteral("/thumbnails/large/") + hash + QStringLiteral(".png");
+    return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+         + QStringLiteral("/kwal/thumbnails/large/") + hash + QStringLiteral(".png");
 }
 
 QString FdoThumbnailProvider::localPath(const QString &id)

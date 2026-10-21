@@ -139,7 +139,7 @@ void tst_Starship::testPreviewHtml()
     const QString html = tools::starshipPreviewHtml(doc, 0, 1.0, 800);
     QVERIFY(html.contains(QStringLiteral("<html")));
     QVERIFY(html.contains(QStringLiteral("terminal")));
-    QVERIFY(html.contains(QStringLiteral("#181818")));
+    QVERIFY(html.contains(QStringLiteral("rgba(24,24,24,0.6)")));
 }
 
 void tst_Starship::testControllerLoadsAndApplies()

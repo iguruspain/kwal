@@ -27,6 +27,7 @@ class AppController : public QObject
     Q_PROPERTY(QString currentWallpaperSize READ currentWallpaperSize NOTIFY currentWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
+    Q_PROPERTY(int selectedSourceColorIndex READ selectedSourceColorIndex WRITE setSelectedSourceColorIndex NOTIFY selectedSourceColorIndexChanged)
     Q_PROPERTY(bool enableTransparency READ enableTransparency WRITE setEnableTransparency NOTIFY enableTransparencyChanged)
     Q_PROPERTY(int transparencyLevel READ transparencyLevel WRITE setTransparencyLevel NOTIFY transparencyLevelChanged)
     Q_PROPERTY(int defaultWindowWidth READ defaultWindowWidth WRITE setDefaultWindowWidth NOTIFY defaultWindowWidthChanged)
@@ -34,6 +35,9 @@ class AppController : public QObject
     Q_PROPERTY(bool fastfetchAvailable READ fastfetchAvailable CONSTANT)
     Q_PROPERTY(bool starshipAvailable READ starshipAvailable CONSTANT)
     Q_PROPERTY(bool ulauncherAvailable READ ulauncherAvailable CONSTANT)
+    Q_PROPERTY(bool matugenDotsEnabled READ matugenDotsEnabled WRITE setMatugenDotsEnabled NOTIFY matugenDotsEnabledChanged)
+    Q_PROPERTY(bool colorCategoriesEnabled READ colorCategoriesEnabled WRITE setColorCategoriesEnabled NOTIFY colorCategoriesEnabledChanged)
+    Q_PROPERTY(bool matugenAvailable READ matugenAvailable CONSTANT)
     Q_PROPERTY(UlauncherController *ulauncher READ ulauncher CONSTANT)
 
 public:
@@ -49,6 +53,8 @@ public:
     QString currentWallpaperSize() const;
     QString selectedWallpaper() const;
     QString selectedWallpaperSize() const;
+    int selectedSourceColorIndex() const;
+    void setSelectedSourceColorIndex(int index);
     bool enableTransparency() const;
     void setEnableTransparency(bool enabled);
     int transparencyLevel() const;
@@ -61,12 +67,20 @@ public:
     bool starshipAvailable() const;
     bool ulauncherAvailable() const;
     UlauncherController *ulauncher() const;
+    bool matugenDotsEnabled() const;
+    void setMatugenDotsEnabled(bool enabled);
+    bool colorCategoriesEnabled() const;
+    void setColorCategoriesEnabled(bool enabled);
+    bool matugenAvailable() const;
 
     Q_INVOKABLE void addFolder(const QString &path);
     Q_INVOKABLE void removeFolder(int index);
     Q_INVOKABLE void setCurrentFolderIndex(int index);
     Q_INVOKABLE void selectWallpaper(const QString &filePath);
     Q_INVOKABLE void applyWallpaper();
+
+    // file:// URL (percent-encoded) for a local path; for QML media sources.
+    Q_INVOKABLE QString fileUrl(const QString &path) const;
 
 signals:
     void foldersChanged();
@@ -75,11 +89,14 @@ signals:
     void wallpaperSetResult(bool success, const QString &message);
     void currentWallpaperChanged();
     void selectedWallpaperChanged();
+    void selectedSourceColorIndexChanged();
 
     void enableTransparencyChanged();
     void transparencyLevelChanged();
     void defaultWindowWidthChanged();
     void defaultWindowHeightChanged();
+    void matugenDotsEnabledChanged();
+    void colorCategoriesEnabledChanged();
 private:
     void loadConfig();
     void saveConfig();
@@ -100,10 +117,19 @@ private:
     QString m_currentWallpaperSize;
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
+    // Index of the selected matugen source color dot of the current wallpaper;
+    // -1 = none. Reset on every wallpaper change.
+    int m_selectedSourceColorIndex = -1;
     bool m_enableTransparency = true;
     // Window background opacity in percent (0-100) used when transparency
     // is enabled; steps of 5 in the settings SpinBox.
     int m_transparencyLevel = kTransparencyLevelDefault;
+    // Show matugen color dots on the selected wallpaper; persisted in
+    // [Wallpapers] "matugenDots".
+    bool m_matugenDots = false;
+    // Show the color-category chips in the wallpapers search; persisted in
+    // [Wallpapers] "colorCategories".
+    bool m_colorCategories = false;
     bool m_fastfetchAvailable = false;
     bool m_starshipAvailable = false;
     bool m_ulauncherAvailable = false;

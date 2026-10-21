@@ -113,7 +113,7 @@ bool restoreConfigBackup()
 
 void clearCache()
 {
-    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
         + QStringLiteral("/fastfetch");
     QDir(cacheDir).removeRecursively();
 }

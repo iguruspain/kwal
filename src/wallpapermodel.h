@@ -2,18 +2,21 @@
 
 #include <QAbstractListModel>
 #include <QUrl>
+#include <QSet>
 #include <QtQml/qqmlregistration.h>
 class QFileSystemWatcher;
 class QTimer;
 
 
-// Provides the wallpaper images of one folder: path, display name and a cached thumbnail.
+// Provides the wallpaper media (images and videos) of one folder: path,
+// display name and a cached thumbnail.
 class WallpaperModel : public QAbstractListModel
 {
     Q_OBJECT
     QML_ELEMENT
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     Q_PROPERTY(QString filterText READ filterText WRITE setFilterText NOTIFY filterTextChanged)
+    Q_PROPERTY(QStringList categoryFilter READ categoryFilter NOTIFY categoryFilterChanged)
 
 public:
     enum Roles {
@@ -21,6 +24,8 @@ public:
         NameRole,
         ThumbnailRole,
         ExtensionRole,
+        IsVideoRole,
+        SourceColorsRole,
     };
 
     explicit WallpaperModel(QObject *parent = nullptr);
@@ -31,7 +36,14 @@ public:
 
     Q_INVOKABLE QString pathAt(int row) const;
     Q_INVOKABLE void setSourceDirectory(const QString &directory);
+    Q_INVOKABLE QStringList filePaths() const;
+    // Selected color categories; the visible entries must contain all of
+    // them (AND). Empty means "no category restriction".
+    QStringList categoryFilter() const;
+    Q_INVOKABLE void setCategoryFilter(const QStringList &categories);
 
+    // True if the file has one of the supported video extensions.
+    static bool isVideo(const QString &filePath);
     QString filterText() const;
     void setFilterText(const QString &text);
 
@@ -39,11 +51,16 @@ signals:
     // Emitted when the number of entries changes (via model reset).
     void countChanged();
     void filterTextChanged();
+    void categoryFilterChanged();
+    // Emitted after a full re-scan of the source directory.
+    void scanned();
 
 private:
     void refresh();
     void applyFilter();
+    void onEntryChanged(const QString &path);
     QUrl thumbnailFor(const QString &filePath) const;
+    QUrl videoThumbnailFor(const QString &filePath) const;
 
     QFileSystemWatcher *m_watcher = nullptr;
     QTimer *m_debounce = nullptr;
@@ -60,4 +77,5 @@ private:
     QVector<Entry> m_all;
     QVector<Entry> m_entries;
     QString m_filterText;
+    QSet<QString> m_categoryFilter;
 };

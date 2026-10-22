@@ -144,9 +144,13 @@ Kirigami.ApplicationWindow {
     pageStack.columnView.columnResizeMode: KirigamiLayouts.ColumnView.SingleColumn
 
     pageStack.initialPage: WallpapersPage {
+        id: wallpapersPage
         app: window.app
         addFolderDialog: folderPicker
-
+        // The PageRow keeps non-current pages alive and visible, so the
+        // video in the grid is gated on the page actually being the current
+        // tab, not on page.visible.
+        pageActive: window.pageStack.currentIndex === 0
         globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
         background: Rectangle {
             color: window.appBackground

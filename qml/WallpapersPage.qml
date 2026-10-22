@@ -12,6 +12,8 @@ Kirigami.Page {
     property AppController app
     property FolderDialog addFolderDialog
     property bool sidePaneOpen: false
+    // True while this page is the current tab; drives video playback gating.
+    property bool pageActive: true
     property bool searchOpen: false
 
     // The 15 matugen color categories (name/hex/label from the original
@@ -229,7 +231,7 @@ Kirigami.Page {
                         required property var model
                         app: page.app
                         grid: gridView
-                        pageVisible: page.visible
+                        pageVisible: page.pageActive
                         sourceColors: model.sourceColors
                         // GridView does not resize delegates; fill the cell like the old app.
                         width: gridView.cellWidth

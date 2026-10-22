@@ -32,11 +32,25 @@ ItemDelegate {
     readonly property bool isSelected: root.path === root.app.selectedWallpaper
     // Whether the wallpapers page is currently visible; passed down by the page.
     property bool pageVisible: true
-    // The selected video cell plays live (muted, looping) instead of the still.
-    // Media only exists while the cell is the active video, so at most one
-    // MediaPlayer/VideoOutput exists at a time; switching tabs, folders or
-    // selection stops playback and releases the GPU resources.
+    // The selected video cell plays live (muted, looping) instead of the
+    // still. Media only exists while the cell is the active video, so at
+    // most one MediaPlayer/VideoOutput exists at a time. Starting is
+    // delayed (videoStartTimer) so the highlight transition is not lagged
+    // by decoder/surface setup; stopping is immediate so switching tabs,
+    // folders or selection releases the GPU resources right away.
     readonly property bool videoActive: root.isVideo && root.isSelected && root.pageVisible
+    // Armed after the start delay; the Loader (whose active defaults to
+    // true) is only loaded once armed, and it disarms itself immediately
+    // whenever it stops.
+    property bool videoArmed: false
+
+    // Covers the highlight transition (GridView default ~250ms).
+    Timer {
+        id: videoStartTimer
+        interval: 250
+        running: root.videoActive
+        onTriggered: root.videoArmed = true
+    }
 
     // Copies a source color's hex to the clipboard and notifies the user,
     // like ColorDot on the tool pages.
@@ -81,15 +95,18 @@ ItemDelegate {
                         mass: 1.0
                     }
                 }
-                visible: !root.videoActive
+                // Stays visible until the first video frame lands on top;
+                // VideoOutput is transparent before the first frame.
                 opacity: status === Image.Ready ? 1.0 : 0.0
                 Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
             }
             Loader {
                 id: videoLoader
                 anchors.fill: parent
-                active: root.videoActive
+                active: root.videoActive && root.videoArmed
                 asynchronous: false
+                onActiveChanged: if (!active)
+                    root.videoArmed = false
                 sourceComponent: Component {
                     Item {
                         VideoOutput {
@@ -113,7 +130,7 @@ ItemDelegate {
             anchors.centerIn: parent
             source: "image-x-generic"
             color: Kirigami.Theme.disabledTextColor
-            visible: !root.videoActive && (root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error)
+            visible: !videoLoader.active && (root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error)
         }
         ToolButton {
             anchors.right: parent.right

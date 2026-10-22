@@ -42,7 +42,7 @@ Kirigami.OverlayDrawer {
     dragMargin: 0
     closePolicy: Popup.CloseOnEscape
     // qmllint disable unqualified
-    preferredSize: applicationWindow() ? Math.round(applicationWindow().width * 0.4) : 400
+    preferredSize: applicationWindow() ? Math.round(applicationWindow().width * 0.6) : 400
     // qmllint enable unqualified
 
     onWallpaperChanged: {

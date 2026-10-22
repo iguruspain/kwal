@@ -4,5 +4,3 @@ compile_commands.json
 CMakeFiles/
 .omp/
 .omp/*
-plan-*.md
-PLAN*.md

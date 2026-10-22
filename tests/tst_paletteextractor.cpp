@@ -18,6 +18,7 @@ class tst_PaletteExtractor : public QObject
 private slots:
     void testMaterialYouFromImage();
     void testMaterialYouMonochrome();
+    void testMaterialYouSchemes();
     void testExtractionFailed();
     void testImageMagick();
 
@@ -44,8 +45,9 @@ private:
 void tst_PaletteExtractor::testMaterialYouFromImage()
 {
     const PaletteExtractor::MaterialYouResult first = PaletteExtractor::materialYouFromImage(triColorImage(), false);
-    // 12 swatches: bg, fg, 3 primary, 3 secondary, 3 tertiary, neutral mid.
-    QCOMPARE(first.colors.size(), 12);
+    // 16 swatches in the M3 order: bg, primary 80/70, secondary 70/60,
+    // tertiary 60/50, on-bg, neutral 50, containers, surface, on-surface.
+    QCOMPARE(first.colors.size(), 16);
     for (const QString &hex : std::as_const(first.colors)) {
         QVERIFY(isValidHex(hex));
     }
@@ -55,8 +57,8 @@ void tst_PaletteExtractor::testMaterialYouFromImage()
     }
     QVERIFY(isValidHex(first.seed));
     QCOMPARE(first.seed, first.accents.first());
-    // Background and foreground must be distinguishable.
-    QVERIFY(first.colors.first() != first.colors.at(1));
+    // Background (0) and on-background (7) must be distinguishable.
+    QVERIFY(first.colors.first() != first.colors.at(7));
 
     // Deterministic for the same input.
     const PaletteExtractor::MaterialYouResult second = PaletteExtractor::materialYouFromImage(triColorImage(), false);
@@ -66,7 +68,7 @@ void tst_PaletteExtractor::testMaterialYouFromImage()
 
     // Dark and light schemes differ in background/foreground.
     const PaletteExtractor::MaterialYouResult dark = PaletteExtractor::materialYouFromImage(triColorImage(), true);
-    QVERIFY(dark.colors.size() == 12);
+    QVERIFY(dark.colors.size() == 16);
     QVERIFY(dark.colors.first() != first.colors.first());
 }
 
@@ -76,10 +78,35 @@ void tst_PaletteExtractor::testMaterialYouMonochrome()
     image.fill(QColor(0x80, 0x80, 0x80));
     const PaletteExtractor::MaterialYouResult result = PaletteExtractor::materialYouFromImage(image, false);
     // A monochromatic image still yields the full ramp.
-    QCOMPARE(result.colors.size(), 12);
+    QCOMPARE(result.colors.size(), 16);
     for (const QString &hex : std::as_const(result.colors)) {
         QVERIFY(isValidHex(hex));
     }
+}
+
+void tst_PaletteExtractor::testMaterialYouSchemes()
+{
+    static const char *names[] = {"TonalSpot", "Vibrant", "Expressive", "Content",
+                                  "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"};
+    const PaletteExtractor::MaterialYouResult spot = PaletteExtractor::materialYouFromImage(triColorImage(), false);
+    bool anyDifferent = false;
+    for (const char *name : names) {
+        const PaletteExtractor::MaterialYouResult result =
+            PaletteExtractor::materialYouFromImage(triColorImage(), false, QLatin1String(name));
+        QCOMPARE(result.colors.size(), 16);
+        for (const QString &hex : std::as_const(result.colors)) {
+            QVERIFY(isValidHex(hex));
+        }
+        if (result.colors != spot.colors) {
+            anyDifferent = true;
+        }
+    }
+    // At least one scheme must differ from Tonal Spot on this fixture.
+    QVERIFY(anyDifferent);
+    // Unknown scheme names fall back to Tonal Spot.
+    const PaletteExtractor::MaterialYouResult unknown =
+        PaletteExtractor::materialYouFromImage(triColorImage(), false, QStringLiteral("nosuchscheme"));
+    QCOMPARE(unknown.colors, spot.colors);
 }
 
 void tst_PaletteExtractor::testExtractionFailed()

@@ -226,7 +226,7 @@ void AppController::setMatugenDotsEnabled(bool enabled)
     }
     m_matugenDots = enabled;
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
-        info->setMatugenEnabled(m_matugenDots || m_colorCategories);
+        info->setMatugenEnabled(m_matugenDots);
     }
     saveConfig();
     emit matugenDotsEnabledChanged();
@@ -244,7 +244,7 @@ void AppController::setColorCategoriesEnabled(bool enabled)
     }
     m_colorCategories = enabled;
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
-        info->setMatugenEnabled(m_matugenDots || m_colorCategories);
+        info->setMatugenEnabled(m_matugenDots);
     }
     saveConfig();
     emit colorCategoriesEnabledChanged();
@@ -428,8 +428,8 @@ void AppController::loadConfig()
     // keys are absent on first run. Extraction runs while either is on.
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
         m_matugenDots = group.readEntry("matugenDots", info->matugenAvailable());
-        m_colorCategories = group.readEntry("colorCategories", info->matugenAvailable());
-        info->setMatugenEnabled(m_matugenDots || m_colorCategories);
+        m_colorCategories = group.readEntry("colorCategories", true);
+        info->setMatugenEnabled(m_matugenDots);
     }
 
     const KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));

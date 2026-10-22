@@ -72,12 +72,91 @@ if (NOT tomlplusplus_FOUND)
     FetchContent_MakeAvailable(tomlplusplus)
 endif()
 
+# material-color-utilities: the official Material You color library. Fetched at
+# a pinned commit and built as a static library (no system package exists).
+include(FetchContent)
+set(MCU_GIT_TAG "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3")
+FetchContent_Declare(
+    mcu
+    GIT_REPOSITORY https://github.com/material-foundation/material-color-utilities.git
+    GIT_TAG ${MCU_GIT_TAG}
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(mcu)
+# The pinned commit is not self-contained on GCC 16: temperature_cache.h
+# uses std::optional without including <optional>, and utils.cc /
+# wsmeans.cc pull in abseil (HexFromArgb is only called by mcu's own,
+# excluded tests). Patch the checked-out tree once so the static library
+# builds standalone.
+set(_mcu_root "${mcu_SOURCE_DIR}/cpp")
+set(_mcu_temp_cache "${_mcu_root}/temperature/temperature_cache.h")
+file(READ "${_mcu_temp_cache}" _mcu_temp_cache_src)
+if (NOT _mcu_temp_cache_src MATCHES "#include <optional>")
+    string(REPLACE "#include \"cpp/cam/hct.h\""
+            "#include \"cpp/cam/hct.h\"\n#include <optional>"
+            _mcu_temp_cache_src "${_mcu_temp_cache_src}")
+    file(WRITE "${_mcu_temp_cache}" "${_mcu_temp_cache_src}")
+endif()
+set(_mcu_utils "${_mcu_root}/utils/utils.cc")
+file(READ "${_mcu_utils}" _mcu_utils_src)
+if (_mcu_utils_src MATCHES "absl/strings/str_cat.h")
+    string(REPLACE "#include \"absl/strings/str_cat.h\"" "#include <format>"
+            _mcu_utils_src "${_mcu_utils_src}")
+    string(REPLACE "return absl::StrCat(absl::Hex(argb));"
+            "return std::format(\"{:08x}\", argb);"
+            _mcu_utils_src "${_mcu_utils_src}")
+    file(WRITE "${_mcu_utils}" "${_mcu_utils_src}")
+endif()
+set(_mcu_wsmeans "${_mcu_root}/quantize/wsmeans.cc")
+file(READ "${_mcu_wsmeans}" _mcu_wsmeans_src)
+if (_mcu_wsmeans_src MATCHES "absl/container/flat_hash_map.h")
+    string(REPLACE "#include \"absl/container/flat_hash_map.h\"" "#include <unordered_map>"
+            _mcu_wsmeans_src "${_mcu_wsmeans_src}")
+    string(REPLACE "absl::flat_hash_map" "std::unordered_map"
+            _mcu_wsmeans_src "${_mcu_wsmeans_src}")
+    file(WRITE "${_mcu_wsmeans}" "${_mcu_wsmeans_src}")
+endif()
+
+add_library(mcu_lib STATIC
+    ${mcu_SOURCE_DIR}/cpp/blend/blend.cc
+    ${mcu_SOURCE_DIR}/cpp/cam/cam.cc
+    ${mcu_SOURCE_DIR}/cpp/cam/hct.cc
+    ${mcu_SOURCE_DIR}/cpp/cam/hct_solver.cc
+    ${mcu_SOURCE_DIR}/cpp/cam/viewing_conditions.cc
+    ${mcu_SOURCE_DIR}/cpp/contrast/contrast.cc
+    ${mcu_SOURCE_DIR}/cpp/dislike/dislike.cc
+    ${mcu_SOURCE_DIR}/cpp/dynamiccolor/dynamic_color.cc
+    ${mcu_SOURCE_DIR}/cpp/dynamiccolor/dynamic_scheme.cc
+    ${mcu_SOURCE_DIR}/cpp/dynamiccolor/material_dynamic_colors.cc
+    ${mcu_SOURCE_DIR}/cpp/palettes/tones.cc
+    ${mcu_SOURCE_DIR}/cpp/quantize/celebi.cc
+    ${mcu_SOURCE_DIR}/cpp/quantize/lab.cc
+    ${mcu_SOURCE_DIR}/cpp/quantize/wsmeans.cc
+    ${mcu_SOURCE_DIR}/cpp/quantize/wu.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_content.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_expressive.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_fidelity.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_fruit_salad.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_monochrome.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_neutral.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_rainbow.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_tonal_spot.cc
+    ${mcu_SOURCE_DIR}/cpp/scheme/scheme_vibrant.cc
+    ${mcu_SOURCE_DIR}/cpp/score/score.cc
+    ${mcu_SOURCE_DIR}/cpp/temperature/temperature_cache.cc
+    ${mcu_SOURCE_DIR}/cpp/utils/utils.cc
+)
+target_include_directories(mcu_lib PUBLIC ${mcu_SOURCE_DIR})
+target_compile_features(mcu_lib PUBLIC cxx_std_20)
+
 qt_standard_project_setup(REQUIRES 6.8)
 
 enable_testing()
 
 qt_add_executable(kwal
  src/appcontroller.cpp
+ src/colorcategory.cpp
+ src/colorcategory.h
  src/appcontroller.h
  src/fastfetchcontroller.cpp
  src/fastfetchcontroller.h
@@ -149,6 +228,7 @@ Qt6::WebEngineQuick
  KF6::ConfigCore
     KF6::Kirigami
     PkgConfig::AVUTIL
+ mcu_lib
  tomlplusplus::tomlplusplus
 )
 
@@ -156,6 +236,8 @@ target_include_directories(kwal PRIVATE src)
 qt_add_executable(tst_appcontroller
  tests/tst_appcontroller.cpp
  src/appcontroller.cpp
+ src/colorcategory.cpp
+ src/colorcategory.h
  src/appcontroller.h
  src/templateinstaller.cpp
  src/templateinstaller.h
@@ -187,12 +269,15 @@ target_link_libraries(tst_appcontroller
  Qt6::Qml
  Qt6::DBus
  Qt6::Test
+ mcu_lib
  KF6::ConfigCore
 )
 add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
 qt_add_executable(tst_wallpapersinfo
  tests/tst_wallpapersinfo.cpp
  src/wallpapersinfo.cpp
+ src/colorcategory.cpp
+ src/colorcategory.h
  src/wallpapersinfo.h
  src/wallpapermodel.cpp
  src/wallpapermodel.h
@@ -204,11 +289,14 @@ target_link_libraries(tst_wallpapersinfo
  Qt6::Gui
  Qt6::Qml
  Qt6::Test
+ mcu_lib
 )
 add_test(NAME tst_wallpapersinfo COMMAND tst_wallpapersinfo)
 qt_add_executable(tst_paletteextractor
  tests/tst_paletteextractor.cpp
  src/paletteextractor.cpp
+ src/colorcategory.cpp
+ src/colorcategory.h
  src/paletteextractor.h
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
@@ -221,6 +309,7 @@ target_link_libraries(tst_paletteextractor
  Qt6::Core
  Qt6::Gui
  Qt6::Qml
+ mcu_lib
  Qt6::Test
 )
 add_test(NAME tst_paletteextractor COMMAND tst_paletteextractor)

@@ -1,6 +1,7 @@
 #include "wallpapersinfo.h"
+#include "colorcategory.h"
 #include <QByteArray>
-#include <QColor>
+#include <QImageReader>
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
@@ -13,6 +14,7 @@
 #include <QRegularExpression>
 #include <QRunnable>
 #include <QSet>
+#include <QSize>
 #include <QStandardPaths>
 #include <QThread>
 
@@ -20,11 +22,10 @@ namespace {
 
 constexpr int kRefreshThreadCount = 2;
 constexpr int kMatugenTimeoutMs = 30000;
-constexpr int kMaxSourceColors = 8;
-constexpr int kMaxCategories = 5;
+constexpr int kMaxAutoCategories = 5; // Automatic categories: top 5 by dominance (D13).
 
 // Runs "matugen image <image> --show-source-colors" and returns the parsed
-// "#rrggbb" colors: deduplicated, order preserved, at most kMaxSourceColors.
+// "#rrggbb" colors: deduplicated, order preserved.
 bool extractSourceColors(const QString &image, QStringList &colors)
 {
     const QString binary = QStandardPaths::findExecutable(QStringLiteral("matugen"));
@@ -53,9 +54,6 @@ bool extractSourceColors(const QString &image, QStringList &colors)
         const QString hex = QStringLiteral("#") + match.captured(1).toLower();
         if (!colors.contains(hex)) {
             colors.append(hex);
-        }
-        if (colors.size() >= kMaxSourceColors) {
-            break;
         }
     }
     return !colors.isEmpty();
@@ -162,6 +160,67 @@ private:
     QString m_type;
 };
 
+// Automatic color categories of <image> (Celebi top colors + HCT
+// classification), unique and in rank order, capped at kMaxAutoCategories.
+// Returns false when the image cannot be decoded; the categories stay
+// empty in that case.
+bool computeImageCategories(const QString &image, QStringList &categories)
+{
+    categories.clear();
+    if (image.isEmpty()) {
+        return false;
+    }
+    QImageReader reader(image);
+    reader.setScaledSize(QSize(128, 128));
+    const QImage scaled = reader.read();
+    if (scaled.isNull()) {
+        return false;
+    }
+    for (const quint32 argb : colorcategory::topImageColors(scaled, 8)) {
+        const QString category = colorcategory::colorCategory(argb);
+        if (!categories.contains(category)) {
+            categories.append(category);
+            if (categories.size() >= kMaxAutoCategories) {
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+// Recomputes the automatic categories of one wallpaper (the drawer's reset
+// button) and applies them on the object's thread.
+class RecalcJob : public QRunnable
+{
+public:
+    RecalcJob(QPointer<WallpapersInfo> info, QString path, QString image)
+        : m_info(std::move(info))
+        , m_path(std::move(path))
+        , m_image(std::move(image))
+    {
+        setAutoDelete(true);
+    }
+
+    void run() override
+    {
+        QStringList categories;
+        const bool ok = computeImageCategories(m_image, categories);
+        if (m_info) {
+            auto *info = m_info.data();
+            QMetaObject::invokeMethod(info,
+                                      [info, path = m_path, categories, ok] {
+                                          info->applyCalculatedCategories(path, categories, ok);
+                                      },
+                                      Qt::QueuedConnection);
+        }
+    }
+
+private:
+    QPointer<WallpapersInfo> m_info;
+    QString m_path;
+    QString m_image;
+};
+
 } // namespace
 
 WallpapersInfo *WallpapersInfo::s_instance = nullptr;
@@ -215,17 +274,19 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
     {
         QMutexLocker locker(&m_mutex);
         const auto it = m_entries.constFind(path);
-        // Up to date: same mtime, (video) the first frame was already extracted,
-        // and matugen extraction succeeded whenever it is enabled. Empty
-        // categories alone do not make an entry stale: lastModified is the
-        // staleness signal, and a failed or missing matugen run (no flag) is
-        // retried on the next scan.
+        // Up to date: same mtime, (video) the first frame was already
+        // extracted, image categories were computed (or are manual), and
+        // matugen extraction succeeded whenever it is enabled. Empty
+        // categories (failed decode) and a failed or missing matugen run
+        // (no flag) are retried on the next scan.
         const bool matugenOk = !m_matugenEnabled || it == m_entries.constEnd()
             || !it->sourceColorIndex.isEmpty() || it->matugenDone;
+        const bool categoriesOk = it == m_entries.constEnd()
+            || it->categoriesManual || !it->colorCategories.isEmpty();
         upToDate = it != m_entries.constEnd()
             && it->lastModified == mtime
             && !(type == QLatin1String("video") && it->firstFrame.isEmpty())
-            && matugenOk;
+            && matugenOk && categoriesOk;
         if (it != m_entries.constEnd()) {
             carryCategoriesManual = it->categoriesManual;
             carryTagsManual = it->tagsManual;
@@ -248,22 +309,17 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
             entry.firstFrame = framePath;
         }
     }
-    if (m_matugenEnabled && matugenAvailable()) {
-        const QString image = (type == QLatin1String("video")) ? entry.firstFrame : path;
+    const QString image = (type == QLatin1String("video")) ? entry.firstFrame : path;
+    // Color categories from the image itself (material-color-utilities:
+    // Celebi top colors + HCT classification), independent of matugen.
+    computeImageCategories(image, entry.colorCategories);
+    // Optional matugen source colors (wallpaper dots only).
+    if (m_matugenEnabled && matugenAvailable() && !image.isEmpty()) {
         QStringList colors;
-        if (!image.isEmpty() && extractSourceColors(image, colors)) {
+        if (extractSourceColors(image, colors)) {
             entry.sourceColorIndex = colors;
             // Extraction succeeded; empty colors are final, a failed run is retried.
             entry.matugenDone = true;
-            for (const QString &color : colors) {
-                const QString category = colorCategory(color);
-                if (!category.isEmpty() && !entry.colorCategories.contains(category)) {
-                    entry.colorCategories.append(category);
-                    if (entry.colorCategories.size() >= kMaxCategories) {
-                        break;
-                    }
-                }
-            }
         }
     }
     // Manually edited categories/tags survive rescans.
@@ -385,6 +441,11 @@ void WallpapersInfo::load()
         saveLocked();
         return;
     }
+    // v1 stored matugen-derived categories (HSL, capped); recompute them
+    // from the image on the next scan. Manual edits survive via the
+    // categoriesManual flag; lastModified=0 forces one full reprocess.
+    const bool migrate = doc.object().value(QStringLiteral("version")).toInt(1) < 2;
+    bool migrated = false;
     for (const QJsonValue &value : doc.object().value(QStringLiteral("files")).toArray()) {
         const QJsonObject obj = value.toObject();
         Entry entry;
@@ -399,9 +460,19 @@ void WallpapersInfo::load()
         entry.matugenDone = obj.value(QStringLiteral("matugen_done")).toBool();
         entry.categoriesManual = obj.value(QStringLiteral("categories_manual")).toBool();
         entry.tagsManual = obj.value(QStringLiteral("tags_manual")).toBool();
+        if (migrate) {
+            if (!entry.categoriesManual) {
+                entry.colorCategories.clear();
+            }
+            entry.lastModified = 0.0;
+            migrated = true;
+        }
         if (!entry.file.isEmpty()) {
             m_entries.insert(entry.file, entry);
         }
+    }
+    if (migrated) {
+        saveLocked(); // persist the index as version 2
     }
 }
 
@@ -430,7 +501,7 @@ void WallpapersInfo::saveLocked()
         files.append(obj);
     }
     QJsonObject root;
-    root[QStringLiteral("version")] = 1;
+    root[QStringLiteral("version")] = 2;
     root[QStringLiteral("files")] = files;
 
     const QString path = jsonPath();
@@ -513,6 +584,40 @@ void WallpapersInfo::setTags(const QString &path, const QStringList &tags)
     emit entryChanged(path);
 }
 
+void WallpapersInfo::recalculateCategories(const QString &path)
+{
+    QString image;
+    {
+        QMutexLocker locker(&m_mutex);
+        const auto it = m_entries.constFind(path);
+        if (it == m_entries.constEnd()) {
+            return;
+        }
+        image = it->type == QLatin1String("video") ? it->firstFrame : path;
+    }
+    if (image.isEmpty()) {
+        return;
+    }
+    m_pool.start(new RecalcJob(QPointer<WallpapersInfo>(this), path, image));
+}
+
+void WallpapersInfo::applyCalculatedCategories(const QString &path, const QStringList &categories, bool ok)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        auto it = m_entries.find(path);
+        if (it == m_entries.end() || !ok) {
+            // Unknown entry, or the image could not be decoded: keep the
+            // current categories (manual or not) untouched.
+            return;
+        }
+        it->colorCategories = categories;
+        it->categoriesManual = false;
+        saveLocked();
+    }
+    emit entryChanged(path);
+}
+
 bool WallpapersInfo::ffmpegAvailable() const
 {
     return !QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty();
@@ -535,60 +640,6 @@ void WallpapersInfo::setMatugenEnabled(bool enabled)
     }
     m_matugenEnabled = enabled;
     emit matugenEnabledChanged();
-}
-
-QString WallpapersInfo::colorCategory(const QString &hex)
-{
-    const QColor color(hex);
-    if (!color.isValid()) {
-        return {};
-    }
-    const double lightness = color.lightness() / 255.0;
-    const double saturation = color.saturation() / 255.0;
-    if (lightness < 0.12) {
-        return QStringLiteral("black");
-    }
-    if (lightness > 0.90 && saturation < 0.25) {
-        return QStringLiteral("white");
-    }
-    if (saturation < 0.15) {
-        return QStringLiteral("gray");
-    }
-    const int hue = color.hue(); // 0-359
-    if (hue >= 345 || hue < 15) {
-        return QStringLiteral("rose");
-    }
-    if (hue < 40) {
-        return QStringLiteral("red");
-    }
-    if (hue < 65) {
-        return QStringLiteral("orange");
-    }
-    if (hue < 90) {
-        return QStringLiteral("yellow");
-    }
-    if (hue < 150) {
-        return QStringLiteral("yellow-green");
-    }
-    if (hue < 170) {
-        return QStringLiteral("green");
-    }
-    if (hue < 190) {
-        return QStringLiteral("cyan-green");
-    }
-    if (hue < 210) {
-        return QStringLiteral("cyan");
-    }
-    if (hue < 240) {
-        return QStringLiteral("blue-cyan");
-    }
-    if (hue < 270) {
-        return QStringLiteral("blue");
-    }
-    if (hue < 300) {
-        return QStringLiteral("violet");
-    }
-    return QStringLiteral("magenta");
 }
 
 QString WallpapersInfo::jsonPath() const

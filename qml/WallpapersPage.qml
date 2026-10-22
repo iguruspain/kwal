@@ -145,7 +145,7 @@ Kirigami.Page {
             RowLayout {
                 id: categoryChips
                 spacing: Kirigami.Units.smallSpacing
-                visible: page.searchOpen && page.app.matugenAvailable && page.app.colorCategoriesEnabled
+                visible: page.searchOpen && page.app.colorCategoriesEnabled
                 Item { Layout.fillWidth: true }
                 Repeater {
                     model: page.categorySwatches

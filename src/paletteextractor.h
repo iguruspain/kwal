@@ -6,8 +6,9 @@
 #include <QStringList>
 #include <QThreadPool>
 
-// Wallpapers palettes: a simplified Material You scheme (median-cut + HSL
-// tone ramps, no OKLCH) and ImageMagick unique colors + best accent.
+// Wallpapers palettes: Material You (M3) schemes via Google's
+// material-color-utilities (Celebi quantization + 9-scheme selector) and
+// ImageMagick unique colors + best accent.
 // Extraction runs on a thread pool; signals are always emitted on the
 // thread the object lives on.
 class PaletteExtractor : public QObject
@@ -17,18 +18,26 @@ public:
     explicit PaletteExtractor(QObject *parent = nullptr);
 
     // backend: "materialyou" or "imagemagick". For videos the cached first
-    // frame is used (WallpapersInfo must be initialized).
-    Q_INVOKABLE void extract(const QString &path, const QString &backend, bool dark);
+    // frame is used (WallpapersInfo must be initialized). scheme: one of the
+    // nine M3 scheme names ("TonalSpot", "Vibrant", "Expressive", "Content",
+    // "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"); any
+    // other value falls back to TonalSpot. Only used by "materialyou".
+    Q_INVOKABLE void extract(const QString &path,
+                             const QString &backend,
+                             bool dark,
+                             const QString &scheme = QStringLiteral("TonalSpot"));
 
-    // Simplified Material You scheme of an image: 12 swatches (bg, fg,
-    // primary/secondary/tertiary tone steps, neutral mid), the three seed
-    // colors as accents and the primary seed as seed. Pure, thread-safe.
+    // Material You (M3) scheme of an image: 16 swatches (D6),
+    // the top-3 ranked colors as accents and the primary seed as seed.
+    // scheme as in extract().
     struct MaterialYouResult {
         QStringList colors;
         QStringList accents;
         QString seed;
     };
-    static MaterialYouResult materialYouFromImage(const QImage &image, bool dark);
+    static MaterialYouResult materialYouFromImage(const QImage &image,
+                                                  bool dark,
+                                                  const QString &scheme = QStringLiteral("TonalSpot"));
 
 signals:
     void paletteReady(const QString &path,
@@ -40,7 +49,7 @@ signals:
 private:
     // Pool job; nested so it can call the private process* methods.
     class ExtractJob;
-    void processMaterialYou(const QString &path, const QString &image, bool dark);
+    void processMaterialYou(const QString &path, const QString &image, bool dark, const QString &scheme);
     void processImageMagick(const QString &path, const QString &image);
     void emitReady(const QString &path,
                    const QStringList &colors,

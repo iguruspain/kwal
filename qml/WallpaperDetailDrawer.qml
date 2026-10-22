@@ -27,6 +27,7 @@ Kirigami.OverlayDrawer {
 
     property string paletteBackend: "materialyou"
     property bool paletteDark: true
+    property string paletteScheme: "TonalSpot"
     property var paletteSwatches: []
     property int paletteSelected: -1
     property bool paletteBusy: false
@@ -240,6 +241,18 @@ Kirigami.OverlayDrawer {
                             }
                         }
 
+                        // Recalculates the automatic categories from the
+                        // wallpaper image and clears the manual override.
+                        ToolButton {
+                            Layout.alignment: Qt.AlignRight
+                            icon.name: "view-refresh"
+                            Accessible.name: qsTr("Recalculate categories")
+                            ToolTip.text: qsTr("Replace with the automatic categories")
+                            ToolTip.visible: hovered
+                            ToolTip.delay: Kirigami.Units.toolTipDelay
+                            onClicked: drawer.app.wallpapersInfo.recalculateCategories(drawer.wallpaper)
+                        }
+
                         ToolButton {
                             Layout.alignment: Qt.AlignRight
                             icon.name: "list-add"
@@ -385,8 +398,25 @@ Kirigami.OverlayDrawer {
                             ToolTip.delay: Kirigami.Units.toolTipDelay
                             onClicked: {
                                 drawer.paletteBusy = true
-                                drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark)
+                                drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark, drawer.paletteScheme)
                             }
+                        }
+                    }
+
+                    // M3 scheme selector (Material You only); switching
+                    // scheme invalidates the current palette.
+                    ComboBox {
+                        id: schemeCombo
+                        Layout.fillWidth: true
+                        visible: drawer.paletteBackend === "materialyou"
+                        model: ["TonalSpot", "Vibrant", "Expressive", "Content", "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"]
+                        Accessible.name: qsTr("Material You scheme")
+                        ToolTip.text: qsTr("Material You scheme")
+                        ToolTip.visible: hovered
+                        onActivated: {
+                            drawer.paletteScheme = currentText
+                            drawer.paletteSwatches = []
+                            drawer.paletteSelected = -1
                         }
                     }
 
@@ -394,7 +424,7 @@ Kirigami.OverlayDrawer {
                     // copies the hex value to the clipboard.
                     Grid {
                         Layout.fillWidth: true
-                        columns: 6
+                        columns: 8
                         columnSpacing: Kirigami.Units.smallSpacing
                         rowSpacing: Kirigami.Units.smallSpacing
 

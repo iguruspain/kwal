@@ -11,9 +11,10 @@
 
 // Per-wallpaper metadata, persisted as JSON in ~/.cache/kwal/wallpapers_info.json:
 // media type, first video frame (PNG named by content MD5 in
-// ~/.cache/kwal/video_frames/), matugen source colors, color categories and tags.
-// Heavy per-file work (hashing, ffmpeg frame extraction) runs on a 2-thread pool;
-// signals are always emitted on the thread the object lives on.
+// ~/.cache/kwal/video_frames/), color categories (derived from the image via
+// material-color-utilities), optional matugen source colors and tags.
+// Heavy per-file work (hashing, ffmpeg frame extraction, color analysis) runs
+// on a 2-thread pool; signals are always emitted on the thread the object lives on.
 class WallpapersInfo : public QObject
 {
     Q_OBJECT
@@ -55,20 +56,22 @@ public:
     // Manual overrides from the UI; preserved across folder rescans.
     Q_INVOKABLE void setCategories(const QString &path, const QStringList &categories);
     Q_INVOKABLE void setTags(const QString &path, const QStringList &tags);
+    // Replaces the entry's categories with the automatic ones (computed from
+    // the image or first frame) and clears the manual flag.
+    Q_INVOKABLE void recalculateCategories(const QString &path);
 
     bool ffmpegAvailable() const;
     bool matugenAvailable() const;
     bool matugenEnabled() const;
     void setMatugenEnabled(bool enabled);
 
-    // Classifies a "#rrggbb" color into one of the 15 color categories
-    // (black, white, gray and 12 hue sectors); empty for invalid input.
-    static QString colorCategory(const QString &hex);
     Entry entryFor(const QString &path) const;
     void load();
 
     // Runs one refresh pass for <path>; called from the thread pool.
     void processFile(const QString &path, const QString &type);
+    // Applies the categories computed by RecalcJob on the object's thread.
+    void applyCalculatedCategories(const QString &path, const QStringList &categories, bool ok);
 
 signals:
     // Emitted after a file's entry was updated.

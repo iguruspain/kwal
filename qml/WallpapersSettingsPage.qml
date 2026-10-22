@@ -42,7 +42,6 @@ Kirigami.ScrollablePage {
                 Layout.fillWidth: true
                 text: qsTr("Show color categories")
                 subtitle: qsTr("Show the color category chips in the wallpapers search")
-                enabled: page.app.matugenAvailable
                 checked: page.app.colorCategoriesEnabled
                 onToggled: page.app.colorCategoriesEnabled = checked
             }

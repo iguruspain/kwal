@@ -2,7 +2,21 @@
 #include "wallpapersinfo.h"
 #include "wallpapermodel.h"
 
-#include <QColor>
+#include <cpp/cam/hct.h>
+#include <cpp/palettes/tones.h>
+#include <cpp/quantize/celebi.h>
+#include <cpp/score/score.h>
+#include <cpp/scheme/scheme_content.h>
+#include <cpp/scheme/scheme_expressive.h>
+#include <cpp/scheme/scheme_fidelity.h>
+#include <cpp/scheme/scheme_fruit_salad.h>
+#include <cpp/scheme/scheme_monochrome.h>
+#include <cpp/scheme/scheme_neutral.h>
+#include <cpp/scheme/scheme_rainbow.h>
+#include <cpp/scheme/scheme_tonal_spot.h>
+#include <cpp/scheme/scheme_vibrant.h>
+#include <cpp/utils/utils.h>
+
 #include <QImage>
 #include <QFileInfo>
 #include <QPointer>
@@ -13,109 +27,14 @@
 #include <QThread>
 
 #include <algorithm>
-#include <cmath>
+
+#include <vector>
 
 namespace {
 
-constexpr int kMedianCutBoxes = 128;
 constexpr int kProcessTimeoutMs = 30000;
 
-struct Rgb {
-    int r = 0;
-    int g = 0;
-    int b = 0;
-    int component(int channel) const
-    {
-        return channel == 0 ? r : (channel == 1 ? g : b);
-    }
-};
-
-struct Hsl {
-    double h = 0.0;
-    double s = 0.0;
-    double l = 0.0;
-};
-
-// Standard HSL (h, s, l in 0..1) from sRGB.
-Hsl rgbToHsl(int r, int g, int b)
-{
-    const double rd = r / 255.0;
-    const double gd = g / 255.0;
-    const double bd = b / 255.0;
-    const double cMax = std::max({rd, gd, bd});
-    const double cMin = std::min({rd, gd, bd});
-    const double delta = cMax - cMin;
-    const double l = (cMax + cMin) / 2.0;
-    if (delta == 0.0) {
-        return {0.0, 0.0, l};
-    }
-    const double s = l > 0.5 ? delta / (2.0 - cMax - cMin) : delta / (cMax + cMin);
-    double h;
-    if (cMax == rd) {
-        h = (gd - bd) / delta + (gd < bd ? 6.0 : 0.0);
-    } else if (cMax == gd) {
-        h = (bd - rd) / delta + 2.0;
-    } else {
-        h = (rd - gd) / delta + 4.0;
-    }
-    return {h / 6.0, s, l};
-}
-
-// HSL (h, s in 0..1, l in 0..1) to a color.
-QColor hslColor(double h, double s, double l)
-{
-    const int hue = static_cast<int>(std::lround(h * 360.0)) % 360;
-    const int sat = static_cast<int>(std::lround(s * 255.0));
-    const int lum = static_cast<int>(std::lround(l * 255.0));
-    return QColor::fromHsl(hue, sat, lum);
-}
-
-// Median-cut quantization: repeatedly splits the box with the largest
-// channel range at its median until `targetBoxes` boxes remain.
-QVector<QVector<Rgb>> medianCut(const QVector<Rgb> &pixels, int targetBoxes)
-{
-    QVector<QVector<Rgb>> boxes;
-    boxes.append(pixels);
-    while (boxes.size() < targetBoxes) {
-        int splitIndex = -1;
-        int splitChannel = 0;
-        int bestRange = 0;
-        for (int i = 0; i < boxes.size(); ++i) {
-            if (boxes[i].size() < 2) {
-                continue;
-            }
-            int minC[3] = {255, 255, 255};
-            int maxC[3] = {0, 0, 0};
-            for (const Rgb &p : boxes[i]) {
-                for (int c = 0; c < 3; ++c) {
-                    minC[c] = std::min(minC[c], p.component(c));
-                    maxC[c] = std::max(maxC[c], p.component(c));
-                }
-            }
-            for (int c = 0; c < 3; ++c) {
-                const int range = maxC[c] - minC[c];
-                if (range > bestRange) {
-                    bestRange = range;
-                    splitIndex = i;
-                    splitChannel = c;
-                }
-            }
-        }
-        if (splitIndex == -1) {
-            break; // everything is monochromatic
-        }
-        std::stable_sort(boxes[splitIndex].begin(),
-                         boxes[splitIndex].end(),
-                         [splitChannel](const Rgb &a, const Rgb &b) {
-                             return a.component(splitChannel) < b.component(splitChannel);
-                         });
-        const int half = boxes[splitIndex].size() / 2;
-        QVector<Rgb> second(boxes[splitIndex].constBegin() + half, boxes[splitIndex].constEnd());
-        boxes[splitIndex].erase(boxes[splitIndex].begin() + half, boxes[splitIndex].end());
-        boxes.insert(splitIndex + 1, std::move(second));
-    }
-    return boxes;
-}
+using material_color_utilities::Argb;
 
 QString firstAvailableBinary(const QStringList &candidates)
 {
@@ -128,8 +47,42 @@ QString firstAvailableBinary(const QStringList &candidates)
     return {};
 }
 
-
+// The nine Material You (M3) schemes share the (source, is_dark)
+// constructor; an unknown name falls back to Tonal Spot (D6). The result
+// is sliced to the DynamicScheme base: all 16 swatches (D6) are read from
+// base fields only.
+material_color_utilities::DynamicScheme buildScheme(const material_color_utilities::Hct &source,
+                                                    bool dark,
+                                                    const QString &schemeName)
+{
+    if (schemeName == QLatin1String("Vibrant")) {
+        return material_color_utilities::SchemeVibrant(source, dark);
+    }
+    if (schemeName == QLatin1String("Expressive")) {
+        return material_color_utilities::SchemeExpressive(source, dark);
+    }
+    if (schemeName == QLatin1String("Content")) {
+        return material_color_utilities::SchemeContent(source, dark);
+    }
+    if (schemeName == QLatin1String("FruitSalad")) {
+        return material_color_utilities::SchemeFruitSalad(source, dark);
+    }
+    if (schemeName == QLatin1String("Rainbow")) {
+        return material_color_utilities::SchemeRainbow(source, dark);
+    }
+    if (schemeName == QLatin1String("Monochrome")) {
+        return material_color_utilities::SchemeMonochrome(source, dark);
+    }
+    if (schemeName == QLatin1String("Neutral")) {
+        return material_color_utilities::SchemeNeutral(source, dark);
+    }
+    if (schemeName == QLatin1String("Fidelity")) {
+        return material_color_utilities::SchemeFidelity(source, dark);
+    }
+    return material_color_utilities::SchemeTonalSpot(source, dark);
+}
 } // namespace
+
 class PaletteExtractor::ExtractJob : public QRunnable
 {
 public:
@@ -137,12 +90,14 @@ public:
                QString path,
                QString image,
                QString backend,
-               bool dark)
+               bool dark,
+               QString schemeName)
         : m_extractor(std::move(extractor))
         , m_path(std::move(path))
         , m_image(std::move(image))
         , m_backend(std::move(backend))
         , m_dark(dark)
+        , m_schemeName(std::move(schemeName))
     {
         setAutoDelete(true);
     }
@@ -153,7 +108,7 @@ public:
             return;
         }
         if (m_backend == QLatin1String("materialyou")) {
-            m_extractor->processMaterialYou(m_path, m_image, m_dark);
+            m_extractor->processMaterialYou(m_path, m_image, m_dark, m_schemeName);
         } else {
             m_extractor->processImageMagick(m_path, m_image);
         }
@@ -165,6 +120,7 @@ private:
     QString m_image;
     QString m_backend;
     bool m_dark;
+    QString m_schemeName;
 };
 
 
@@ -174,7 +130,7 @@ PaletteExtractor::PaletteExtractor(QObject *parent)
     m_pool.setMaxThreadCount(2);
 }
 
-void PaletteExtractor::extract(const QString &path, const QString &backend, bool dark)
+void PaletteExtractor::extract(const QString &path, const QString &backend, bool dark, const QString &scheme)
 {
     if (path.isEmpty() || !QFileInfo(path).isFile()) {
         emit extractionFailed(path, tr("File does not exist."));
@@ -193,95 +149,72 @@ void PaletteExtractor::extract(const QString &path, const QString &backend, bool
             return;
         }
     }
-    m_pool.start(new ExtractJob(QPointer<PaletteExtractor>(this), path, std::move(image), backend, dark));
+    m_pool.start(new ExtractJob(QPointer<PaletteExtractor>(this), path, std::move(image), backend, dark, scheme));
 }
 
-PaletteExtractor::MaterialYouResult PaletteExtractor::materialYouFromImage(const QImage &image, bool dark)
+PaletteExtractor::MaterialYouResult PaletteExtractor::materialYouFromImage(const QImage &image, bool dark, const QString &schemeName)
 {
     MaterialYouResult result;
     const QImage scaled = image.scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    QVector<Rgb> pixels;
-    pixels.reserve(scaled.width() * scaled.height());
+    std::vector<Argb> pixels;
+    pixels.reserve(static_cast<std::size_t>(scaled.width()) * scaled.height());
     for (int y = 0; y < scaled.height(); ++y) {
         for (int x = 0; x < scaled.width(); ++x) {
             const QRgb pixel = scaled.pixel(x, y);
             if (qAlpha(pixel) > 128) {
-                pixels.append({qRed(pixel), qGreen(pixel), qBlue(pixel)});
+                pixels.push_back(material_color_utilities::ArgbFromRgb(qRed(pixel), qGreen(pixel), qBlue(pixel)));
             }
         }
     }
-    if (pixels.isEmpty()) {
+    if (pixels.empty()) {
         return result;
     }
 
-    struct Candidate {
-        Rgb mean;
-        Hsl hsl;
-        double score = 0.0;
+    // Google's material-color-utilities (Apache-2.0): Celebi quantization,
+    // ranked suggestions, and the selected M3 scheme from the primary seed.
+    const auto quantized = material_color_utilities::QuantizeCelebi(pixels, 128);
+    material_color_utilities::ScoreOptions options;
+    options.desired = 3;
+    const std::vector<Argb> ranked =
+        material_color_utilities::RankedSuggestions(quantized.color_to_count, options);
+    if (ranked.empty()) {
+        return result;
+    }
+    const auto source = material_color_utilities::Hct(ranked.front());
+    const auto scheme = buildScheme(source, dark, schemeName);
+
+    // The 16 swatches in the Material You (M3) order (D6).
+    const auto hex = [](const Argb argb) {
+        return QString::asprintf("#%06x", argb & 0xFFFFFF);
     };
-    QVector<Candidate> candidates;
-    for (const auto &box : medianCut(pixels, kMedianCutBoxes)) {
-        long rSum = 0;
-        long gSum = 0;
-        long bSum = 0;
-        for (const Rgb &p : box) {
-            rSum += p.r;
-            gSum += p.g;
-            bSum += p.b;
-        }
-        const Rgb mean{static_cast<int>(rSum / box.size()),
-                       static_cast<int>(gSum / box.size()),
-                       static_cast<int>(bSum / box.size())};
-        const Hsl hsl = rgbToHsl(mean.r, mean.g, mean.b);
-        const double score = hsl.s * (0.35 + 0.6 * std::abs(hsl.l - 0.5))
-            * std::log2(1.0 + box.size() / 512.0);
-        candidates.append({mean, hsl, score});
-    }
-    std::stable_sort(candidates.begin(),
-                     candidates.end(),
-                     [](const Candidate &a, const Candidate &b) { return a.score > b.score; });
-
-    const Candidate primary = candidates.first();
-    const Candidate secondary = candidates.size() > 1 ? candidates.at(1) : primary;
-    const Candidate tertiary = candidates.size() > 2 ? candidates.at(2) : primary;
-
-    // Tone ramp per role: role(t) = HSL(h_role, sat_role, t/100).
-    const auto tone = [](double hue, double sat, double tone) {
-        return hslColor(hue, sat, tone / 100.0);
+    const auto tone = [&hex](const material_color_utilities::TonalPalette &palette, double t) {
+        return hex(palette.get(t));
     };
-    const auto hex = [](const QColor &color) { return color.name(); };
+    result.colors.append(hex(scheme.GetBackground()));
+    result.colors.append(tone(scheme.primary_palette, 80.0));
+    result.colors.append(tone(scheme.primary_palette, 70.0));
+    result.colors.append(tone(scheme.secondary_palette, 70.0));
+    result.colors.append(tone(scheme.secondary_palette, 60.0));
+    result.colors.append(tone(scheme.tertiary_palette, 60.0));
+    result.colors.append(tone(scheme.tertiary_palette, 50.0));
+    result.colors.append(hex(scheme.GetOnBackground()));
+    result.colors.append(tone(scheme.neutral_palette, 50.0));
+    result.colors.append(hex(scheme.GetPrimaryContainer()));
+    result.colors.append(hex(scheme.GetSecondaryContainer()));
+    result.colors.append(hex(scheme.GetTertiaryContainer()));
+    result.colors.append(hex(scheme.GetSurfaceContainer()));
+    result.colors.append(hex(scheme.GetSurfaceContainerHigh()));
+    result.colors.append(hex(scheme.GetOnSurface()));
+    result.colors.append(hex(scheme.GetOnSurfaceVariant()));
 
-    const double neutralHue = primary.hsl.h;
-    const QStringList primaryTones = dark ? QStringList({QStringLiteral("90"), QStringLiteral("80"), QStringLiteral("70")})
-                                          : QStringList({QStringLiteral("30"), QStringLiteral("40"), QStringLiteral("50")});
-    const QStringList secondaryTones = dark ? QStringList({QStringLiteral("85"), QStringLiteral("70"), QStringLiteral("60")})
-                                            : QStringList({QStringLiteral("35"), QStringLiteral("50"), QStringLiteral("60")});
-    const QStringList tertiaryTones = dark ? QStringList({QStringLiteral("80"), QStringLiteral("70"), QStringLiteral("60")})
-                                           : QStringList({QStringLiteral("40"), QStringLiteral("50"), QStringLiteral("60")});
-    const double backgroundTone = dark ? 10.0 : 95.0;
-    const double foregroundTone = dark ? 95.0 : 10.0;
-
-    result.colors.append(hex(tone(neutralHue, 0.05, backgroundTone))); // bg
-    result.colors.append(hex(tone(neutralHue, 0.05, foregroundTone))); // fg
-    for (const QString &toneValue : primaryTones) {
-        result.colors.append(hex(tone(primary.hsl.h, 1.0, toneValue.toDouble())));
+    for (const Argb seed : ranked) {
+        result.accents.append(hex(seed));
     }
-    for (const QString &toneValue : secondaryTones) {
-        result.colors.append(hex(tone(secondary.hsl.h, 0.75, toneValue.toDouble())));
-    }
-    for (const QString &toneValue : tertiaryTones) {
-        result.colors.append(hex(tone(tertiary.hsl.h, 0.75, toneValue.toDouble())));
-    }
-    result.colors.append(hex(tone(neutralHue, 0.05, 50.0))); // neutral mid
-
-    result.accents.append(hex(QColor(primary.mean.r, primary.mean.g, primary.mean.b)));
-    result.accents.append(hex(QColor(secondary.mean.r, secondary.mean.g, secondary.mean.b)));
-    result.accents.append(hex(QColor(tertiary.mean.r, tertiary.mean.g, tertiary.mean.b)));
     result.seed = result.accents.first();
     return result;
 }
 
-void PaletteExtractor::processMaterialYou(const QString &path, const QString &image, bool dark)
+void PaletteExtractor::processMaterialYou(const QString &path, const QString &image, bool dark, const QString &schemeName)
 {
     const QImage loaded = QImage(image);
     MaterialYouResult result;
@@ -289,7 +222,7 @@ void PaletteExtractor::processMaterialYou(const QString &path, const QString &im
         emitReady(path, QStringList(), QStringList(), QString());
         return;
     }
-    result = materialYouFromImage(loaded, dark);
+    result = materialYouFromImage(loaded, dark, schemeName);
     emitReady(path, result.colors, result.accents, result.seed);
 }
 

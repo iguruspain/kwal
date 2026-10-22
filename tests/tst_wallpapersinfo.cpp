@@ -1,4 +1,5 @@
 #include "wallpapersinfo.h"
+#include "colorcategory.h"
 #include "wallpapermodel.h"
 
 #include <QColor>
@@ -9,6 +10,7 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QImageReader>
+#include <QPainter>
 #include <QJsonDocument>
 #include <QProcess>
 #include <QSize>
@@ -32,6 +34,8 @@ private slots:
     void testMatugenUpToDate();
     void testCategoryFilter();
     void testSweep();
+    void testRecalculateCategories();
+    void testAutoCategoryCap();
 
 private:
     static QString cacheRoot()
@@ -163,22 +167,24 @@ void tst_WallpapersInfo::testFirstFrame()
 void tst_WallpapersInfo::testColorCategory()
 {
     // D4: black/white/gray + 12 hue sectors with the plan's boundaries.
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#000000")), QStringLiteral("black"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#FFFFFF")), QStringLiteral("white"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#808080")), QStringLiteral("gray"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#FF0000")), QStringLiteral("rose"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#FF4D00")), QStringLiteral("red"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#FFD400")), QStringLiteral("orange"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#99FF00")), QStringLiteral("yellow"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#00FF00")), QStringLiteral("yellow-green"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#00FFA3")), QStringLiteral("green"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#00FFFF")), QStringLiteral("cyan-green"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#00B3FF")), QStringLiteral("cyan"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#4D7FFF")), QStringLiteral("blue-cyan"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#0000FF")), QStringLiteral("blue"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#9932CC")), QStringLiteral("violet"));
-    QCOMPARE(WallpapersInfo::colorCategory(QStringLiteral("#FF00FF")), QStringLiteral("magenta"));
-    QCOMPARE(WallpapersInfo::colorCategory(QString()), QString());
+    const auto argb = [](const QString &hex) {
+        return static_cast<quint32>(0xFF000000) | static_cast<quint32>(hex.mid(1).toUInt(nullptr, 16));
+    };
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#000000"))), QStringLiteral("black"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#FFFFFF"))), QStringLiteral("white"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#808080"))), QStringLiteral("gray"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#FF0000"))), QStringLiteral("red"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#FF8000"))), QStringLiteral("orange"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#FFD400"))), QStringLiteral("yellow"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#99FF00"))), QStringLiteral("yellow-green"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#00FF00"))), QStringLiteral("green"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#00FFA3"))), QStringLiteral("cyan-green"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#00FFFF"))), QStringLiteral("cyan"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#00B3FF"))), QStringLiteral("blue-cyan"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#0000FF"))), QStringLiteral("blue"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#9932CC"))), QStringLiteral("violet"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#FF00FF"))), QStringLiteral("magenta"));
+    QCOMPARE(colorcategory::colorCategory(argb(QStringLiteral("#FF6699"))), QStringLiteral("rose"));
 }
 
 void tst_WallpapersInfo::testMatugenEnabled()
@@ -242,10 +248,11 @@ void tst_WallpapersInfo::testMatugenUpToDate()
     obj[QStringLiteral("type")] = QStringLiteral("image");
     obj[QStringLiteral("last_modified")] = mtime;
     obj[QStringLiteral("matugen_done")] = true;
+    obj[QStringLiteral("color_categories")] = QJsonArray{QStringLiteral("blue")};
     QJsonArray files;
     files.append(obj);
     QJsonObject root;
-    root[QStringLiteral("version")] = 1;
+    root[QStringLiteral("version")] = 2;
     root[QStringLiteral("files")] = files;
     writeFile(cacheRoot() + QStringLiteral("/wallpapers_info.json"), QJsonDocument(root).toJson());
 
@@ -357,6 +364,76 @@ void tst_WallpapersInfo::testSweep()
     QSignalSpy changed(info, &WallpapersInfo::entryChanged);
     info->sweep();
     QCOMPARE(changed.count(), 0);
+}
+
+void tst_WallpapersInfo::testRecalculateCategories()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.path() + QStringLiteral("/solid.png");
+    writeImage(path, QColor(0, 0, 255)); // -> "blue"
+
+    info->refreshFile(path, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path) == QStringList{QStringLiteral("blue")}, 30000);
+
+    // A manual override replaces the automatic categories...
+    info->setCategories(path, QStringList{QStringLiteral("rose")});
+    QCOMPARE(info->entryFor(path).categoriesManual, true);
+    QCOMPARE(info->colorCategoriesFor(path), QStringList{QStringLiteral("rose")});
+
+    // ...and recalculateCategories restores the computed ones, clearing the flag.
+    QSignalSpy changed(info, &WallpapersInfo::entryChanged);
+    info->recalculateCategories(path);
+    QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path) == QStringList{QStringLiteral("blue")}, 30000);
+    QCOMPARE(info->entryFor(path).categoriesManual, false);
+    QCOMPARE(changed.count(), 1);
+
+    // Unknown path is a no-op.
+    info->recalculateCategories(QStringLiteral("/nonexistent/missing.png"));
+    QCOMPARE(changed.count(), 1);
+
+    // The recalculated entry is up to date again: a rescan keeps the
+    // automatic categories without reprocessing.
+    QSignalSpy rescan(info, &WallpapersInfo::entryChanged);
+    info->refreshFile(path, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path) == QStringList{QStringLiteral("blue")}, 30000);
+    QCOMPARE(rescan.count(), 0);
+}
+
+void tst_WallpapersInfo::testAutoCategoryCap()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.path() + QStringLiteral("/stripes.png");
+    // Eight solid stripes in eight different categories: the top-8 colors
+    // are all distinct, so the automatic categories hit the cap (5).
+    QImage image(80, 20, QImage::Format_RGB32);
+    const QList<QColor> stripes = {
+        QColor(200, 0, 0),
+        QColor(230, 110, 0),
+        QColor(220, 220, 0),
+        QColor(0, 150, 0),
+        QColor(0, 0, 220),
+        QColor(150, 0, 150),
+        QColor(245, 245, 245),
+        QColor(15, 15, 15)
+    };
+    QPainter painter(&image);
+    for (int i = 0; i < stripes.size(); ++i) {
+        painter.fillRect(i * 10, 0, 10, image.height(), stripes[i]);
+    }
+    painter.end();
+    QVERIFY(image.save(path, "PNG"));
+
+    info->refreshFile(path, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path).size() == 5, 30000);
+
+    // Manual edits are not capped: all 15 categories can be assigned.
+    info->setCategories(path, colorcategory::categoryList());
+    QCOMPARE(info->colorCategoriesFor(path).size(), 15);
+    QCOMPARE(info->entryFor(path).categoriesManual, true);
 }
 
 int main(int argc, char *argv[])

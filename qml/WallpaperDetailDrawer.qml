@@ -22,6 +22,8 @@ Kirigami.OverlayDrawer {
     // written back through WallpapersInfo.
     property var categories: []
     property var tags: []
+    // Whether the tag input field is shown; toggled by the "+" button.
+    property bool tagInputVisible: false
 
     property string paletteBackend: "materialyou"
     property bool paletteDark: true
@@ -275,36 +277,66 @@ Kirigami.OverlayDrawer {
                     }
 
                     // Tags: existing ones as removable chips, new ones
-                    // added by typing and pressing Enter.
+                    // added by typing and pressing Enter. The chips flow
+                    // horizontally (wrapping) like the categories: the
+                    // Repeater's children would stack vertically directly
+                    // inside a ColumnLayout.
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
 
-                        Repeater {
-                            model: drawer.tags
-                            delegate: Kirigami.Chip {
-                                required property string modelData
-                                Layout.preferredWidth: implicitWidth
-                                width: implicitWidth
-                                text: modelData
-                                onRemoved: {
-                                    const t = drawer.tags.filter(t2 => t2 !== modelData)
-                                    drawer.tags = t
-                                    drawer.app.wallpapersInfo.setTags(drawer.wallpaper, t)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+                                Repeater {
+                                    model: drawer.tags
+                                    delegate: Kirigami.Chip {
+                                        required property string modelData
+                                        width: implicitWidth
+                                        text: modelData
+                                        onRemoved: {
+                                            const t = drawer.tags.filter(t2 => t2 !== modelData)
+                                            drawer.tags = t
+                                            drawer.app.wallpapersInfo.setTags(drawer.wallpaper, t)
+                                        }
+                                    }
                                 }
+                            }
+
+                            ToolButton {
+                                Layout.alignment: Qt.AlignRight
+                                icon.name: "list-add"
+                                checkable: true
+                                checked: drawer.tagInputVisible
+                                display: AbstractButton.IconOnly
+                                Accessible.name: qsTr("Show or hide the tag input")
+                                ToolTip.text: qsTr("Show or hide the tag input")
+                                ToolTip.visible: hovered
+                                ToolTip.delay: Kirigami.Units.toolTipDelay
+                                onClicked: drawer.tagInputVisible = checked
                             }
                         }
 
                         TextField {
                             id: tagField
                             Layout.fillWidth: true
-                            placeholderText: qsTr("Add tag...")
+                            visible: drawer.tagInputVisible
+                            onVisibleChanged: if (visible) forceActiveFocus()
+                            placeholderText: qsTr("Add tags, separated by commas...")
                             onAccepted: {
-                                const t = tagField.text.trim()
-                                // Ignore empty input and duplicates.
-                                if (t !== "" && !drawer.tags.includes(t)) {
-                                    const list = drawer.tags.slice()
-                                    list.push(t)
+                                // Comma-separated input adds several tags at once;
+                                // empty parts and duplicates are ignored.
+                                const parts = tagField.text.split(",").map(p => p.trim())
+                                const list = drawer.tags.slice()
+                                for (const t of parts) {
+                                    if (t !== "" && !list.includes(t))
+                                        list.push(t)
+                                }
+                                if (list.length !== drawer.tags.length) {
                                     drawer.tags = list
                                     drawer.app.wallpapersInfo.setTags(drawer.wallpaper, list)
                                 }

@@ -164,6 +164,8 @@ qt_add_executable(kwal
  src/fdothumbnailprovider.h
  src/paletteextractor.cpp
  src/paletteextractor.h
+ src/plasmaapply.cpp
+ src/plasmaapply.h
  src/main.cpp
  src/starshipcontroller.cpp
  src/starshipcontroller.h
@@ -247,6 +249,8 @@ qt_add_executable(tst_appcontroller
  src/wallpapersinfo.h
  src/paletteextractor.cpp
  src/paletteextractor.h
+ src/plasmaapply.cpp
+ src/plasmaapply.h
  src/ulaunchercontroller.cpp
  src/ulaunchercontroller.h
  src/tools/fileutil.cpp
@@ -292,6 +296,28 @@ target_link_libraries(tst_wallpapersinfo
  mcu_lib
 )
 add_test(NAME tst_wallpapersinfo COMMAND tst_wallpapersinfo)
+qt_add_executable(tst_plasmaapply
+ tests/tst_plasmaapply.cpp
+ src/plasmaapply.cpp
+ src/plasmaapply.h
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
+ src/colorcategory.cpp
+ src/colorcategory.h
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
+)
+target_include_directories(tst_plasmaapply PRIVATE src)
+target_link_libraries(tst_plasmaapply
+ PRIVATE
+ Qt6::Core
+ Qt6::Gui
+ Qt6::DBus
+ Qt6::Qml
+ Qt6::Test
+ mcu_lib
+)
+add_test(NAME tst_plasmaapply COMMAND tst_plasmaapply)
 qt_add_executable(tst_paletteextractor
  tests/tst_paletteextractor.cpp
  src/paletteextractor.cpp

@@ -26,6 +26,8 @@ public:
     struct Entry {
         QString file;
         QString type; // "image" or "video"
+        // Cache copy created by the optional P5 resize; empty when the
+        // original is applied as-is.
         QString resized;
         QString firstFrame;
         QStringList sourceColorIndex;
@@ -37,6 +39,9 @@ public:
         // Categories/tags were edited manually in the UI; rescans preserve them.
         bool categoriesManual = false;
         bool tagsManual = false;
+        // The P5 resize plan ran to a conclusion for the current mtime; a
+        // failed or missing plan (no ffmpeg, probe error) is retried.
+        bool resizeDone = false;
         double lastModified = 0.0;
     };
 
@@ -45,7 +50,8 @@ public:
     static WallpapersInfo *instance();
 
     Q_INVOKABLE void refreshFile(const QString &path, const QString &type);
-    // Removes index entries whose file no longer exists (and their extracted
+    // Re-runs the P5 resize plan for one video (settings change).
+    Q_INVOKABLE void planResize(const QString &path);
     // frames), plus any orphan frame PNGs in the cache. Call after a folder
     // scan; emits entryChanged for every removed path.
     Q_INVOKABLE void sweep();
@@ -64,6 +70,8 @@ public:
     bool matugenAvailable() const;
     bool matugenEnabled() const;
     void setMatugenEnabled(bool enabled);
+    // P5 resize settings, mirrored by AppController from KConfig.
+    void setResizeSettings(bool enabled, int height, int fps);
 
     Entry entryFor(const QString &path) const;
     void load();
@@ -72,6 +80,8 @@ public:
     void processFile(const QString &path, const QString &type);
     // Applies the categories computed by RecalcJob on the object's thread.
     void applyCalculatedCategories(const QString &path, const QStringList &categories, bool ok);
+    // Runs one P5 resize pass for <path>; called from the thread pool.
+    void processResize(const QString &path);
 
 signals:
     // Emitted after a file's entry was updated.
@@ -90,6 +100,7 @@ private:
 
     QString jsonPath() const;
     QString framesDir() const;
+    QString resizesDir() const;
 
     QString m_root;
     QHash<QString, Entry> m_entries;
@@ -97,6 +108,13 @@ private:
     int m_pending = 0; // refresh jobs in flight, guarded by m_mutex
     QThreadPool m_pool;
     std::atomic<bool> m_matugenEnabled{false};
+    // P5 resize settings, read by pool jobs.
+    std::atomic<bool> m_resizeEnabled{false};
+    std::atomic<int> m_resizeHeight{1080};
+    std::atomic<int> m_resizeFps{0};
+    // One-time "ffmpeg/ffprobe not found" warning.
+    std::atomic<bool> m_ffmpegWarned{false};
+    void warnFfmpegOnce();
 
     static WallpapersInfo *s_instance;
 };

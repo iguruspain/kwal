@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QImageReader>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -22,6 +23,7 @@ namespace {
 
 constexpr int kRefreshThreadCount = 2;
 constexpr int kMatugenTimeoutMs = 30000;
+constexpr int kResizeTimeoutMs = 600000; // P5 encode cap (plan: max 10 min).
 constexpr int kMaxAutoCategories = 5; // Automatic categories: top 5 by dominance (D13).
 
 // Runs "matugen image <image> --show-source-colors" and returns the parsed
@@ -221,6 +223,211 @@ private:
     QString m_image;
 };
 
+// ffprobe height/fps of the first video stream.
+struct VideoProbe {
+    bool ok = false;
+    int height = 0;
+    double fps = 0.0;
+};
+
+VideoProbe probeVideo(const QString &probeBinary, const QString &video)
+{
+    VideoProbe result;
+    QProcess process;
+    process.start(probeBinary,
+                  {QStringLiteral("-v"),
+                   QStringLiteral("error"),
+                   QStringLiteral("-select_streams"),
+                   QStringLiteral("v:0"),
+                   QStringLiteral("-show_entries"),
+                   QStringLiteral("stream=width,height,r_frame_rate"),
+                   QStringLiteral("-of"),
+                   QStringLiteral("json"),
+                   video});
+    if (!process.waitForStarted(5000) || !process.waitForFinished(kMatugenTimeoutMs)) {
+        process.kill();
+        return result;
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        return result;
+    }
+    QJsonParseError parseError{};
+    const QJsonDocument doc = QJsonDocument::fromJson(process.readAllStandardOutput(), &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        return result;
+    }
+    const QJsonObject stream = doc.object().value(QStringLiteral("streams")).toArray().first().toObject();
+    const int height = stream.value(QStringLiteral("height")).toInt();
+    result.height = height;
+    const QStringList rates = stream.value(QStringLiteral("r_frame_rate")).toString().split(QLatin1Char('/'));
+    if (rates.size() == 2) {
+        const double num = rates.at(0).toDouble();
+        const double den = rates.at(1).toDouble();
+        if (den > 0.0) {
+            result.fps = num / den;
+        }
+    }
+    result.ok = height > 0;
+    return result;
+}
+
+// The P5 resize decision: false = apply the original as-is. <outHeight> is
+// always set to the planned target height.
+bool computeResizePlan(int srcHeight, double srcFps, int targetHeight, int targetFps,
+                       int &outHeight, int &outFps)
+{
+    outHeight = qMin(targetHeight, srcHeight) & ~1;
+    outFps = 0;
+    const bool scale = outHeight < (srcHeight & ~1);
+    const bool fpsFilter = targetFps > 0 && targetFps < srcFps - 0.01;
+    if (fpsFilter) {
+        outFps = targetFps;
+    }
+    return scale || fpsFilter;
+}
+
+// Encodes the resized copy to <output> via a tmp file + rename; the
+// -progress stream is drained so the pipe never fills during a long encode.
+bool encodeResized(const QString &ffmpegBinary, const QString &video, const QString &output,
+                   int targetHeight, int fps, bool scale)
+{
+    const QString tmp = output + QStringLiteral(".tmp");
+    QProcess process;
+    QStringList args;
+    args << QStringLiteral("-v")
+         << QStringLiteral("error")
+         << QStringLiteral("-y")
+         << QStringLiteral("-progress")
+         << QStringLiteral("pipe:1")
+         << QStringLiteral("-nostats")
+         << QStringLiteral("-i")
+         << video
+         << QStringLiteral("-map")
+         << QStringLiteral("0:v:0")
+         << QStringLiteral("-an")
+         << QStringLiteral("-sn")
+         << QStringLiteral("-dn");
+    QStringList filter;
+    if (scale) {
+        filter << QStringLiteral("scale=-2:%1:flags=lanczos").arg(targetHeight);
+    }
+    if (fps > 0) {
+        filter << QStringLiteral("fps=%1").arg(fps);
+    }
+    if (!filter.isEmpty()) {
+        args << QStringLiteral("-vf") << filter.join(QLatin1Char(','));
+    }
+    args << QStringLiteral("-c:v")
+         << QStringLiteral("libx264")
+         << QStringLiteral("-preset")
+         << QStringLiteral("veryfast")
+         << QStringLiteral("-crf")
+         << QStringLiteral("23")
+         << QStringLiteral("-pix_fmt")
+         << QStringLiteral("yuv420p")
+         << QStringLiteral("-movflags")
+         << QStringLiteral("+faststart")
+         << QStringLiteral("-f")
+         << QStringLiteral("mp4")
+         << tmp;
+    process.start(ffmpegBinary, args);
+    if (!process.waitForStarted(5000)) {
+        return false;
+    }
+    QElapsedTimer timer;
+    timer.start();
+    while (process.state() != QProcess::NotRunning) {
+        if (timer.elapsed() > kResizeTimeoutMs) {
+            process.kill();
+            return false;
+        }
+        if (process.waitForReadyRead(100)) {
+            process.readAllStandardOutput();
+            process.readAllStandardError();
+        }
+    }
+    process.readAllStandardOutput();
+    process.readAllStandardError();
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        QFile::remove(tmp);
+        return false;
+    }
+    QFile::remove(output); // QFile::rename does not replace an existing target.
+    if (!QFile::rename(tmp, output)) {
+        QFile::remove(tmp);
+        return false;
+    }
+    return true;
+}
+
+struct ResizeResult {
+    // "" = no resize applied; otherwise the cache copy path.
+    QString output;
+    // The plan ran to a conclusion (encoded, reused, or not needed by the
+    // settings); false = probe/encode failure, retry on the next scan.
+    bool planned = false;
+    bool noFfmpeg = false;
+};
+
+// Probes <video> and encodes the resized cache copy when the P5 settings
+// call for it; reuses an existing non-empty copy.
+ResizeResult planAndEncode(const QString &resizesRoot, const QString &video, int targetHeight,
+                           int targetFps)
+{
+    ResizeResult result;
+    const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    const QString ffprobe = QStandardPaths::findExecutable(QStringLiteral("ffprobe"));
+    if (ffmpeg.isEmpty() || ffprobe.isEmpty()) {
+        result.noFfmpeg = true;
+        return result;
+    }
+    const VideoProbe probe = probeVideo(ffprobe, video);
+    if (!probe.ok) {
+        return result;
+    }
+    int height = 0;
+    int fps = 0;
+    const bool scale = computeResizePlan(probe.height, probe.fps, targetHeight, targetFps, height, fps);
+    result.planned = true;
+    if (!scale) {
+        return result;
+    }
+    const int fpsToken = fps > 0 ? fps : qRound(probe.fps);
+    const QString output = resizesRoot + QStringLiteral("/")
+        + contentMd5(video) + QStringLiteral("_%1p%2.mp4").arg(height).arg(fpsToken);
+    if (QFileInfo(output).size() > 0) {
+        result.output = output;
+        return result;
+    }
+    QDir().mkpath(QFileInfo(output).absolutePath());
+    if (encodeResized(ffmpeg, video, output, height, fps, height < (probe.height & ~1))) {
+        result.output = output;
+    }
+    return result;
+}
+
+// Re-runs the P5 resize plan for one video (settings change).
+class ResizeJob : public QRunnable
+{
+public:
+    ResizeJob(QPointer<WallpapersInfo> info, QString path)
+        : m_info(std::move(info))
+        , m_path(std::move(path))
+    {
+        setAutoDelete(true);
+    }
+
+    void run() override
+    {
+        if (m_info) {
+            m_info->processResize(m_path);
+        }
+    }
+
+private:
+    QPointer<WallpapersInfo> m_info;
+    QString m_path;
+};
 } // namespace
 
 WallpapersInfo *WallpapersInfo::s_instance = nullptr;
@@ -283,10 +490,14 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
             || !it->sourceColorIndex.isEmpty() || it->matugenDone;
         const bool categoriesOk = it == m_entries.constEnd()
             || it->categoriesManual || !it->colorCategories.isEmpty();
+        // P5: while the setting is on, the resize plan must have a recorded
+        // conclusion for the current mtime (it is re-planned otherwise).
+        const bool resizeOk = !m_resizeEnabled
+            || it == m_entries.constEnd() || it->resizeDone;
         upToDate = it != m_entries.constEnd()
             && it->lastModified == mtime
             && !(type == QLatin1String("video") && it->firstFrame.isEmpty())
-            && matugenOk && categoriesOk;
+            && matugenOk && categoriesOk && resizeOk;
         if (it != m_entries.constEnd()) {
             carryCategoriesManual = it->categoriesManual;
             carryTagsManual = it->tagsManual;
@@ -307,6 +518,16 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
         const QString framePath = framesDir() + QStringLiteral("/") + contentMd5(path) + QStringLiteral(".png");
         if (QFileInfo(framePath).size() > 0 || extractFirstFrame(path, framePath)) {
             entry.firstFrame = framePath;
+        }
+        // P5: optional resized cache copy; planned only while enabled.
+        if (m_resizeEnabled) {
+            const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
+            if (result.noFfmpeg) {
+                warnFfmpegOnce();
+            } else if (result.planned) {
+                entry.resized = result.output;
+                entry.resizeDone = true;
+            }
         }
     }
     const QString image = (type == QLatin1String("video")) ? entry.firstFrame : path;
@@ -452,6 +673,7 @@ void WallpapersInfo::load()
         entry.file = obj.value(QStringLiteral("file")).toString();
         entry.type = obj.value(QStringLiteral("type")).toString();
         entry.resized = obj.value(QStringLiteral("resized")).toString();
+        entry.resizeDone = obj.value(QStringLiteral("resize_done")).toBool();
         entry.firstFrame = obj.value(QStringLiteral("first_frame")).toString();
         entry.sourceColorIndex = jsonStringList(obj.value(QStringLiteral("source_color_index")));
         entry.colorCategories = jsonStringList(obj.value(QStringLiteral("color_categories")));
@@ -497,6 +719,9 @@ void WallpapersInfo::saveLocked()
         }
         if (entry.tagsManual) {
             obj[QStringLiteral("tags_manual")] = true;
+        }
+        if (entry.resizeDone) {
+            obj[QStringLiteral("resize_done")] = true;
         }
         files.append(obj);
     }
@@ -642,6 +867,58 @@ void WallpapersInfo::setMatugenEnabled(bool enabled)
     emit matugenEnabledChanged();
 }
 
+void WallpapersInfo::setResizeSettings(bool enabled, int height, int fps)
+{
+    m_resizeEnabled = enabled;
+    m_resizeHeight = height;
+    m_resizeFps = fps;
+}
+
+void WallpapersInfo::planResize(const QString &path)
+{
+    if (path.isEmpty()) {
+        return;
+    }
+    {
+        QMutexLocker locker(&m_mutex);
+        ++m_pending;
+    }
+    m_pool.start(new ResizeJob(QPointer<WallpapersInfo>(this), path));
+}
+
+void WallpapersInfo::processResize(const QString &path)
+{
+    Entry entry;
+    {
+        QMutexLocker locker(&m_mutex);
+        const auto it = m_entries.constFind(path);
+        if (it == m_entries.constEnd() || it->type != QLatin1String("video")) {
+            jobFinished();
+            return;
+        }
+        entry = *it;
+    }
+    if (m_resizeEnabled) {
+        const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
+        if (result.noFfmpeg) {
+            warnFfmpegOnce();
+        } else if (result.planned) {
+            entry.resized = result.output;
+            entry.resizeDone = true;
+            upsert(entry);
+        }
+    }
+    jobFinished();
+}
+
+void WallpapersInfo::warnFfmpegOnce()
+{
+    bool expected = false;
+    if (m_ffmpegWarned.compare_exchange_strong(expected, true)) {
+        qWarning("kwal: ffmpeg/ffprobe not found; video resizing is disabled.");
+    }
+}
+
 QString WallpapersInfo::jsonPath() const
 {
     return m_root + QStringLiteral("/wallpapers_info.json");
@@ -650,4 +927,9 @@ QString WallpapersInfo::jsonPath() const
 QString WallpapersInfo::framesDir() const
 {
     return m_root + QStringLiteral("/video_frames");
+}
+
+QString WallpapersInfo::resizesDir() const
+{
+    return m_root + QStringLiteral("/video_resizes");
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "paletteextractor.h"
+#include "plasmaapply.h"
 #include "ulaunchercontroller.h"
 #include "wallpapermodel.h"
 #include "wallpapersinfo.h"
@@ -26,7 +27,10 @@ class AppController : public QObject
     Q_PROPERTY(QString configFilePath READ configFilePath CONSTANT)
     Q_PROPERTY(bool wallpaperBusy READ wallpaperBusy NOTIFY wallpaperBusyChanged)
     Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY currentWallpaperChanged)
-    Q_PROPERTY(QString currentWallpaperSize READ currentWallpaperSize NOTIFY currentWallpaperChanged)
+    Q_PROPERTY(bool lockscreen READ lockscreen WRITE setLockscreen NOTIFY lockscreenChanged)
+    Q_PROPERTY(bool resizeEnabled READ resizeEnabled WRITE setResizeEnabled NOTIFY resizeEnabledChanged)
+    Q_PROPERTY(int resizeHeight READ resizeHeight WRITE setResizeHeight NOTIFY resizeHeightChanged)
+    Q_PROPERTY(int resizeFps READ resizeFps WRITE setResizeFps NOTIFY resizeFpsChanged)
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(int selectedSourceColorIndex READ selectedSourceColorIndex WRITE setSelectedSourceColorIndex NOTIFY selectedSourceColorIndexChanged)
@@ -54,7 +58,14 @@ public:
     QString configFilePath() const;
     bool wallpaperBusy() const;
     QString currentWallpaper() const;
-    QString currentWallpaperSize() const;
+    bool lockscreen() const;
+    void setLockscreen(bool enabled);
+    bool resizeEnabled() const;
+    void setResizeEnabled(bool enabled);
+    int resizeHeight() const;
+    void setResizeHeight(int height);
+    int resizeFps() const;
+    void setResizeFps(int fps);
     QString selectedWallpaper() const;
     QString selectedWallpaperSize() const;
     int selectedSourceColorIndex() const;
@@ -96,6 +107,10 @@ signals:
     void currentWallpaperChanged();
     void selectedWallpaperChanged();
     void selectedSourceColorIndexChanged();
+    void lockscreenChanged();
+    void resizeEnabledChanged();
+    void resizeHeightChanged();
+    void resizeFpsChanged();
 
     void enableTransparencyChanged();
     void transparencyLevelChanged();
@@ -109,8 +124,12 @@ private:
     void applyCurrentFolder();
     void setCurrentWallpaper(const QString &filePath);
     void setWallpaper(const QString &filePath);
+    void applyResizeSettings();
 
     WallpaperModel *m_wallpaperModel = nullptr;
+    // Owned by this object; the D-Bus apply + linear config edits run from
+    // the thread pool so the UI stays responsive during a slow shell.
+    PlasmaApply *m_plasmaApply = nullptr;
     // Owned via the QObject child relationship; created with this app's own
     // KConfig group so the preview settings persist in [Ulauncher] of
     // kwalrc.
@@ -122,7 +141,14 @@ private:
     int m_currentFolderIndex = 0;
     bool m_wallpaperBusy = false;
     QString m_currentWallpaper;
-    QString m_currentWallpaperSize;
+    // [Wallpapers] "lockscreen": mirror the applied wallpaper to the
+    // KScreenLock config as well.
+    bool m_lockscreen = false;
+    // [Wallpapers] "resizeEnabled"/"resizeHeight"/"resizeFps": the P5
+    // optional video resize; the settings are mirrored into WallpapersInfo.
+    bool m_resizeEnabled = false;
+    int m_resizeHeight = kResizeHeightDefault;
+    int m_resizeFps = 0;
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
     // Index of the selected matugen source color dot of the current wallpaper;
@@ -143,6 +169,10 @@ private:
     bool m_ulauncherAvailable = false;
     int m_defaultWindowWidth = kDefaultWindowWidth;
     int m_defaultWindowHeight = kDefaultWindowHeight;
+    static constexpr int kResizeHeightDefault = 1080;
+    static constexpr int kResizeHeightMin = 480;
+    static constexpr int kResizeHeightMax = 4320;
+    static constexpr int kResizeFpsMax = 240;
 
     // Default window geometry and the range the user may configure it to;
     // the SpinBox bounds and the Main window minimums mirror these values.

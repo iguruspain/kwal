@@ -28,6 +28,7 @@ private slots:
     void testRoundTrip();
     void testCorruptJson();
     void testFirstFrame();
+    void testVideoResize();
     void testColorCategory();
     void testMatugenEnabled();
     void testMatugenColors();
@@ -162,6 +163,62 @@ void tst_WallpapersInfo::testFirstFrame()
     QCOMPARE(QFileInfo(frame).baseName(), contentMd5(video));
     // The extracted frame is a decodable PNG with the source resolution.
     QCOMPARE(QImageReader(frame).size(), QSize(128, 72));
+}
+
+void tst_WallpapersInfo::testVideoResize()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    if (!info->ffmpegAvailable()) {
+        QSKIP("ffmpeg not available");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString video = dir.path() + QStringLiteral("/resize.mp4");
+    // Synthesize a short 640x360@30 clip.
+    QProcess process;
+    process.start(QStringLiteral("ffmpeg"),
+                  {QStringLiteral("-v"),
+                   QStringLiteral("error"),
+                   QStringLiteral("-y"),
+                   QStringLiteral("-f"),
+                   QStringLiteral("lavfi"),
+                   QStringLiteral("-i"),
+                   QStringLiteral("color=c=red:s=640x360:d=0.5:r=30"),
+                   QStringLiteral("-c:v"),
+                   QStringLiteral("libx264"),
+                   QStringLiteral("-pix_fmt"),
+                   QStringLiteral("yuv420p"),
+                   video});
+    QVERIFY(process.waitForFinished(60000));
+    QCOMPARE(process.exitCode(), 0);
+
+    // P5: with the setting on, the scan plans the resize (360 -> 240, fps
+    // kept) and stores the cache copy path.
+    info->setResizeSettings(true, 240, 0);
+    info->refreshFile(video, QStringLiteral("video"));
+    QTRY_VERIFY_WITH_TIMEOUT(!info->entryFor(video).resized.isEmpty(), 60000);
+    QString resized = info->entryFor(video).resized;
+    QCOMPARE(QFileInfo(resized).fileName(), contentMd5(video) + QStringLiteral("_240p30.mp4"));
+    QVERIFY(QFileInfo(resized).size() > 0);
+
+    // A re-plan with settings that need no filter applies the original.
+    info->setResizeSettings(true, 1080, 0);
+    info->planResize(video);
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(video).resized.isEmpty(), 30000);
+    QCOMPARE(info->entryFor(video).resizeDone, true);
+
+    // A lower fps is applied as an fps-only pass (no scaling: 360 < 480).
+    info->setResizeSettings(true, 480, 15);
+    info->planResize(video);
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(video).resized.endsWith(QStringLiteral("_360p15.mp4")), 60000);
+
+    // While disabled, a re-scan does not re-plan (apply is gated by the
+    // flag; the original would be used).
+    info->setResizeSettings(false, 480, 15);
+    info->refreshFile(video, QStringLiteral("video"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(video).resized.endsWith(QStringLiteral("_360p15.mp4")), 30000);
+
+    info->setResizeSettings(false, 1080, 0);
 }
 
 void tst_WallpapersInfo::testColorCategory()

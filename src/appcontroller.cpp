@@ -6,32 +6,15 @@
 #include <KConfig>
 #include <KConfigGroup>
 
-#include <QDBusConnection>
-#include <QDBusInterface>
-#include <QDBusPendingCallWatcher>
-#include <QDBusPendingReply>
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QRunnable>
 #include <QStandardPaths>
+#include <QThreadPool>
 #include <QUrl>
 
 namespace {
-// Plasma shell script that applies an image wallpaper to all current desktops.
-QString wallpaperScript(const QString &filePath)
-{
-    QString escaped = filePath;
-    escaped.replace(QStringLiteral("'"), QStringLiteral("\\'"));
-    return QStringLiteral("var allDesktops = desktops();"
-                          "for (var i = 0; i < allDesktops.length; i++) {"
-                          "  var d = allDesktops[i];"
-                          "  d.wallpaperPlugin = 'org.kde.image';"
-                          "  d.currentConfigGroup = Array('Wallpaper', 'org.kde.image', 'General');"
-                          "  d.writeConfig('Image', 'file://%1');"
-                          "}")
-        .arg(escaped);
-}
-
 // "WxH" string for a readable image, empty if it cannot be determined.
 QString imageResolution(const QString &filePath)
 {
@@ -46,11 +29,36 @@ bool isToolInstalled(const QString &binary)
 {
     return !QStandardPaths::findExecutable(binary).isEmpty();
 }
+
+// Runs PlasmaApply off the main thread (D-Bus round trips + config edits).
+class WallpaperApplyJob : public QRunnable
+{
+public:
+    WallpaperApplyJob(PlasmaApply *apply, QString type, QString path, bool lockscreen)
+        : m_apply(apply)
+        , m_type(std::move(type))
+        , m_path(std::move(path))
+        , m_lockscreen(lockscreen)
+    {
+    }
+
+    void run() override
+    {
+        m_apply->applyWallpaper(m_type, m_path, m_lockscreen);
+    }
+
+private:
+    PlasmaApply *m_apply;
+    QString m_type;
+    QString m_path;
+    bool m_lockscreen;
+};
 } // namespace
 
 AppController::AppController(QObject *parent)
     : QObject(parent)
     , m_wallpaperModel(new WallpaperModel(this))
+    , m_plasmaApply(new PlasmaApply(this))
     , m_config(new KConfig(QStringLiteral("kwalrc"), KConfig::SimpleConfig))
     , m_fastfetchAvailable(isToolInstalled(QStringLiteral("fastfetch")))
     , m_starshipAvailable(isToolInstalled(QStringLiteral("starship")))
@@ -59,6 +67,14 @@ AppController::AppController(QObject *parent)
 {
     m_ulauncher = new UlauncherController(m_config->group(QStringLiteral("Ulauncher")), this);
     loadConfig();
+    connect(m_plasmaApply, &PlasmaApply::result, this, [this](bool allOk, const QString &message) {
+        m_wallpaperBusy = false;
+        emit wallpaperBusyChanged();
+        if (allOk) {
+            setCurrentWallpaper(m_selectedWallpaper);
+        }
+        emit wallpaperSetResult(allOk, message);
+    });
     // Kick the media info cache (first frames, ...) after every folder
     // re-scan. Must precede applyCurrentFolder(): the initial scan is
     // synchronous and its "scanned" signal would otherwise be missed.
@@ -112,11 +128,6 @@ bool AppController::wallpaperBusy() const
 QString AppController::currentWallpaper() const
 {
     return m_currentWallpaper;
-}
-
-QString AppController::currentWallpaperSize() const
-{
-    return m_currentWallpaperSize;
 }
 
 QString AppController::selectedWallpaper() const
@@ -331,7 +342,6 @@ void AppController::selectWallpaper(const QString &filePath)
         return;
     }
     m_selectedWallpaper = filePath;
-    m_selectedWallpaperSize = filePath.isEmpty() ? QString() : imageResolution(filePath);
     if (m_selectedSourceColorIndex != -1) {
         m_selectedSourceColorIndex = -1;
         emit selectedSourceColorIndexChanged();
@@ -366,38 +376,28 @@ void AppController::setWallpaper(const QString &filePath)
     if (m_wallpaperBusy) {
         return;
     }
-    QDBusInterface iface(QStringLiteral("org.kde.plasmashell"),
-                               QStringLiteral("/PlasmaShell"),
-                               QStringLiteral("org.kde.PlasmaShell"),
-                               QDBusConnection::sessionBus());
-    if (!iface.isValid()) {
-        emit wallpaperSetResult(false, QStringLiteral("Plasma Shell is not running."));
-        return;
+    const bool video = WallpaperModel::isVideo(filePath);
+    QString target = filePath;
+    // P5: while the setting is on, prefer the resized cache copy.
+    if (video && m_resizeEnabled) {
+        if (WallpapersInfo *info = WallpapersInfo::instance()) {
+            const WallpapersInfo::Entry entry = info->entryFor(filePath);
+            if (!entry.resized.isEmpty() && QFileInfo::exists(entry.resized)) {
+                target = entry.resized;
+            }
+        }
     }
-
     m_wallpaperBusy = true;
     emit wallpaperBusyChanged();
-
-    QDBusPendingReply<> reply = iface.asyncCall(QStringLiteral("evaluateScript"), wallpaperScript(filePath));
-    auto *watcher = new QDBusPendingCallWatcher(reply, this);
-    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, filePath](QDBusPendingCallWatcher *w) {
-        w->deleteLater();
-        m_wallpaperBusy = false;
-        emit wallpaperBusyChanged();
-        const QDBusPendingReply<> r = *w;
-        if (r.isError()) {
-            emit wallpaperSetResult(false, r.error().message());
-        } else {
-            setCurrentWallpaper(filePath);
-            emit wallpaperSetResult(true, QStringLiteral("Wallpaper set."));
-        }
-    });
+    QThreadPool::globalInstance()->start(new WallpaperApplyJob(m_plasmaApply,
+                                                               video ? QStringLiteral("video") : QStringLiteral("image"),
+                                                               target,
+                                                               m_lockscreen));
 }
 
 void AppController::setCurrentWallpaper(const QString &filePath)
 {
     m_currentWallpaper = filePath;
-    m_currentWallpaperSize = imageResolution(filePath);
     saveConfig();
     emit currentWallpaperChanged();
 }
@@ -422,7 +422,12 @@ void AppController::loadConfig()
         m_currentFolderIndex = 0;
     }
     m_currentWallpaper = group.readEntry("currentWallpaper", QString());
-    m_currentWallpaperSize = group.readEntry("currentWallpaperSize", QString());
+    m_lockscreen = group.readEntry("lockscreen", false);
+    m_resizeEnabled = group.readEntry("resizeEnabled", false);
+    m_resizeHeight = qBound(kResizeHeightMin,
+                            group.readEntry("resizeHeight", kResizeHeightDefault),
+                            kResizeHeightMax);
+    m_resizeFps = qBound(0, group.readEntry("resizeFps", 0), kResizeFpsMax);
 
     // Both color features are on by default when matugen is installed; the
     // keys are absent on first run. Extraction runs while either is on.
@@ -430,6 +435,7 @@ void AppController::loadConfig()
         m_matugenDots = group.readEntry("matugenDots", info->matugenAvailable());
         m_colorCategories = group.readEntry("colorCategories", true);
         info->setMatugenEnabled(m_matugenDots);
+        info->setResizeSettings(m_resizeEnabled, m_resizeHeight, m_resizeFps);
     }
 
     const KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
@@ -451,9 +457,12 @@ void AppController::saveConfig()
     group.writeEntry("folders", m_folders);
     group.writeEntry("currentFolderIndex", m_currentFolderIndex);
     group.writeEntry("currentWallpaper", m_currentWallpaper);
-    group.writeEntry("currentWallpaperSize", m_currentWallpaperSize);
     group.writeEntry("matugenDots", m_matugenDots);
     group.writeEntry("colorCategories", m_colorCategories);
+    group.writeEntry("lockscreen", m_lockscreen);
+    group.writeEntry("resizeEnabled", m_resizeEnabled);
+    group.writeEntry("resizeHeight", m_resizeHeight);
+    group.writeEntry("resizeFps", m_resizeFps);
     KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
     generalGroup.writeEntry("windowWidth", m_defaultWindowWidth);
     generalGroup.writeEntry("windowHeight", m_defaultWindowHeight);
@@ -469,4 +478,87 @@ void AppController::applyCurrentFolder()
         directory = m_folders.at(m_currentFolderIndex);
     }
     m_wallpaperModel->setSourceDirectory(directory);
+}
+
+bool AppController::lockscreen() const
+{
+    return m_lockscreen;
+}
+
+void AppController::setLockscreen(bool enabled)
+{
+    if (m_lockscreen == enabled) {
+        return;
+    }
+    m_lockscreen = enabled;
+    saveConfig();
+    emit lockscreenChanged();
+}
+
+bool AppController::resizeEnabled() const
+{
+    return m_resizeEnabled;
+}
+
+void AppController::setResizeEnabled(bool enabled)
+{
+    if (m_resizeEnabled == enabled) {
+        return;
+    }
+    m_resizeEnabled = enabled;
+    saveConfig();
+    emit resizeEnabledChanged();
+    applyResizeSettings();
+}
+
+int AppController::resizeHeight() const
+{
+    return m_resizeHeight;
+}
+
+void AppController::setResizeHeight(int height)
+{
+    height = qBound(kResizeHeightMin, height, kResizeHeightMax);
+    if (m_resizeHeight == height) {
+        return;
+    }
+    m_resizeHeight = height;
+    saveConfig();
+    emit resizeHeightChanged();
+    applyResizeSettings();
+}
+
+int AppController::resizeFps() const
+{
+    return m_resizeFps;
+}
+
+void AppController::setResizeFps(int fps)
+{
+    fps = qBound(0, fps, kResizeFpsMax);
+    if (m_resizeFps == fps) {
+        return;
+    }
+    m_resizeFps = fps;
+    saveConfig();
+    emit resizeFpsChanged();
+    applyResizeSettings();
+}
+
+void AppController::applyResizeSettings()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    if (!info) {
+        return;
+    }
+    info->setResizeSettings(m_resizeEnabled, m_resizeHeight, m_resizeFps);
+    if (!m_resizeEnabled) {
+        return;
+    }
+    // Re-plan the videos of the current folder with the new settings.
+    for (const QString &path : m_wallpaperModel->filePaths()) {
+        if (WallpaperModel::isVideo(path)) {
+            info->planResize(path);
+        }
+    }
 }

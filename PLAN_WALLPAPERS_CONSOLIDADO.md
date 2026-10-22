@@ -2,15 +2,15 @@
 
 > **FUENTE DE VERDAD ÚNICA.** Este documento consolida `KWAL_WALLPAPERS_PLAN.md` (el plan con las decisiones correctas D1–D17) y lo útil de `plan-implementacion-wallpapers.md` (el plan que el agente ejecutó y fue modificando). Sustituye a ambos. No se edita ninguna decisión sin aprobación del usuario.
 >
-> **Estado:** P1, P2 y P3 están **implementadas bajo el plan antiguo**; la auditoría de código (2026-10-22) fijó la reconciliación final en **§2b**, que incluye tres puntos donde **el código se bendice y el plan se corrige** (R6, R7, R8). P4–P7 están **pendientes** y siguen este documento tal cual.
+> **Estado:** P1, P2 y P3 están **implementadas bajo el plan antiguo**; la auditoría de código (2026-10-22) fijó la reconciliación final en **§2b**, que incluye tres puntos donde **el código se bendice y el plan se corrige** (R6, R7, R8). P4 y P5 están **implementadas** (2026-10-22); P6–P7 siguen **pendientes** y siguen este documento tal cual.
 >
 > | Fase | Estado | Acción |
 > |---|---|---|
 > | P1 Caché + vídeos en rejilla | implementada | ninguna (R8 resuelto: el diseño implementado se bendice — D16) |
 > | P2 Colores + búsqueda | implementada | corregir R1–R5, R9; migración R10 al final (R7 → P4) |
 > | P3 Drawer de detalle | implementada | reconciliada (R4 hecha: paleta mcu, 16 swatches; drawer modal desde `98d036d`) |
-> | P4 Aplicación | pendiente | seguir este plan (D11 con fallback, D15 lockscreen + su toggle) |
-> | P5 Resize | pendiente | |
+| P4 Aplicación | implementada (2026-10-22) | hecha: D-Bus `setWallpaper` + fallback `appletsrc` (D9), fallback vídeo `org.kde.video` (D11), lockscreen (D15) + toggle, JS muerto eliminado; verificado (build limpio + `tst_plasmaapply`) |
+| P5 Resize | implementada (2026-10-22) | hecha: plan ffprobe/ffmpeg, `video_resizes/`, replan al cambiar settings, objetivo `resized` en el apply; verificado (build limpio + `testVideoResize`) |
 > | P6 Transiciones | pendiente | |
 > | P7 Limpieza de huérfanos | pendiente | extiende `sweep()` existente (D12 reformulado) |
 
@@ -121,7 +121,7 @@ Comportamiento del drawer: drawer **modal** (`modal: true`, `handleVisible: true
 - **Nuevos QML:** `qml/WallpaperDetailDrawer.qml`, `qml/WallpapersSettingsPage.qml` (reemplaza al placeholder de Wallpapers).
 - **Nuevos tests:** `tests/tst_wallpapersinfo.cpp`, `tests/tst_plasmaapply.cpp`; extensión de `tests/tst_appcontroller.cpp`.
 - **KConfig `[Wallpapers]`** (grupo existente, se extiende; conserva `folders`, `currentFolderIndex`, `currentWallpaper`): `matugenDots`, `colorCategories`, `resizeEnabled`, `resizeHeight`, `resizeFps`, `lockscreen`, `transitionsEnabled`, `transitionType`, `transitionDuration`, `transitionFps`, `transitionStep`, `transitionAngle`, `transitionPos`, `transitionInvertY`, `transitionBezier`, `transitionWave`.
-- Se **elimina** el JS de `evaluateScript` de `AppController::setWallpaper` (snippet `wallpaperScript`, `currentWallpaperSize`/`ImageResolution`): código muerto tras P4 (cutover limpio).
+- Se **elimina** el snippet `wallpaperScript` (JS de `evaluateScript`) de `AppController::setWallpaper`: código muerto tras P4 (cutover limpio). `imageResolution()` (QImageReader, local) se **conserva**: alimenta la propiedad `selectedWallpaperSize` (la etiqueta de resolución de `WallpapersPage.qml`).
 
 ## 4. Fases
 
@@ -236,7 +236,7 @@ QML:
 
 **Verificación:** kwin: doble clic abre el drawer (captura animación cerrada/abierto); chips editables persisten (`entryChanged` actualiza drawer y JSON); `matugenRow` muestra los dots de `source_color_index` (variable, normalmente 3–4) con selección; paleta Material You dark+light y Imagemagick sobre imagen **y** vídeo; apply desde el drawer. Flujo de vídeo 1 (cierre): doble clic → la celda para → primer frame en el drawer → ~250 ms → reproducción; X/Escape → la reproducción del drawer se destruye → la celda reanuda el bucle. Flujo 2 (cambio): cerrar (X/Escape) y doble clic en otro vídeo → primer frame del nuevo → ~250 ms → reproducción del nuevo (con el drawer modal no existe el cambio in situ — `98d036d`). Log sin `TypeError` en arranque, apertura, cierre y cambio de vídeo. Test `tst_paletteextractor`: paleta Material You determinista — fixture de pixmap sintetizado en el test (ej. 128×128 con dos bloques de color), seed esperado y assert de hex de `GetBackground`/`GetPrimaryContainer` (valores de referencia calculados contra la librería al escribir el test). Caché de schemes (2026-10-22): `testSchemeSwitchIsCached` — una segunda `extract()` con otro scheme emite de forma síncrona (antes de que `extract()` regrese), sin re-extraer.
 
-### P4 — Nueva aplicación de wallpaper (image + video)  ⏳ pendiente
+### P4 — Nueva aplicación de wallpaper (image + video)  ✅ implementada (2026-10-22)
 
 **Objetivo:** reemplazar el apply por `evaluateScript` con D-Bus `setWallpaper` + fallback `appletsrc`, para imagen y vídeo (*reborn*).
 
@@ -252,12 +252,12 @@ QML:
     - Por desktop: D-Bus `org.kde.plasmashell / org.kde.plasma.wallpapers.<id> / org.kde.plasma.wallpapers / setWallpaper(QString, QVariantMap, int)`; fallos → fallback archivo (releer appletsrc si algún desktop fue por D-Bus, D9).
     - Señal `result(bool allOk, QString message)`.
     - **Lockscreen** (D15): si la config `lockscreen` está activada → escribir `kscreenlockerrc`: `[Greeter] WallpaperPlugin=<plugin>` + `[Greeter][Wallpaper][<plugin>][General]` con `Image=fileUrl` (imagen) o `VideoUrls`/`LastVideo=rawVideoUrl`/`LastVideoPosition=0` (vídeo); un único fondo para todas las pantallas.
-- `AppController`: `setWallpaper` enruta por tipo (extensión → `WallpapersInfo`); **eliminar** `wallpaperScript()`, `wallpaperScriptFor`, `currentWallpaperSize`, `imageResolution` (muertos tras el cutover); `applyWallpaper()` conserva la misma semántica para QML (aplica la selección, actualiza `currentWallpaper`).
+- `AppController`: `setWallpaper` enruta por tipo (`WallpaperModel::isVideo`, extensión) y delega en `PlasmaApply` (P5: prefiere la copia `resized` si existe); **eliminar** `wallpaperScript()` (JS muerto tras el cutover); `imageResolution()` se **conserva** (QImageReader local; alimenta `selectedWallpaperSize`, etiqueta de resolución de `WallpapersPage.qml`); `applyWallpaper()` conserva la misma semántica para QML (aplica la selección, actualiza `currentWallpaper`).
 - QML sin cambios de contrato: botón "Aplicar" de la rejilla, tecla Return, botón del drawer → `app.applyWallpaper()`. `AppController`: propiedad `lockscreen` (KConfig `[Wallpapers] lockscreen`, default false) + Switch "Aplicar al lockscreen" en `WallpapersSettingsPage` — **se añade aquí** (D15, ex-R7; no se crea un setting muerto en P2).
 
 **Verificación:** tests puros `tests/tst_plasmaapply.cpp`: vectores de `fileUrl` (espacio → `%20`, UTF-8 → `%C3%A1`, chars preservados), `computeVideoUrls` (añadir/deshabilitar/conservar claves), `Ini` (get/set/crear sección/preservar), `desktopIds` sobre fixture de appletsrc. kwin: aplicar imagen (pantalla de fondo cambia — captura antes/después); aplicar **vídeo** (reborn instalado): captura con el vídeo reproduciéndose en el escritorio; inspeccionar `appletsrc` (contenido de `VideoUrls` con target habilitado y otros deshabilitados). Lockscreen: toggle on → tras aplicar imagen, `kscreenlockerrc` contiene `[Greeter] WallpaperPlugin=org.kde.image` y la clave `Image` (y tras aplicar vídeo, `VideoUrls`/`LastVideo`); toggle off → el fichero queda intacto.
 
-### P5 — Resize de vídeo  ⏳ pendiente
+### P5 — Resize de vídeo  ✅ implementada (2026-10-22)
 
 **Objetivo:** redimensionado opcional de vídeos antes de aplicar (ffmpeg), configurable.
 
@@ -270,7 +270,7 @@ QML:
     - `ffmpeg -v error -y -progress pipe:1 -nostats -i <video> -map 0:v:0 -an -sn -dn -vf scale=-2:<H>:flags=lanczos[,fps=<f>] -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart -f mp4 <tmp>` (tmp + rename).
     - Guardar `resized`, `entryChanged`.
   - Cambio de settings (activar/altura/fps) → replanear los vídeos del folder actual (las salidas con nombre distinto quedan huérfanas — D12).
-- `PlasmaApply` (P4): para vídeo, objetivo = `resized` si `resizeEnabled && !resized.isEmpty()`, else original (mismas URLs de D9/D10 sobre la copia de caché).
+- Objetivo de aplicación (en `AppController::setWallpaper`, sobre `PlasmaApply` de P4): para vídeo con `resizeEnabled`, usar la copia `resized` si existe en disco, else original (mismas URLs de D9/D10 sobre la copia de caché).
 - `qml/WallpapersSettingsPage.qml`: grupo "Redimensionado": Switch + `SpinBox` altura (480–4320, step 120) + `SpinBox` FPS (0–240, "0 = original").
 - Sin ffmpeg → `resized=""` + warning único (comportamiento del ref. Rust).
 

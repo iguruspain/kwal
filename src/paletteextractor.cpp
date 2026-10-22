@@ -19,6 +19,7 @@
 
 #include <QImage>
 #include <QFileInfo>
+#include <QMutex>
 #include <QPointer>
 #include <QProcess>
 #include <QRegularExpression>
@@ -80,6 +81,57 @@ material_color_utilities::DynamicScheme buildScheme(const material_color_utiliti
         return material_color_utilities::SchemeFidelity(source, dark);
     }
     return material_color_utilities::SchemeTonalSpot(source, dark);
+}
+
+// The nine M3 scheme names, shared by the single-pass computation, the
+// fallback lookup and the QML combo.
+const QStringList kSchemeNames = {
+    QStringLiteral("TonalSpot"),
+    QStringLiteral("Vibrant"),
+    QStringLiteral("Expressive"),
+    QStringLiteral("Content"),
+    QStringLiteral("FruitSalad"),
+    QStringLiteral("Rainbow"),
+    QStringLiteral("Monochrome"),
+    QStringLiteral("Neutral"),
+    QStringLiteral("Fidelity")};
+
+QString hexOf(const Argb argb)
+{
+    return QString::asprintf("#%06x", argb & 0xFFFFFF);
+}
+
+// The 16 swatches of a scheme in the Material You (M3) order (D6), read
+// from DynamicScheme base fields only.
+QStringList schemeSwatches(const material_color_utilities::DynamicScheme &scheme)
+{
+    const auto tone = [](const material_color_utilities::TonalPalette &palette, double t) {
+        return hexOf(palette.get(t));
+    };
+    QStringList colors;
+    colors.append(hexOf(scheme.GetBackground()));
+    colors.append(tone(scheme.primary_palette, 80.0));
+    colors.append(tone(scheme.primary_palette, 70.0));
+    colors.append(tone(scheme.secondary_palette, 70.0));
+    colors.append(tone(scheme.secondary_palette, 60.0));
+    colors.append(tone(scheme.tertiary_palette, 60.0));
+    colors.append(tone(scheme.tertiary_palette, 50.0));
+    colors.append(hexOf(scheme.GetOnBackground()));
+    colors.append(tone(scheme.neutral_palette, 50.0));
+    colors.append(hexOf(scheme.GetPrimaryContainer()));
+    colors.append(hexOf(scheme.GetSecondaryContainer()));
+    colors.append(hexOf(scheme.GetTertiaryContainer()));
+    colors.append(hexOf(scheme.GetSurfaceContainer()));
+    colors.append(hexOf(scheme.GetSurfaceContainerHigh()));
+    colors.append(hexOf(scheme.GetOnSurface()));
+    colors.append(hexOf(scheme.GetOnSurfaceVariant()));
+    return colors;
+}
+
+// Cache key: the wallpaper path plus the dark mode of one extraction pass.
+QString schemeCacheKey(const QString &path, bool dark)
+{
+    return path + QLatin1Char('|') + (dark ? QStringLiteral("dark") : QStringLiteral("light"));
 }
 } // namespace
 
@@ -149,12 +201,31 @@ void PaletteExtractor::extract(const QString &path, const QString &backend, bool
             return;
         }
     }
+    if (backend == QLatin1String("materialyou")) {
+        // The nine schemes of a previously extracted wallpaper (in this
+        // dark mode) are cached: answer immediately instead of re-running
+        // Celebi.
+        QMutexLocker locker(&m_cacheMutex);
+        const QMap<QString, MaterialYouResult> cached = m_schemeCache.value(schemeCacheKey(path, dark));
+        if (!cached.isEmpty()) {
+            const MaterialYouResult result = cached.value(scheme, cached.value(QStringLiteral("TonalSpot")));
+            locker.unlock();
+            emitReady(path, result.colors, result.accents, result.seed);
+            return;
+        }
+    }
     m_pool.start(new ExtractJob(QPointer<PaletteExtractor>(this), path, std::move(image), backend, dark, scheme));
 }
 
 PaletteExtractor::MaterialYouResult PaletteExtractor::materialYouFromImage(const QImage &image, bool dark, const QString &schemeName)
 {
-    MaterialYouResult result;
+    const QMap<QString, MaterialYouResult> all = materialYouSchemesFromImage(image, dark);
+    return all.value(schemeName, all.value(QStringLiteral("TonalSpot")));
+}
+
+QMap<QString, PaletteExtractor::MaterialYouResult> PaletteExtractor::materialYouSchemesFromImage(const QImage &image, bool dark)
+{
+    QMap<QString, MaterialYouResult> out;
     const QImage scaled = image.scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     std::vector<Argb> pixels;
     pixels.reserve(static_cast<std::size_t>(scaled.width()) * scaled.height());
@@ -167,62 +238,52 @@ PaletteExtractor::MaterialYouResult PaletteExtractor::materialYouFromImage(const
         }
     }
     if (pixels.empty()) {
-        return result;
+        return out;
     }
 
-    // Google's material-color-utilities (Apache-2.0): Celebi quantization,
-    // ranked suggestions, and the selected M3 scheme from the primary seed.
+    // Google's material-color-utilities (Apache-2.0): Celebi quantization
+    // and ranked suggestions dominate the cost; the nine M3 schemes are a
+    // cheap recombination of the same ranked colors.
     const auto quantized = material_color_utilities::QuantizeCelebi(pixels, 128);
     material_color_utilities::ScoreOptions options;
     options.desired = 3;
     const std::vector<Argb> ranked =
         material_color_utilities::RankedSuggestions(quantized.color_to_count, options);
     if (ranked.empty()) {
-        return result;
+        return out;
     }
     const auto source = material_color_utilities::Hct(ranked.front());
-    const auto scheme = buildScheme(source, dark, schemeName);
 
-    // The 16 swatches in the Material You (M3) order (D6).
-    const auto hex = [](const Argb argb) {
-        return QString::asprintf("#%06x", argb & 0xFFFFFF);
-    };
-    const auto tone = [&hex](const material_color_utilities::TonalPalette &palette, double t) {
-        return hex(palette.get(t));
-    };
-    result.colors.append(hex(scheme.GetBackground()));
-    result.colors.append(tone(scheme.primary_palette, 80.0));
-    result.colors.append(tone(scheme.primary_palette, 70.0));
-    result.colors.append(tone(scheme.secondary_palette, 70.0));
-    result.colors.append(tone(scheme.secondary_palette, 60.0));
-    result.colors.append(tone(scheme.tertiary_palette, 60.0));
-    result.colors.append(tone(scheme.tertiary_palette, 50.0));
-    result.colors.append(hex(scheme.GetOnBackground()));
-    result.colors.append(tone(scheme.neutral_palette, 50.0));
-    result.colors.append(hex(scheme.GetPrimaryContainer()));
-    result.colors.append(hex(scheme.GetSecondaryContainer()));
-    result.colors.append(hex(scheme.GetTertiaryContainer()));
-    result.colors.append(hex(scheme.GetSurfaceContainer()));
-    result.colors.append(hex(scheme.GetSurfaceContainerHigh()));
-    result.colors.append(hex(scheme.GetOnSurface()));
-    result.colors.append(hex(scheme.GetOnSurfaceVariant()));
-
+    QStringList accents;
     for (const Argb seed : ranked) {
-        result.accents.append(hex(seed));
+        accents.append(hexOf(seed));
     }
-    result.seed = result.accents.first();
-    return result;
+
+    for (const QString &name : kSchemeNames) {
+        MaterialYouResult result;
+        result.colors = schemeSwatches(buildScheme(source, dark, name));
+        result.accents = accents;
+        result.seed = accents.first();
+        out.insert(name, std::move(result));
+    }
+    return out;
 }
 
 void PaletteExtractor::processMaterialYou(const QString &path, const QString &image, bool dark, const QString &schemeName)
 {
     const QImage loaded = QImage(image);
-    MaterialYouResult result;
     if (loaded.isNull()) {
         emitReady(path, QStringList(), QStringList(), QString());
         return;
     }
-    result = materialYouFromImage(loaded, dark, schemeName);
+    const QMap<QString, MaterialYouResult> all = materialYouSchemesFromImage(loaded, dark);
+    {
+        QMutexLocker locker(&m_cacheMutex);
+        if (!all.isEmpty()) {
+            m_schemeCache.insert(schemeCacheKey(path, dark), all);
+        }
+    }
+    const MaterialYouResult result = all.value(schemeName, all.value(QStringLiteral("TonalSpot")));
     emitReady(path, result.colors, result.accents, result.seed);
 }
 

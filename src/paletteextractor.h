@@ -1,6 +1,9 @@
 #pragma once
 
+#include <QHash>
 #include <QImage>
+#include <QMap>
+#include <QMutex>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -22,6 +25,9 @@ public:
     // nine M3 scheme names ("TonalSpot", "Vibrant", "Expressive", "Content",
     // "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"); any
     // other value falls back to TonalSpot. Only used by "materialyou".
+    // For "materialyou" the nine schemes of an extracted wallpaper are
+    // cached per dark mode, so a repeat call (e.g. a scheme switch) answers
+    // immediately without re-running the extraction.
     Q_INVOKABLE void extract(const QString &path,
                              const QString &backend,
                              bool dark,
@@ -38,6 +44,11 @@ public:
     static MaterialYouResult materialYouFromImage(const QImage &image,
                                                   bool dark,
                                                   const QString &scheme = QStringLiteral("TonalSpot"));
+    // All nine M3 schemes in a single pass: the expensive part (scaling,
+    // Celebi quantization, ranking) runs once and each scheme is a cheap
+    // recombination. Keyed by the nine scheme names; empty on failure.
+    static QMap<QString, MaterialYouResult>
+        materialYouSchemesFromImage(const QImage &image, bool dark);
 
 signals:
     void paletteReady(const QString &path,
@@ -57,5 +68,10 @@ private:
                    const QString &seed);
     void emitFailed(const QString &path, const QString &message);
 
+    // "path|dark"/"path|light" -> the nine schemes of one extraction pass,
+    // so scheme switches answer from the cache instead of re-running
+    // Celebi. Pool threads write, the owning thread reads: mutex-guarded.
+    QHash<QString, QMap<QString, MaterialYouResult>> m_schemeCache;
+    QMutex m_cacheMutex;
     QThreadPool m_pool;
 };

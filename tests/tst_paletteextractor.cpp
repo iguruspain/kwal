@@ -19,6 +19,7 @@ private slots:
     void testMaterialYouFromImage();
     void testMaterialYouMonochrome();
     void testMaterialYouSchemes();
+    void testSchemeSwitchIsCached();
     void testExtractionFailed();
     void testImageMagick();
 
@@ -107,6 +108,29 @@ void tst_PaletteExtractor::testMaterialYouSchemes()
     const PaletteExtractor::MaterialYouResult unknown =
         PaletteExtractor::materialYouFromImage(triColorImage(), false, QStringLiteral("nosuchscheme"));
     QCOMPARE(unknown.colors, spot.colors);
+}
+
+void tst_PaletteExtractor::testSchemeSwitchIsCached()
+{
+    QTemporaryDir dir;
+    const QString path = dir.path() + QStringLiteral("/wall.png");
+    QVERIFY(triColorImage().save(path, "PNG"));
+
+    PaletteExtractor extractor;
+    QSignalSpy ready(&extractor, &PaletteExtractor::paletteReady);
+    extractor.extract(path, QStringLiteral("materialyou"), false, QStringLiteral("TonalSpot"));
+    QTRY_VERIFY_WITH_TIMEOUT(ready.count() == 1, 10000);
+    const QStringList spotColors = ready.takeFirst().at(1).toStringList();
+    QVERIFY(!spotColors.isEmpty());
+
+    // A scheme switch after the first extraction is answered from the
+    // cache: the emission is synchronous, so the signal arrives before
+    // extract() returns (no re-run of the extraction).
+    extractor.extract(path, QStringLiteral("materialyou"), false, QStringLiteral("Neutral"));
+    QCOMPARE(ready.count(), 1);
+    const QStringList neutralColors = ready.takeFirst().at(1).toStringList();
+    QVERIFY(!neutralColors.isEmpty());
+    QVERIFY(spotColors != neutralColors);
 }
 
 void tst_PaletteExtractor::testExtractionFailed()

@@ -57,6 +57,9 @@ Kirigami.OverlayDrawer {
         tags = app.wallpapersInfo.tagsFor(drawer.wallpaper)
         paletteSwatches = []
         paletteSelected = -1
+        // A completion that is about to be discarded must not leave the
+        // extract button disabled on the new wallpaper.
+        paletteBusy = false
     }
 
     Component.onCompleted: syncWithInfo()
@@ -88,19 +91,24 @@ Kirigami.OverlayDrawer {
     }
 
     // Extraction is asynchronous and results for other wallpapers can
-    // arrive late, so every signal is filtered by path.
+    // arrive late, so palette payloads are filtered by path; the busy
+    // flag is cleared regardless (see onPaletteReady).
     Connections {
         target: drawer.app.paletteExtractor
         function onPaletteReady(path, colors, accents, seed) {
+            // The busy flag is app-wide (one extraction at a time), so a
+            // completion for a wallpaper the drawer no longer shows must
+            // still clear it — otherwise the extract button stays
+            // disabled on the new wallpaper.
+            drawer.paletteBusy = false
             if (path === drawer.wallpaper) {
-                drawer.paletteBusy = false
                 drawer.paletteSwatches = colors
                 drawer.paletteSelected = -1
             }
         }
         function onExtractionFailed(path, message) {
+            drawer.paletteBusy = false
             if (path === drawer.wallpaper) {
-                drawer.paletteBusy = false
                 // qmllint disable unqualified
                 const win = applicationWindow()
                 // qmllint enable unqualified
@@ -217,8 +225,11 @@ Kirigami.OverlayDrawer {
                     spacing: Kirigami.Units.gridUnit
 
                     // Category chips. The "Add" menu only offers the
-                    // categories the wallpaper does not have yet.
-                    RowLayout {
+                    // categories the wallpaper does not have yet. The row
+                    // wraps (Flow) like the tags so the refresh and add
+                    // buttons stay visible instead of overflowing the
+                    // ScrollView's clip.
+                    Flow {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
 
@@ -226,9 +237,6 @@ Kirigami.OverlayDrawer {
                             model: drawer.categories
                             delegate: Kirigami.Chip {
                                 required property string modelData
-                                // The chip's width is not driven by the
-                                // layout; pin it to its implicit size.
-                                Layout.preferredWidth: implicitWidth
                                 width: implicitWidth
                                 text: modelData
                                 icon.name: "tag"
@@ -244,7 +252,6 @@ Kirigami.OverlayDrawer {
                         // Recalculates the automatic categories from the
                         // wallpaper image and clears the manual override.
                         ToolButton {
-                            Layout.alignment: Qt.AlignRight
                             icon.name: "view-refresh"
                             Accessible.name: qsTr("Recalculate categories")
                             ToolTip.text: qsTr("Replace with the automatic categories")
@@ -254,7 +261,6 @@ Kirigami.OverlayDrawer {
                         }
 
                         ToolButton {
-                            Layout.alignment: Qt.AlignRight
                             icon.name: "list-add"
                             Accessible.name: qsTr("Add category")
                             ToolTip.text: qsTr("Add category")
@@ -403,11 +409,14 @@ Kirigami.OverlayDrawer {
                         }
                     }
 
-                    // M3 scheme selector (Material You only); switching
-                    // scheme invalidates the current palette.
+                    // M3 scheme selector (Material You only). Switching
+                    // scheme re-requests the palette instead of clearing
+                    // it: the extractor keeps the nine schemes of an
+                    // extracted wallpaper in cache, so this is immediate
+                    // once the first extraction has run (a switch before
+                    // the first one simply extracts with the new scheme).
                     ComboBox {
                         id: schemeCombo
-                        Layout.fillWidth: true
                         visible: drawer.paletteBackend === "materialyou"
                         model: ["TonalSpot", "Vibrant", "Expressive", "Content", "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"]
                         Accessible.name: qsTr("Material You scheme")
@@ -415,8 +424,7 @@ Kirigami.OverlayDrawer {
                         ToolTip.visible: hovered
                         onActivated: {
                             drawer.paletteScheme = currentText
-                            drawer.paletteSwatches = []
-                            drawer.paletteSelected = -1
+                            drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark, drawer.paletteScheme)
                         }
                     }
 

@@ -5,20 +5,33 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// Color swatch button shared by the tool pages: left-click opens the
-// built-in color dialog, right-click copies the current color to the
-// clipboard.
+// Color swatch shared by the whole app:
+// - Picker (tool pages): enablePicker, left-click opens the built-in
+//   color dialog and emits accepted().
+// - Selectable swatch (wallpaper grid and detail drawer): left-click
+//   emits clicked(), right-click copies the hex to the clipboard.
+// - Category filter chips: enableCopy: false and tooltipText set to the
+//   category label.
 Item {
     id: root
 
     // Current color: "#rrggbb", "#aarrggbb", or "transparent".
     property string color: "transparent"
+    property bool selected: false
+    property bool enablePicker: false
+    property bool enableCopy: true
+    // Tooltip override; defaults to the hex (uppercased), or "Pick color"
+    // when no color is set.
+    property string tooltipText: ""
+    property real dotSize: Kirigami.Units.gridUnit * 1.5
 
+    // Emitted on left-click when the picker is disabled.
+    signal clicked()
     // Emitted with the hex color picked in the dialog.
     signal accepted(string hex)
 
-    implicitWidth: Kirigami.Units.gridUnit * 1.5
-    implicitHeight: Kirigami.Units.gridUnit * 1.5
+    implicitWidth: dotSize
+    implicitHeight: dotSize
 
     Rectangle {
         anchors.fill: parent
@@ -26,12 +39,16 @@ Item {
         color: root.color.startsWith("#")
             ? root.color
             : "transparent"
-        border.color: Kirigami.Theme.textColor //Kirigami.Theme.highlightColor
-        border.width: 1
+        border.color: root.selected
+            ? Kirigami.Theme.highlightColor
+            : Kirigami.Theme.textColor
+        border.width: root.selected ? 2 : 1
 
-        ToolTip.text: root.color.startsWith("#")
-            ? root.color.toUpperCase()
-            : qsTr("Pick color")
+        ToolTip.text: root.tooltipText !== ""
+            ? root.tooltipText
+            : root.color.startsWith("#")
+                ? root.color.toUpperCase()
+                : qsTr("Pick color")
         ToolTip.visible: mouseArea.containsMouse
         ToolTip.delay: Kirigami.Units.toolTipDelay
 
@@ -42,10 +59,14 @@ Item {
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: (mouse) => {
-                if (mouse.button === Qt.RightButton)
-                    root.copyToClipboard()
-                else
+                if (mouse.button === Qt.RightButton) {
+                    if (root.enableCopy)
+                        root.copyToClipboard()
+                } else if (root.enablePicker) {
                     root.openDialog()
+                } else {
+                    root.clicked()
+                }
                 mouse.accepted = true
             }
         }

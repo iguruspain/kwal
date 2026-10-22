@@ -107,24 +107,6 @@ Kirigami.OverlayDrawer {
         }
     }
 
-    // QML has no direct clipboard API; an invisible TextEdit can
-    // select its text and copy() it.
-    TextEdit {
-        id: clipboard
-        visible: false
-    }
-
-    function copySwatchToClipboard(hex) {
-        clipboard.text = hex
-        clipboard.selectAll()
-        clipboard.copy()
-        // qmllint disable unqualified
-        const win = applicationWindow()
-        // qmllint enable unqualified
-        if (win)
-            win.showPassiveNotification(qsTr("Copied %1").arg(hex), "short")
-    }
-
     contentItem: Item {
         // Fixed header and footer with a scrollable middle: header, media
         // and footer keep their size and the ScrollView takes the rest.
@@ -387,38 +369,12 @@ Kirigami.OverlayDrawer {
 
                         Repeater {
                             model: drawer.paletteSwatches
-                            delegate: Rectangle {
+                            delegate: ColorDot {
                                 required property string modelData
                                 required property int index
-                                id: swatch
-                                implicitWidth: Kirigami.Units.gridUnit * 1.5
-                                implicitHeight: implicitWidth
-                                width: implicitWidth
-                                height: implicitHeight
-                                radius: Kirigami.Units.smallSpacing
                                 color: modelData
-                                border.width: drawer.paletteSelected === index ? 2 : 1
-                                border.color: drawer.paletteSelected === index
-                                    ? Kirigami.Theme.highlightColor
-                                    : Kirigami.Theme.textColor
-                                ToolTip.text: modelData.toUpperCase()
-                                ToolTip.visible: swatchMouse.containsMouse
-                                ToolTip.delay: Kirigami.Units.toolTipDelay
-
-                                MouseArea {
-                                    id: swatchMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                    onClicked: (mouse) => {
-                                        if (mouse.button === Qt.RightButton) {
-                                            drawer.copySwatchToClipboard(swatch.modelData)
-                                        } else {
-                                            drawer.paletteSelected = swatch.index
-                                        }
-                                        mouse.accepted = true
-                                    }
-                                }
+                                selected: drawer.paletteSelected === index
+                                onClicked: drawer.paletteSelected = index
                             }
                         }
                     }

@@ -149,6 +149,7 @@ Kirigami.Page {
                     }
                     Item { Layout.fillWidth: true }
                     ColorDot {
+                        enablePicker: true
                         // The controller regenerates the tinted preview
                         // when the draft color changes.
                         color: page.controller.draftColor

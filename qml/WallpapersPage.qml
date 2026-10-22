@@ -149,23 +149,14 @@ Kirigami.Page {
                 Item { Layout.fillWidth: true }
                 Repeater {
                     model: page.categorySwatches
-                    delegate: Rectangle {
-                        id: categorySwatch
+                    delegate: ColorDot {
                         required property var modelData
-                        width: Kirigami.Units.gridUnit * 1.5
-                        height: width
-                        radius: Kirigami.Units.smallSpacing
-                        color: categorySwatch.modelData.hex
-                        border.color: page.selectedCategories.indexOf(categorySwatch.modelData.name) !== -1
-                            ? Kirigami.Theme.highlightColor
-                            : Kirigami.Theme.textColor
-                        border.width: page.selectedCategories.indexOf(categorySwatch.modelData.name) !== -1 ? 3 : 1
-                        ToolTip.text: categorySwatch.modelData.label
-                        ToolTip.visible: filterHover.hovered
-                        HoverHandler { id: filterHover }
-                        TapHandler {
-                            onTapped: page.toggleCategory(categorySwatch.modelData.name)
-                        }
+                        id: categorySwatch
+                        color: modelData.hex
+                        tooltipText: modelData.label
+                        enableCopy: false
+                        selected: page.selectedCategories.indexOf(modelData.name) !== -1
+                        onClicked: page.toggleCategory(modelData.name)
                     }
                 }
                 Kirigami.Chip {

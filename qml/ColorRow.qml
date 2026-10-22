@@ -26,6 +26,7 @@ RowLayout {
     }
 
     ColorDot {
+        enablePicker: true
         color: root.modelData.display
         onAccepted: (hex) => root.colorAccepted(hex)
     }

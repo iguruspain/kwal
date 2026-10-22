@@ -61,20 +61,6 @@ ItemDelegate {
         onTriggered: root.videoArmed = true
     }
 
-    // Copies a source color's hex to the clipboard and notifies the user,
-    // like ColorDot on the tool pages.
-    function copyDotColor(hex) {
-        dotClipboard.text = hex
-        dotClipboard.selectAll()
-        dotClipboard.copy()
-        // qmllint disable unqualified
-        const win = applicationWindow()
-        // qmllint enable unqualified
-        if (win)
-            win.showPassiveNotification(
-                qsTr("Copied: %1").arg(hex), "short")
-    }
-
     activeFocusOnTab: false
     hoverEnabled: true
 
@@ -208,39 +194,16 @@ ItemDelegate {
 
                 Repeater {
                     model: root.sourceColors
-                    delegate: Rectangle {
-                        id: sourceDot
+                    delegate: ColorDot {
                         required property string modelData
                         required property int index
-                        width: Kirigami.Units.gridUnit * 0.8
-                        height: width
-                        radius: Kirigami.Units.smallSpacing
+                        id: sourceDot
+                        dotSize: Kirigami.Units.gridUnit * 0.8
                         color: sourceDot.modelData
-                        readonly property bool dotSelected: root.app.selectedSourceColorIndex === sourceDot.index
-                        border.color: dotSelected
-                            ? Kirigami.Theme.positiveTextColor
-                            : Kirigami.Theme.textColor
-                        border.width: dotSelected ? 2 : 1
-                        ToolTip.text: sourceDot.modelData.toUpperCase()
-                        ToolTip.visible: dotHover.hovered
-                        HoverHandler {
-                            id: dotHover
-                        }
-                        TapHandler {
-                            acceptedButtons: Qt.LeftButton
-                            onTapped: root.app.selectedSourceColorIndex = sourceDot.index
-                        }
-                        TapHandler {
-                            acceptedButtons: Qt.RightButton
-                            onTapped: root.copyDotColor(sourceDot.modelData)
-                        }
+                        selected: root.app.selectedSourceColorIndex === sourceDot.index
+                        onClicked: root.app.selectedSourceColorIndex = sourceDot.index
                     }
                 }
-            }
-            // Invisible TextEdit used to copy a dot's hex color.
-            TextEdit {
-                id: dotClipboard
-                visible: false
             }
         }
     }

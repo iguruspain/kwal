@@ -22,7 +22,7 @@ Kirigami.OverlayDrawer {
     property var tags: []
 
     property string paletteBackend: "materialyou"
-    property bool paletteDark: false
+    property bool paletteDark: true
     property var paletteSwatches: []
     property int paletteSelected: -1
     property bool paletteBusy: false
@@ -34,7 +34,7 @@ Kirigami.OverlayDrawer {
     // Non-modal: stays open over the grid while the grid remains
     // operable, so double-clicking another (or the same) cell updates
     // this drawer's video in place instead of closing it.
-    modal: false
+    modal: true
     // The installed template binds drawerOpen to !modal; with a
     // non-modal drawer that evaluates to true, so pin it closed: the
     // drawer only opens on double-click (WallpapersPage.openDetail).
@@ -43,7 +43,7 @@ Kirigami.OverlayDrawer {
     // (invisible) and its x binding reads a null parent while the
     // window overlay is not attached, so it is disabled; the content
     // header carries the close button instead.
-    handleVisible: false
+    handleVisible: true
     // Keep the edge drag-margin disabled so the drawer cannot be opened
     // by dragging the window edge; double-click is the opening gesture.
     dragMargin: 0
@@ -51,7 +51,7 @@ Kirigami.OverlayDrawer {
     // must not close it, so the grid stays operable while it is open.
     closePolicy: Popup.CloseOnEscape
     // qmllint disable unqualified
-    preferredSize: applicationWindow() ? Math.round(applicationWindow().width * 0.6) : 480
+    preferredSize: applicationWindow() ? Math.round(applicationWindow().width * 0.4) : 400
     // qmllint enable unqualified
     onWallpaperChanged: {
         syncWithInfo()
@@ -137,7 +137,31 @@ Kirigami.OverlayDrawer {
         ColumnLayout {
             id: content
             width: scroller.width
-            spacing: Kirigami.Units.largeSpacing
+            anchors.fill: parent
+            anchors.margins: Kirigami.Units.gridUnit
+            spacing: Kirigami.Units.gridUnit
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.Heading {
+                    Layout.fillWidth: true
+                    level: 3
+                    wrapMode: Text.WordWrap
+                    text: drawer.fileNameOf(drawer.wallpaper)
+                }
+
+                ToolButton {
+                    icon.name: "dialog-close"
+                    display: AbstractButton.IconOnly
+                    Accessible.name: qsTr("Close")
+                    ToolTip.text: qsTr("Close")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    onClicked: drawer.drawerOpen = false
+                }
+            }
 
             // Media area: the base layer is the wallpaper itself
             // (images) or the cached first frame (videos), always
@@ -146,7 +170,7 @@ Kirigami.OverlayDrawer {
             // decoder spins up.
             Item {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 272
+                Layout.preferredHeight: 200
                 clip: true
 
                 Image {
@@ -196,29 +220,7 @@ Kirigami.OverlayDrawer {
                     onTriggered: drawer.mediaArmed = true
                 }
             }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                Kirigami.Heading {
-                    Layout.fillWidth: true
-                    level: 3
-                    wrapMode: Text.WordWrap
-                    text: drawer.fileNameOf(drawer.wallpaper)
-                }
-
-                ToolButton {
-                    icon.name: "dialog-close"
-                    display: AbstractButton.IconOnly
-                    Accessible.name: qsTr("Close")
-                    ToolTip.text: qsTr("Close")
-                    ToolTip.visible: hovered
-                    ToolTip.delay: Kirigami.Units.toolTipDelay
-                    onClicked: drawer.drawerOpen = false
-                }
-            }
-
+    
             // Category chips; the "Add" menu offers the missing categories.
             RowLayout {
                 Layout.fillWidth: true
@@ -331,18 +333,18 @@ Kirigami.OverlayDrawer {
                     checked: drawer.paletteDark
                     enabled: drawer.paletteBackend === "materialyou"
                     onToggled: drawer.paletteDark = checked
-                    Accessible.name: qsTr("Dark")
-                }
-                Kirigami.Heading {
-                    level: 4
-                    text: qsTr("Dark")
-                    opacity: darkSwitch.enabled ? 1.0 : 0.5
+                    Accessible.name: checked ? qsTr("Dark") : qsTr("Light") //qsTr("Dark")
+                    ToolTip.text:
+                        checked
+                        ? qsTr("Dark")
+                        : qsTr("Light")
+                    ToolTip.visible: hovered
                 }
 
                 ToolButton {
                     Layout.alignment: Qt.AlignRight
                     enabled: !drawer.paletteBusy
-                    icon.name: "color-palette"
+                    icon.name: "media-playback-start" //"color-palette"
                     Accessible.name: qsTr("Extract palette")
                     ToolTip.text: qsTr("Extract palette")
                     ToolTip.visible: hovered
@@ -367,7 +369,7 @@ Kirigami.OverlayDrawer {
                         required property string modelData
                         required property int index
                         id: swatch
-                        implicitWidth: Kirigami.Units.gridUnit * 2
+                        implicitWidth: Kirigami.Units.gridUnit * 1.5
                         implicitHeight: implicitWidth
                         width: implicitWidth
                         height: implicitHeight
@@ -376,7 +378,7 @@ Kirigami.OverlayDrawer {
                         border.width: drawer.paletteSelected === index ? 2 : 1
                         border.color: drawer.paletteSelected === index
                             ? Kirigami.Theme.highlightColor
-                            : Kirigami.Theme.disabledTextColor
+                            : Kirigami.Theme.textColor
                         ToolTip.text: modelData.toUpperCase()
                         ToolTip.visible: swatchMouse.containsMouse
                         ToolTip.delay: Kirigami.Units.toolTipDelay
@@ -398,6 +400,14 @@ Kirigami.OverlayDrawer {
                     }
                 }
             }
+
+            // Custom Scripts
+            // ListView {
+            // }
+
+            Item { Layout.fillHeight: true }
+
+            Kirigami.Separator { Layout.fillWidth: true }
 
             RowLayout {
                 Layout.fillWidth: true

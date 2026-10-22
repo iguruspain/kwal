@@ -16,6 +16,10 @@ include(KDEInstallDirs)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Multimedia Qml Quick QuickControls2 Test Widgets WebEngineQuick)
 find_package(KF6 REQUIRED COMPONENTS Config Kirigami KirigamiPlatform)
+# libavutil: already a runtime dependency of Qt Multimedia's FFmpeg backend;
+# linked only to set the ffmpeg log level in main.cpp.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(AVUTIL REQUIRED IMPORTED_TARGET libavutil)
 
 # KF6 6.31's installed CMake package creates imported targets for the Kirigami
 # backing libraries and registers the QML plugin target names, but never
@@ -143,7 +147,8 @@ target_link_libraries(kwal
  Qt6::Widgets
 Qt6::WebEngineQuick
  KF6::ConfigCore
- KF6::Kirigami
+    KF6::Kirigami
+    PkgConfig::AVUTIL
  tomlplusplus::tomlplusplus
 )
 

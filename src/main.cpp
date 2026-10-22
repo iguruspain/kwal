@@ -1,6 +1,9 @@
 #include <QApplication>
 #include <QProcessEnvironment>
 #include <QMessageLogger>
+extern "C" {
+#include <libavutil/avutil.h>
+} // extern "C": the ffmpeg headers ship without C++ guards
 #include <QtWebEngineQuick>
 #include "fdothumbnailprovider.h"
 #include "wallpapersinfo.h"
@@ -31,6 +34,11 @@ static void applyDesktopIntegration()
 int main(int argc, char *argv[])
 {
     applyDesktopIntegration();
+
+    // Qt Multimedia's FFmpeg backend leaves libavutil's default log callback
+    // in place, so every MediaPlayer prints its raw "Input #0, ..." probe
+    // dump straight to stderr. Silence everything below real errors.
+    av_log_set_level(AV_LOG_ERROR);
 
     // WebEngine preview pages: keep Chromium on the software path to avoid
     // "GBM not supported" warnings and freezes on systems without working

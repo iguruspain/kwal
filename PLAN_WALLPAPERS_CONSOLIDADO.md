@@ -8,7 +8,7 @@
 > |---|---|---|
 > | P1 Caché + vídeos en rejilla | implementada | ninguna (R8 resuelto: el diseño implementado se bendice — D16) |
 > | P2 Colores + búsqueda | implementada | corregir R1–R5, R9; migración R10 al final (R7 → P4) |
-> | P3 Drawer de detalle | implementada | corregir R4 (paleta mcu, 16 swatches) |
+> | P3 Drawer de detalle | implementada | reconciliada (R4 hecha: paleta mcu, 16 swatches; drawer modal desde `98d036d`) |
 > | P4 Aplicación | pendiente | seguir este plan (D11 con fallback, D15 lockscreen + su toggle) |
 > | P5 Resize | pendiente | |
 > | P6 Transiciones | pendiente | |
@@ -112,7 +112,7 @@ P1–P3 se escribieron con el plan antiguo. Esta sección lista **cada divergenc
 - **Acción:** implementarla **al final** de la reconciliación, con confirmación del usuario (pisa solo las categorías auto-calculadas del periodo de pruebas).
 
 ### Lo que se conserva del plan antiguo (ya integrado en P3 más abajo)
-Comportamiento del drawer descubierto durante la implementación y que es correcto: drawer **no modal**, `drawerOpen: false` fijado, `handleVisible: false`, instanciación perezosa vía `Loader`, capa base con primer frame, patrón *armed* con `Timer` de 250 ms, `MediaPlayer` destruido (no pausado) al cerrar/cambiar, guarda `detailOpen` en `WallpaperItem`. No tocar salvo que contradiga una decisión.
+Comportamiento del drawer: drawer **modal** (`modal: true`, `handleVisible: true`, ~40% del ancho de la ventana — `98d036d`, cambio posterior a este plan; originalmente no-modal, ~60%, sin handle), `drawerOpen: false` fijado, instanciación perezosa vía `Loader`, capa base con primer frame, patrón *armed* con `Timer` de 250 ms, `MediaPlayer` destruido (no pausado) al cerrar/cambiar, guarda `detailOpen` en `WallpaperItem`. Cierre por X o Escape (`closePolicy: Popup.CloseOnEscape`); un clic fuera **no** lo cierra. No tocar salvo que contradiga una decisión.
 
 ## 3. Cambios transversales (resumen)
 
@@ -210,32 +210,31 @@ QML:
 
 **Verificación:** JSON contiene `source_color_index` (con matugen) y `color_categories` (con **y** sin matugen) en entradas nuevas; búsqueda: tag en el texto filtra, chip de categoría filtra (AND), "Limpiar" resetea; los toggles persisten en `kwalrc`. kwin: capturas de la fila de chips con resultados filtrados. Extender `tst_wallpapersinfo.cpp`: tabla del clasificador D4 (hex → categoría, incluyendo los umbrales de sector y el orden black/white/gray), semántica de filtros del modelo.
 
-### P3 — Drawer de detalle (doble clic)  ✅ implementada · ⚠ corregir R4 (paleta mcu, 16 swatches)
+### P3 — Drawer de detalle (doble clic)  ✅ implementada · ✅ reconciliada (R4 hecha: paleta mcu, 16 swatches)
 
 **Objetivo:** `WallpaperDetailDrawer`: imagen ampliada animada (slide del drawer), categorías/tags editables (chips), `matugenRow` (dots seleccionables), paletas Material You + Imagemagick.
 
-- `qml/WallpaperDetailDrawer.qml` (nuevo): `Kirigami.OverlayDrawer` (lado derecho, ~60% ancho; abrir al doble clic — API verificada en Kirigami 6.31 instalado: `drawerOpen`, `side`).
+  - `qml/WallpaperDetailDrawer.qml` (nuevo): `Kirigami.OverlayDrawer` (lado derecho, ~40% del ancho de la ventana; abrir al doble clic — API verificada en Kirigami 6.31 instalado: `drawerOpen`, `side`).
   - **Comportamiento (aprendido en la implementación; conservar):**
-    - **No modal** (`modal: false`): el drawer permanece abierto sobre la rejilla operable; el doble clic en otra celda actualiza el drawer in situ en vez de cerrarlo. Un clic fuera **no** lo cierra.
+    - **Modal** (`modal: true`; `98d036d`, cambio posterior a este plan — originalmente no-modal): la rejilla de fondo no es operable mientras está abierto. Cierre por X o Escape (`closePolicy: Popup.CloseOnEscape`); un clic fuera **no** lo cierra.
     - `drawerOpen` fijado a `false` (la plantilla interna lo liga a `!modal`, que daría true).
-    - `handleVisible: false` (en no-modal el handle de la plantilla se dibuja por debajo del overlay y su binding de `x` lee un padre nulo si el overlay de la ventana no está adjunto → `TypeError` al arrancar).
-    - Cierre por botón X propio en la cabecera + Escape (`closePolicy: Popup.CloseOnEscape`).
+    - `handleVisible: true` (`98d036d`; el bug de `TypeError` al arrancar en no-modal se evita con la instanciación perezosa del punto siguiente).
     - La página lo instancia de forma **perezosa** (`Loader` activo solo al primer doble clic): el drawer nunca existe antes de que el overlay de la ventana esté adjunto.
   - Área media: capa base siempre visible — imagen `file://` (`PreserveAspectFit`) o **primer frame** del vídeo — sobre la que arranca la reproducción en vivo. Vídeo: `VideoOutput`+`MediaPlayer` (muted, loop) con el mismo patrón *armed* que las celdas de la rejilla: un `Timer` de 250 ms arma la reproducción mientras el drawer está abierto; el `MediaPlayer` se **destruye** (no se pausa) al cerrar o al cambiar de vídeo, para que la celda de la rejilla pueda reanudar su bucle.
   - **Categorías:** `Kirigami.Chip` (verificado `closable` → `removed()`) + botón de reset (ícono `view-refresh`) + chip "Añadir" con `Menu` de las 15 categorías no presentes (**sin cap**, D13) → `WallpapersInfo.setCategories`. El reset (añadido 2026-10-22, petición del usuario) llama a `WallpapersInfo::recalculateCategories(path)`: recalcula las categorías automáticas desde la imagen (o `first_frame`) **asíncrono** y limpia `categories_manual` (sin tocar tags ni dots); si la imagen no decodifica, la entrada queda intacta.
   - **Tags:** chips + `TextField` inline para añadir (Enter o botón).
   - **Colores matugen:** `RowLayout` de `ColorDot` (componente existente) sobre `sourceColorsFor` (variable, normalmente 3–4); tap → seleccionado (borde, como `rightPane` viejo).
-  - **Paletas:** `ComboBox` [Material You, Imagemagick] + botón "Extraer" + Switch dark/light (solo Material You) + rejilla de 16 swatches (Material You: la lista M3 de D6; Imagemagick: ≤16 colores + accent); tap → seleccionar, right-click → copiar hex.
+  - **Paletas:** `ComboBox` [Material You, Imagemagick] + `ComboBox` de scheme M3 (los 9 de D6, solo Material You, dimensionada a su contenido) + botón "Extraer" + Switch dark/light (solo Material You) + rejilla de 16 swatches (Material You: la lista M3 de D6; Imagemagick: ≤16 colores + accent); tap → seleccionar, right-click → copiar hex. Cambiar el scheme **re-pide** la paleta sin vaciar la rejilla: el extractor cachea los 9 esquemas por wallpaper + dark mode (pasada única de Celebi), así que responde en el acto sin re-extraer (2026-10-22, petición del usuario).
   - Botón "Fijar como wallpaper" → `app.applyWallpaper()`.
 - `src/paletteextractor.{h,cpp}` — `PaletteExtractor : QObject` (poseído por `AppController`, `QThreadPool`):
-  - `Q_INVOKABLE void extract(path, backend, dark)`; señal `paletteReady(path, colors, accents, seed)` (`colors` = lista de hex; Material You = los 16 swatches de D6; Imagemagick = colores + accent).
+  - `Q_INVOKABLE void extract(path, backend, dark, scheme = "TonalSpot")` (`scheme` = uno de los 9 esquemas M3 de D6); señal `paletteReady(path, colors, accents, seed)` (`colors` = lista de hex; Material You = los 16 swatches de D6; Imagemagick = colores + accent).
   - Imagemagick (D7).
-  - Material You (D6): pipeline con la librería oficial (`QuantizeCelebi` → `RankedSuggestions` → `SchemeTonalSpot`), todo en la worker thread; si el pixmap no carga → `paletteReady` vacío (el drawer muestra "no disponible").
+  - Material You (D6): pipeline con la librería oficial (`QuantizeCelebi` → `RankedSuggestions` → el `SchemeX` pedido), todo en la worker thread; el paso caro (Celebi) se ejecuta **una vez** por wallpaper + dark mode y los 9 esquemas quedan **cacheados en memoria** (`QHash` con `QMutex`, clave `path|dark`/`path|light`) — un `extract()` repetido (cambio de scheme) responde de forma síncrona desde la caché (2026-10-22, petición del usuario); si el pixmap no carga → `paletteReady` vacío (el drawer muestra "no disponible").
   - Vídeo → extraer sobre el `first_frame`.
   - El target `mcu` ya se integra en P2 (ver su `CMakeLists.txt`); aquí solo se enlaza para la paleta.
 - `qml/WallpaperItem.qml`: `MouseArea` en `contentItem` con `onDoubleClicked` → callback `onOpenDetail(path)` (el `onClicked` del `ItemDelegate` se mantiene para selección; el `MouseArea` no roba focus — la navegación por teclado de `GridView` no se afecta). Guarda `detailOpen`: el vídeo de la celda no se arma mientras el drawer está abierto (evita dos decodificadores del mismo archivo).
 
-**Verificación:** kwin: doble clic abre el drawer (captura animación cerrada/abierto); chips editables persisten (`entryChanged` actualiza drawer y JSON); `matugenRow` muestra los dots de `source_color_index` (variable, normalmente 3–4) con selección; paleta Material You dark+light y Imagemagick sobre imagen **y** vídeo; apply desde el drawer. Flujo de vídeo 1 (cierre): doble clic → la celda para → primer frame en el drawer → ~250 ms → reproducción; X/Escape → la reproducción del drawer se destruye → la celda reanuda el bucle. Flujo 2 (cambio con drawer abierto): doble clic en otro vídeo → el vídeo del drawer para → primer frame del nuevo → ~250 ms → reproducción del nuevo, drawer sigue abierto. Log sin `TypeError` en arranque, apertura, cierre, cambio de vídeo y cambio de pestaña con drawer abierto. Test `tst_paletteextractor`: paleta Material You determinista — fixture de pixmap sintetizado en el test (ej. 128×128 con dos bloques de color), seed esperado y assert de hex de `GetBackground`/`GetPrimaryContainer` (valores de referencia calculados contra la librería al escribir el test).
+**Verificación:** kwin: doble clic abre el drawer (captura animación cerrada/abierto); chips editables persisten (`entryChanged` actualiza drawer y JSON); `matugenRow` muestra los dots de `source_color_index` (variable, normalmente 3–4) con selección; paleta Material You dark+light y Imagemagick sobre imagen **y** vídeo; apply desde el drawer. Flujo de vídeo 1 (cierre): doble clic → la celda para → primer frame en el drawer → ~250 ms → reproducción; X/Escape → la reproducción del drawer se destruye → la celda reanuda el bucle. Flujo 2 (cambio): cerrar (X/Escape) y doble clic en otro vídeo → primer frame del nuevo → ~250 ms → reproducción del nuevo (con el drawer modal no existe el cambio in situ — `98d036d`). Log sin `TypeError` en arranque, apertura, cierre y cambio de vídeo. Test `tst_paletteextractor`: paleta Material You determinista — fixture de pixmap sintetizado en el test (ej. 128×128 con dos bloques de color), seed esperado y assert de hex de `GetBackground`/`GetPrimaryContainer` (valores de referencia calculados contra la librería al escribir el test). Caché de schemes (2026-10-22): `testSchemeSwitchIsCached` — una segunda `extract()` con otro scheme emite de forma síncrona (antes de que `extract()` regrese), sin re-extraer.
 
 ### P4 — Nueva aplicación de wallpaper (image + video)  ⏳ pendiente
 

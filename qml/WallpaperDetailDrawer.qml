@@ -363,7 +363,7 @@ Kirigami.OverlayDrawer {
                         }
                     }
 
-                    // Palette controls: backend, dark mode and extraction.
+                    // Palette controls: backend, extraction and mode.
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
@@ -378,18 +378,6 @@ Kirigami.OverlayDrawer {
                                 drawer.paletteSwatches = []
                                 drawer.paletteSelected = -1
                             }
-                        }
-
-                        // Dark/light only applies to Material You; the
-                        // ImageMagick backend ignores it.
-                        Switch {
-                            id: darkSwitch
-                            checked: drawer.paletteDark
-                            enabled: drawer.paletteBackend === "materialyou"
-                            onToggled: drawer.paletteDark = checked
-                            Accessible.name: checked ? qsTr("Dark") : qsTr("Light")
-                            ToolTip.text: checked ? qsTr("Dark") : qsTr("Light")
-                            ToolTip.visible: hovered
                         }
 
                         // Disabled while an extraction is running to avoid
@@ -407,43 +395,62 @@ Kirigami.OverlayDrawer {
                                 drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark, drawer.paletteScheme)
                             }
                         }
+
+                        // Dark/light only applies to Material You; the
+                        // ImageMagick backend ignores it.
+                        Switch {
+                            id: darkSwitch
+                            checked: drawer.paletteDark
+                            enabled: drawer.paletteBackend === "materialyou"
+                            onToggled: drawer.paletteDark = checked
+                            Accessible.name: checked ? qsTr("Dark") : qsTr("Light")
+                            ToolTip.text: checked ? qsTr("Dark") : qsTr("Light")
+                            ToolTip.visible: hovered
+                        }                                          
                     }
 
-                    // M3 scheme selector (Material You only). Switching
-                    // scheme re-requests the palette instead of clearing
-                    // it: the extractor keeps the nine schemes of an
-                    // extracted wallpaper in cache, so this is immediate
-                    // once the first extraction has run (a switch before
-                    // the first one simply extracts with the new scheme).
-                    ComboBox {
-                        id: schemeCombo
-                        visible: drawer.paletteBackend === "materialyou"
-                        model: ["TonalSpot", "Vibrant", "Expressive", "Content", "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"]
-                        Accessible.name: qsTr("Material You scheme")
-                        ToolTip.text: qsTr("Material You scheme")
-                        ToolTip.visible: hovered
-                        onActivated: {
-                            drawer.paletteScheme = currentText
-                            drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark, drawer.paletteScheme)
-                        }
-                    }
-
-                    // Extracted swatches: left click selects, right click
-                    // copies the hex value to the clipboard.
-                    Grid {
+                    // Palette
+                    RowLayout {
                         Layout.fillWidth: true
-                        columns: 8
-                        columnSpacing: Kirigami.Units.smallSpacing
-                        rowSpacing: Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
 
-                        Repeater {
-                            model: drawer.paletteSwatches
-                            delegate: ColorDot {
-                                required property string modelData
-                                required property int index
-                                color: modelData
-                                selected: drawer.paletteSelected === index
-                                onClicked: drawer.paletteSelected = index
+                        // Extracted swatches: left click selects, right click
+                        // copies the hex value to the clipboard.
+                        Grid {
+                            id: paletteGrid
+                            Layout.fillWidth: true
+                            columns: 8
+                            columnSpacing: Kirigami.Units.smallSpacing
+                            rowSpacing: Kirigami.Units.smallSpacing
+
+                            Repeater {
+                                model: drawer.paletteSwatches
+                                delegate: ColorDot {
+                                    required property string modelData
+                                    required property int index
+                                    color: modelData
+                                    selected: drawer.paletteSelected === index
+                                    onClicked: drawer.paletteSelected = index
+                                }
+                            }
+                        }
+
+                        // M3 scheme selector (Material You only). Switching
+                        // scheme re-requests the palette instead of clearing
+                        // it: the extractor keeps the nine schemes of an
+                        // extracted wallpaper in cache, so this is immediate
+                        // once the first extraction has run (a switch before
+                        // the first one simply extracts with the new scheme).
+                        ComboBox {
+                            id: schemeCombo
+                            visible: drawer.paletteBackend === "materialyou" && drawer.paletteSwatches.length > 0
+                            model: ["TonalSpot", "Vibrant", "Expressive", "Content", "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"]
+                            Accessible.name: qsTr("Material You scheme")
+                            ToolTip.text: qsTr("Material You scheme")
+                            ToolTip.visible: hovered
+                            onActivated: {
+                                drawer.paletteScheme = currentText
+                                drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark, drawer.paletteScheme)
                             }
                         }
                     }

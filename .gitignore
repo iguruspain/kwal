@@ -4,5 +4,5 @@ compile_commands.json
 CMakeFiles/
 .omp/
 .omp/*
-diseñando.txt
 plan-*.md
+PLAN*.md

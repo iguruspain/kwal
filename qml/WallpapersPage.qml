@@ -283,6 +283,7 @@ Kirigami.Page {
         id: detailDrawerComponent
         WallpaperDetailDrawer {
             app: page.app
+            parent: page
             wallpaper: ""
             isVideo: false
             categorySwatches: page.categorySwatches
@@ -290,6 +291,7 @@ Kirigami.Page {
     }
     Loader {
         id: detailDrawerLoader
+        active: false
         sourceComponent: detailDrawerComponent
     }
 

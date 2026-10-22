@@ -10,14 +10,16 @@ Kirigami.OverlayDrawer {
     id: drawer
 
     required property AppController app
-    // Absolute path of the double-clicked wallpaper.
+    // Absolute path of the wallpaper shown in the drawer. Changing it
+    // reloads categories/tags and resets the palette and video state.
     required property string wallpaper
     required property bool isVideo
     // The 15 color categories (name/hex/label) shared with the search chips.
     required property var categorySwatches
 
-    // Manually edited categories/tags of the current wallpaper; kept in sync
-    // with WallpapersInfo and written back on every change.
+    // Local copies of the wallpaper's categories/tags. They are reassigned
+    // (never mutated in place) so bindings re-evaluate, and each change is
+    // written back through WallpapersInfo.
     property var categories: []
     property var tags: []
 
@@ -26,38 +28,27 @@ Kirigami.OverlayDrawer {
     property var paletteSwatches: []
     property int paletteSelected: -1
     property bool paletteBusy: false
-    // True once the delayed video playback has started; the MediaPlayer
-    // is destroyed on close or switch, which disarms it again.
+    // Set by a short timer after opening so the first frame shows before
+    // the video decoder starts. Reset whenever the video Loader unloads.
     property bool mediaArmed: false
 
     edge: Qt.RightEdge
-    // Non-modal: stays open over the grid while the grid remains
-    // operable, so double-clicking another (or the same) cell updates
-    // this drawer's video in place instead of closing it.
     modal: true
-    // The installed template binds drawerOpen to !modal; with a
-    // non-modal drawer that evaluates to true, so pin it closed: the
-    // drawer only opens on double-click (WallpapersPage.openDetail).
     drawerOpen: false
-    // The template handle is drawn below the overlay in non-modal mode
-    // (invisible) and its x binding reads a null parent while the
-    // window overlay is not attached, so it is disabled; the content
-    // header carries the close button instead.
     handleVisible: true
-    // Keep the edge drag-margin disabled so the drawer cannot be opened
-    // by dragging the window edge; double-click is the opening gesture.
     dragMargin: 0
-    // Escape (and the header X) close the drawer; a release outside it
-    // must not close it, so the grid stays operable while it is open.
     closePolicy: Popup.CloseOnEscape
     // qmllint disable unqualified
     preferredSize: applicationWindow() ? Math.round(applicationWindow().width * 0.4) : 400
     // qmllint enable unqualified
+
     onWallpaperChanged: {
         syncWithInfo()
         mediaArmed = false
     }
 
+    // Reloads the manual categories/tags from the backend and clears any
+    // palette computed for the previous wallpaper.
     function syncWithInfo() {
         categories = app.wallpapersInfo.colorCategoriesFor(drawer.wallpaper)
         tags = app.wallpapersInfo.tagsFor(drawer.wallpaper)
@@ -76,12 +67,14 @@ Kirigami.OverlayDrawer {
         return Kirigami.Theme.highlightColor
     }
 
-    // QML split() returns a plain JS array (no last()); index the last part.
+    // QML split() returns a plain JS array (no last()), so index the end.
     function fileNameOf(path) {
         const parts = path.split("/")
         return parts[parts.length - 1]
     }
 
+    // Keeps the drawer in sync when the entry is modified elsewhere
+    // (e.g. a rescan or an edit from the grid).
     Connections {
         target: drawer.app.wallpapersInfo
         function onEntryChanged(path) {
@@ -91,6 +84,8 @@ Kirigami.OverlayDrawer {
         }
     }
 
+    // Extraction is asynchronous and results for other wallpapers can
+    // arrive late, so every signal is filtered by path.
     Connections {
         target: drawer.app.paletteExtractor
         function onPaletteReady(path, colors, accents, seed) {
@@ -112,7 +107,8 @@ Kirigami.OverlayDrawer {
         }
     }
 
-    // Invisible TextEdit used to copy a swatch hex to the clipboard.
+    // QML has no direct clipboard API; an invisible TextEdit can
+    // select its text and copy() it.
     TextEdit {
         id: clipboard
         visible: false
@@ -121,6 +117,7 @@ Kirigami.OverlayDrawer {
     function copySwatchToClipboard(hex) {
         clipboard.text = hex
         clipboard.selectAll()
+        clipboard.copy()
         // qmllint disable unqualified
         const win = applicationWindow()
         // qmllint enable unqualified
@@ -128,19 +125,15 @@ Kirigami.OverlayDrawer {
             win.showPassiveNotification(qsTr("Copied %1").arg(hex), "short")
     }
 
-    contentItem: Flickable {
-        id: scroller
-        contentWidth: content.width
-        contentHeight: content.height
-        boundsBehavior: Flickable.StopAtBounds
-
+    contentItem: Item {
+        // Fixed header and footer with a scrollable middle: header, media
+        // and footer keep their size and the ScrollView takes the rest.
         ColumnLayout {
-            id: content
-            width: scroller.width
             anchors.fill: parent
             anchors.margins: Kirigami.Units.gridUnit
             spacing: Kirigami.Units.gridUnit
 
+            // Header: file name and close button.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
@@ -159,15 +152,14 @@ Kirigami.OverlayDrawer {
                     ToolTip.text: qsTr("Close")
                     ToolTip.visible: hovered
                     ToolTip.delay: Kirigami.Units.toolTipDelay
-                    onClicked: drawer.drawerOpen = false
+                    onClicked: drawer.close()
                 }
             }
 
-            // Media area: the base layer is the wallpaper itself
-            // (images) or the cached first frame (videos), always
-            // shown; the live playback starts on top of it after a
-            // short delay, so the first frame is visible before the
-            // decoder spins up.
+            // Media area: the base layer is always the wallpaper (images)
+            // or its cached first frame (videos). Live playback is layered
+            // on top after a short delay, so the user sees the frame
+            // immediately instead of a blank area while the decoder starts.
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 200
@@ -186,10 +178,10 @@ Kirigami.OverlayDrawer {
                         : drawer.app.fileUrl(drawer.wallpaper)
                 }
 
-                // Live playback, the same "armed" pattern as the grid
-                // cells: starts only after a delay while the drawer is
-                // open; destroyed (not just paused) on close or switch,
-                // so the grid cell's video resumes its loop.
+                // The MediaPlayer lives inside the Loader so closing the
+                // drawer or switching wallpaper destroys it (not just
+                // pauses it), freeing the decoder and letting the grid
+                // cell's own video resume its loop.
                 Loader {
                     id: videoLoader
                     anchors.fill: parent
@@ -206,6 +198,7 @@ Kirigami.OverlayDrawer {
                                 source: drawer.app.fileUrl(drawer.wallpaper)
                                 autoPlay: true
                                 loops: MediaPlayer.Infinite
+                                // -1 disables the audio track: wallpapers play muted.
                                 activeAudioTrack: -1
                                 videoOutput: videoSurface
                             }
@@ -213,6 +206,7 @@ Kirigami.OverlayDrawer {
                     }
                 }
 
+                // Arms the video 250 ms after the drawer opens.
                 Timer {
                     id: mediaStartTimer
                     interval: 250
@@ -220,193 +214,218 @@ Kirigami.OverlayDrawer {
                     onTriggered: drawer.mediaArmed = true
                 }
             }
-    
-            // Category chips; the "Add" menu offers the missing categories.
-            RowLayout {
+
+            // Scrollable section: categories, tags and palette. The content
+            // column is pinned to availableWidth (the width minus the
+            // scrollbar) so it never scrolls horizontally.
+            ScrollView {
+                id: scrollView
                 Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                Repeater {
-                    model: drawer.categories
-                    delegate: Kirigami.Chip {
-                        required property string modelData
-                        Layout.preferredWidth: implicitWidth
-                        width: implicitWidth
-                        text: modelData
-                        icon.name: "tag"
-                        icon.color: drawer.hexFor(modelData)
-                        onRemoved: {
-                            const c = drawer.categories.filter(c2 => c2 !== modelData)
-                            drawer.categories = c
-                            drawer.app.wallpapersInfo.setCategories(drawer.wallpaper, c)
-                        }
-                    }
-                }
+                ColumnLayout {
+                    id: content
+                    width: scrollView.availableWidth
+                    spacing: Kirigami.Units.gridUnit
 
-                ToolButton {
-                    Layout.alignment: Qt.AlignRight
-                    icon.name: "list-add"
-                    Accessible.name: qsTr("Add category")
-                    ToolTip.text: qsTr("Add category")
-                    ToolTip.visible: hovered
-                    ToolTip.delay: Kirigami.Units.toolTipDelay
-                    onClicked: addMenu.open()
-                }
-                Menu {
-                    id: addMenu
-                    Instantiator {
-                        id: addCategoryInstantiator
-                        model: drawer.categorySwatches.filter(s => !drawer.categories.includes(s.name))
-                        delegate: MenuItem {
-                            required property var modelData
-                            text: modelData.label
-                            icon.name: "tag"
-                            icon.color: modelData.hex
-                            onTriggered: {
-                                const list = drawer.categories.slice()
-                                list.push(modelData.name)
-                                drawer.categories = list
-                                drawer.app.wallpapersInfo.setCategories(drawer.wallpaper, list)
-                            }
-                        }
-                        onObjectAdded: (index, object) => addMenu.insertItem(index, object)
-                        onObjectRemoved: (index, object) => addMenu.removeItem(object)
-                    }
-                }
-            }
+                    // Category chips. The "Add" menu only offers the
+                    // categories the wallpaper does not have yet.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
 
-            // Tags: existing ones as chips, new ones via the Enter-accepted field.
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                Repeater {
-                    model: drawer.tags
-                    delegate: Kirigami.Chip {
-                        required property string modelData
-                        Layout.preferredWidth: implicitWidth
-                        width: implicitWidth
-                        text: modelData
-                        onRemoved: {
-                            const t = drawer.tags.filter(t2 => t2 !== modelData)
-                            drawer.tags = t
-                            drawer.app.wallpapersInfo.setTags(drawer.wallpaper, t)
-                        }
-                    }
-                }
-
-                TextField {
-                    id: tagField
-                    Layout.fillWidth: true
-                    placeholderText: qsTr("Add tag...")
-                    onAccepted: {
-                        const t = tagField.text.trim()
-                        if (t !== "" && !drawer.tags.includes(t)) {
-                            const list = drawer.tags.slice()
-                            list.push(t)
-                            drawer.tags = list
-                            drawer.app.wallpapersInfo.setTags(drawer.wallpaper, list)
-                        }
-                        tagField.text = ""
-                    }
-                }
-            }
-
-            // Palette section: backend, dark mode (Material You), extraction.
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                ComboBox {
-                    id: backendCombo
-                    Layout.preferredWidth: 160
-                    model: [qsTr("Material You"), qsTr("ImageMagick")]
-                    onActivated: {
-                        drawer.paletteBackend = currentIndex === 1 ? "imagemagick" : "materialyou"
-                        drawer.paletteSwatches = []
-                        drawer.paletteSelected = -1
-                    }
-                }
-
-                Switch {
-                    id: darkSwitch
-                    checked: drawer.paletteDark
-                    enabled: drawer.paletteBackend === "materialyou"
-                    onToggled: drawer.paletteDark = checked
-                    Accessible.name: checked ? qsTr("Dark") : qsTr("Light") //qsTr("Dark")
-                    ToolTip.text:
-                        checked
-                        ? qsTr("Dark")
-                        : qsTr("Light")
-                    ToolTip.visible: hovered
-                }
-
-                ToolButton {
-                    Layout.alignment: Qt.AlignRight
-                    enabled: !drawer.paletteBusy
-                    icon.name: "media-playback-start" //"color-palette"
-                    Accessible.name: qsTr("Extract palette")
-                    ToolTip.text: qsTr("Extract palette")
-                    ToolTip.visible: hovered
-                    ToolTip.delay: Kirigami.Units.toolTipDelay
-                    onClicked: {
-                        drawer.paletteBusy = true
-                        drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark)
-                    }
-                }
-            }
-
-            // Swatches: left click selects, right click copies the hex.
-            Grid {
-                Layout.fillWidth: true
-                columns: 6
-                columnSpacing: Kirigami.Units.smallSpacing
-                rowSpacing: Kirigami.Units.smallSpacing
-
-                Repeater {
-                    model: drawer.paletteSwatches
-                    delegate: Rectangle {
-                        required property string modelData
-                        required property int index
-                        id: swatch
-                        implicitWidth: Kirigami.Units.gridUnit * 1.5
-                        implicitHeight: implicitWidth
-                        width: implicitWidth
-                        height: implicitHeight
-                        radius: Kirigami.Units.smallSpacing
-                        color: modelData
-                        border.width: drawer.paletteSelected === index ? 2 : 1
-                        border.color: drawer.paletteSelected === index
-                            ? Kirigami.Theme.highlightColor
-                            : Kirigami.Theme.textColor
-                        ToolTip.text: modelData.toUpperCase()
-                        ToolTip.visible: swatchMouse.containsMouse
-                        ToolTip.delay: Kirigami.Units.toolTipDelay
-
-                        MouseArea {
-                            id: swatchMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            acceptedButtons: Qt.LeftButton | Qt.RightButton
-                            onClicked: (mouse) => {
-                                if (mouse.button === Qt.RightButton) {
-                                    drawer.copySwatchToClipboard(swatch.modelData)
-                                } else {
-                                    drawer.paletteSelected = swatch.index
+                        Repeater {
+                            model: drawer.categories
+                            delegate: Kirigami.Chip {
+                                required property string modelData
+                                // The chip's width is not driven by the
+                                // layout; pin it to its implicit size.
+                                Layout.preferredWidth: implicitWidth
+                                width: implicitWidth
+                                text: modelData
+                                icon.name: "tag"
+                                icon.color: drawer.hexFor(modelData)
+                                onRemoved: {
+                                    const c = drawer.categories.filter(c2 => c2 !== modelData)
+                                    drawer.categories = c
+                                    drawer.app.wallpapersInfo.setCategories(drawer.wallpaper, c)
                                 }
-                                mouse.accepted = true
+                            }
+                        }
+
+                        ToolButton {
+                            Layout.alignment: Qt.AlignRight
+                            icon.name: "list-add"
+                            Accessible.name: qsTr("Add category")
+                            ToolTip.text: qsTr("Add category")
+                            ToolTip.visible: hovered
+                            ToolTip.delay: Kirigami.Units.toolTipDelay
+                            onClicked: addMenu.open()
+                        }
+
+                        // Menu items are generated by the Instantiator
+                        // (a Menu does not support a Repeater directly) and
+                        // inserted/removed as the model changes.
+                        Menu {
+                            id: addMenu
+                            Instantiator {
+                                id: addCategoryInstantiator
+                                model: drawer.categorySwatches.filter(s => !drawer.categories.includes(s.name))
+                                delegate: MenuItem {
+                                    required property var modelData
+                                    text: modelData.label
+                                    icon.name: "tag"
+                                    icon.color: modelData.hex
+                                    onTriggered: {
+                                        const list = drawer.categories.slice()
+                                        list.push(modelData.name)
+                                        drawer.categories = list
+                                        drawer.app.wallpapersInfo.setCategories(drawer.wallpaper, list)
+                                    }
+                                }
+                                onObjectAdded: (index, object) => addMenu.insertItem(index, object)
+                                onObjectRemoved: (index, object) => addMenu.removeItem(object)
+                            }
+                        }
+                    }
+
+                    // Tags: existing ones as removable chips, new ones
+                    // added by typing and pressing Enter.
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Repeater {
+                            model: drawer.tags
+                            delegate: Kirigami.Chip {
+                                required property string modelData
+                                Layout.preferredWidth: implicitWidth
+                                width: implicitWidth
+                                text: modelData
+                                onRemoved: {
+                                    const t = drawer.tags.filter(t2 => t2 !== modelData)
+                                    drawer.tags = t
+                                    drawer.app.wallpapersInfo.setTags(drawer.wallpaper, t)
+                                }
+                            }
+                        }
+
+                        TextField {
+                            id: tagField
+                            Layout.fillWidth: true
+                            placeholderText: qsTr("Add tag...")
+                            onAccepted: {
+                                const t = tagField.text.trim()
+                                // Ignore empty input and duplicates.
+                                if (t !== "" && !drawer.tags.includes(t)) {
+                                    const list = drawer.tags.slice()
+                                    list.push(t)
+                                    drawer.tags = list
+                                    drawer.app.wallpapersInfo.setTags(drawer.wallpaper, list)
+                                }
+                                tagField.text = ""
+                            }
+                        }
+                    }
+
+                    // Palette controls: backend, dark mode and extraction.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        ComboBox {
+                            id: backendCombo
+                            Layout.preferredWidth: 160
+                            model: [qsTr("Material You"), qsTr("ImageMagick")]
+                            // Switching backend invalidates the current palette.
+                            onActivated: {
+                                drawer.paletteBackend = currentIndex === 1 ? "imagemagick" : "materialyou"
+                                drawer.paletteSwatches = []
+                                drawer.paletteSelected = -1
+                            }
+                        }
+
+                        // Dark/light only applies to Material You; the
+                        // ImageMagick backend ignores it.
+                        Switch {
+                            id: darkSwitch
+                            checked: drawer.paletteDark
+                            enabled: drawer.paletteBackend === "materialyou"
+                            onToggled: drawer.paletteDark = checked
+                            Accessible.name: checked ? qsTr("Dark") : qsTr("Light")
+                            ToolTip.text: checked ? qsTr("Dark") : qsTr("Light")
+                            ToolTip.visible: hovered
+                        }
+
+                        // Disabled while an extraction is running to avoid
+                        // overlapping requests for the same wallpaper.
+                        ToolButton {
+                            Layout.alignment: Qt.AlignRight
+                            enabled: !drawer.paletteBusy
+                            icon.name: "media-playback-start"
+                            Accessible.name: qsTr("Extract palette")
+                            ToolTip.text: qsTr("Extract palette")
+                            ToolTip.visible: hovered
+                            ToolTip.delay: Kirigami.Units.toolTipDelay
+                            onClicked: {
+                                drawer.paletteBusy = true
+                                drawer.app.paletteExtractor.extract(drawer.wallpaper, drawer.paletteBackend, drawer.paletteDark)
+                            }
+                        }
+                    }
+
+                    // Extracted swatches: left click selects, right click
+                    // copies the hex value to the clipboard.
+                    Grid {
+                        Layout.fillWidth: true
+                        columns: 6
+                        columnSpacing: Kirigami.Units.smallSpacing
+                        rowSpacing: Kirigami.Units.smallSpacing
+
+                        Repeater {
+                            model: drawer.paletteSwatches
+                            delegate: Rectangle {
+                                required property string modelData
+                                required property int index
+                                id: swatch
+                                implicitWidth: Kirigami.Units.gridUnit * 1.5
+                                implicitHeight: implicitWidth
+                                width: implicitWidth
+                                height: implicitHeight
+                                radius: Kirigami.Units.smallSpacing
+                                color: modelData
+                                border.width: drawer.paletteSelected === index ? 2 : 1
+                                border.color: drawer.paletteSelected === index
+                                    ? Kirigami.Theme.highlightColor
+                                    : Kirigami.Theme.textColor
+                                ToolTip.text: modelData.toUpperCase()
+                                ToolTip.visible: swatchMouse.containsMouse
+                                ToolTip.delay: Kirigami.Units.toolTipDelay
+
+                                MouseArea {
+                                    id: swatchMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: (mouse) => {
+                                        if (mouse.button === Qt.RightButton) {
+                                            drawer.copySwatchToClipboard(swatch.modelData)
+                                        } else {
+                                            drawer.paletteSelected = swatch.index
+                                        }
+                                        mouse.accepted = true
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // Custom Scripts
-            // ListView {
-            // }
-
-            Item { Layout.fillHeight: true }
-
+            // Footer: always visible, outside the scroll area.
             Kirigami.Separator { Layout.fillWidth: true }
 
             RowLayout {

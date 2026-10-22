@@ -4,8 +4,6 @@
 
 Kwal — KDE Plasma utility to manage the wallpaper and tint applications/tools with palettes extracted from the wallpaper. C++/Qt6/QML rewrite of the Python original (sibling repo `../Kwal` — read its AGENTS.md for feature spec). App ID: `org.kde.kwal`.
 
-Future design notes (thumbnail cache, video/SVG support, palettes) live in `diseñando.txt` — roadmap only, do not nothing with this, not a spec for current work.
-
 ## Development Directives
 
 - **Simplicity first.** The rewrite keeps the new project as simple and clean as possible: smallest code that does the job, no speculative abstractions, no legacy quirks.

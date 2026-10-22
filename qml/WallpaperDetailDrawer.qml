@@ -305,19 +305,18 @@ Kirigami.OverlayDrawer {
                                         }
                                     }
                                 }
-                            }
-
-                            ToolButton {
-                                Layout.alignment: Qt.AlignRight
-                                icon.name: "list-add"
-                                checkable: true
-                                checked: drawer.tagInputVisible
-                                display: AbstractButton.IconOnly
-                                Accessible.name: qsTr("Show or hide the tag input")
-                                ToolTip.text: qsTr("Show or hide the tag input")
-                                ToolTip.visible: hovered
-                                ToolTip.delay: Kirigami.Units.toolTipDelay
-                                onClicked: drawer.tagInputVisible = checked
+                                ToolButton {
+                                    Layout.alignment: Qt.AlignRight
+                                    icon.name: "list-add"
+                                    checkable: true
+                                    checked: drawer.tagInputVisible
+                                    display: AbstractButton.IconOnly
+                                    Accessible.name: qsTr("Show or hide the tag input")
+                                    ToolTip.text: qsTr("Show or hide the tag input")
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                                    onClicked: drawer.tagInputVisible = checked
+                                }
                             }
                         }
 

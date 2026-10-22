@@ -342,6 +342,15 @@ void AppController::selectWallpaper(const QString &filePath)
         return;
     }
     m_selectedWallpaper = filePath;
+    // Videos carry no dimensions QImageReader can read; the cached first
+    // frame (extracted at the video's native resolution) does.
+    QString source = filePath;
+    if (WallpaperModel::isVideo(filePath)) {
+        if (WallpapersInfo *info = wallpapersInfo()) {
+            source = info->firstFrameFor(filePath);
+        }
+    }
+    m_selectedWallpaperSize = source.isEmpty() ? QString() : imageResolution(source);
     if (m_selectedSourceColorIndex != -1) {
         m_selectedSourceColorIndex = -1;
         emit selectedSourceColorIndexChanged();

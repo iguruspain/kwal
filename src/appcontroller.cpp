@@ -1,5 +1,6 @@
 #include "appcontroller.h"
 #include "templateinstaller.h"
+#include "paletteextractor.h"
 #include "wallpapermodel.h"
 #include "wallpapersinfo.h"
 #include <KConfig>
@@ -54,6 +55,7 @@ AppController::AppController(QObject *parent)
     , m_fastfetchAvailable(isToolInstalled(QStringLiteral("fastfetch")))
     , m_starshipAvailable(isToolInstalled(QStringLiteral("starship")))
     , m_ulauncherAvailable(isToolInstalled(QStringLiteral("ulauncher")))
+    , m_paletteExtractor(new PaletteExtractor(this))
 {
     m_ulauncher = new UlauncherController(m_config->group(QStringLiteral("Ulauncher")), this);
     loadConfig();
@@ -200,6 +202,16 @@ bool AppController::ulauncherAvailable() const
 UlauncherController *AppController::ulauncher() const
 {
     return m_ulauncher;
+}
+
+WallpapersInfo *AppController::wallpapersInfo() const
+{
+    return WallpapersInfo::instance();
+}
+
+PaletteExtractor *AppController::paletteExtractor() const
+{
+    return m_paletteExtractor;
 }
 
 bool AppController::matugenDotsEnabled() const

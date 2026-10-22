@@ -210,6 +210,8 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
     }
     const double mtime = fi.lastModified().toMSecsSinceEpoch() / 1000.0;
     bool upToDate = false;
+    bool carryCategoriesManual = false;
+    bool carryTagsManual = false;
     {
         QMutexLocker locker(&m_mutex);
         const auto it = m_entries.constFind(path);
@@ -224,6 +226,10 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
             && it->lastModified == mtime
             && !(type == QLatin1String("video") && it->firstFrame.isEmpty())
             && matugenOk;
+        if (it != m_entries.constEnd()) {
+            carryCategoriesManual = it->categoriesManual;
+            carryTagsManual = it->tagsManual;
+        }
     }
     if (upToDate) {
         // jobFinished() acquires m_mutex itself; it must not be called
@@ -257,6 +263,21 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
                         break;
                     }
                 }
+            }
+        }
+    }
+    // Manually edited categories/tags survive rescans.
+    if (carryCategoriesManual || carryTagsManual) {
+        QMutexLocker locker(&m_mutex);
+        const auto it = m_entries.constFind(path);
+        if (it != m_entries.constEnd()) {
+            if (carryCategoriesManual) {
+                entry.colorCategories = it->colorCategories;
+                entry.categoriesManual = true;
+            }
+            if (carryTagsManual) {
+                entry.tags = it->tags;
+                entry.tagsManual = true;
             }
         }
     }
@@ -376,6 +397,8 @@ void WallpapersInfo::load()
         entry.tags = jsonStringList(obj.value(QStringLiteral("tags")));
         entry.lastModified = obj.value(QStringLiteral("last_modified")).toDouble();
         entry.matugenDone = obj.value(QStringLiteral("matugen_done")).toBool();
+        entry.categoriesManual = obj.value(QStringLiteral("categories_manual")).toBool();
+        entry.tagsManual = obj.value(QStringLiteral("tags_manual")).toBool();
         if (!entry.file.isEmpty()) {
             m_entries.insert(entry.file, entry);
         }
@@ -397,6 +420,12 @@ void WallpapersInfo::saveLocked()
         obj[QStringLiteral("last_modified")] = entry.lastModified;
         if (entry.matugenDone) {
             obj[QStringLiteral("matugen_done")] = true;
+        }
+        if (entry.categoriesManual) {
+            obj[QStringLiteral("categories_manual")] = true;
+        }
+        if (entry.tagsManual) {
+            obj[QStringLiteral("tags_manual")] = true;
         }
         files.append(obj);
     }
@@ -448,6 +477,40 @@ QStringList WallpapersInfo::tagsFor(const QString &path) const
 {
     QMutexLocker locker(&m_mutex);
     return m_entries.value(path).tags;
+}
+
+void WallpapersInfo::setCategories(const QString &path, const QStringList &categories)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        auto it = m_entries.find(path);
+        if (it == m_entries.end()) {
+            Entry entry;
+            entry.file = path;
+            it = m_entries.insert(entry.file, entry);
+        }
+        it->colorCategories = categories;
+        it->categoriesManual = true;
+        saveLocked();
+    }
+    emit entryChanged(path);
+}
+
+void WallpapersInfo::setTags(const QString &path, const QStringList &tags)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        auto it = m_entries.find(path);
+        if (it == m_entries.end()) {
+            Entry entry;
+            entry.file = path;
+            it = m_entries.insert(entry.file, entry);
+        }
+        it->tags = tags;
+        it->tagsManual = true;
+        saveLocked();
+    }
+    emit entryChanged(path);
 }
 
 bool WallpapersInfo::ffmpegAvailable() const

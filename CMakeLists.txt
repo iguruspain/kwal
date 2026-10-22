@@ -79,6 +79,8 @@ qt_add_executable(kwal
  src/fastfetchcontroller.h
  src/fdothumbnailprovider.cpp
  src/fdothumbnailprovider.h
+ src/paletteextractor.cpp
+ src/paletteextractor.h
  src/main.cpp
  src/starshipcontroller.cpp
  src/starshipcontroller.h
@@ -111,6 +113,7 @@ qt_add_qml_module(kwal
  QML_FILES
  qml/Main.qml
  qml/WallpapersPage.qml
+ qml/WallpaperDetailDrawer.qml
  qml/FolderSidebar.qml
  qml/FolderRow.qml
  qml/WallpaperItem.qml
@@ -155,6 +158,8 @@ qt_add_executable(tst_appcontroller
  src/wallpapermodel.cpp
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
+ src/paletteextractor.cpp
+ src/paletteextractor.h
  src/ulaunchercontroller.cpp
  src/ulaunchercontroller.h
  src/tools/fileutil.cpp
@@ -196,6 +201,24 @@ target_link_libraries(tst_wallpapersinfo
  Qt6::Test
 )
 add_test(NAME tst_wallpapersinfo COMMAND tst_wallpapersinfo)
+qt_add_executable(tst_paletteextractor
+ tests/tst_paletteextractor.cpp
+ src/paletteextractor.cpp
+ src/paletteextractor.h
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
+)
+target_include_directories(tst_paletteextractor PRIVATE src)
+target_link_libraries(tst_paletteextractor
+ PRIVATE
+ Qt6::Core
+ Qt6::Gui
+ Qt6::Qml
+ Qt6::Test
+)
+add_test(NAME tst_paletteextractor COMMAND tst_paletteextractor)
 qt_add_executable(tst_tools
  tests/tst_tools.cpp
  src/tools/fileutil.cpp

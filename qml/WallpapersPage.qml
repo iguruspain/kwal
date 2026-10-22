@@ -232,7 +232,11 @@ Kirigami.Page {
                         app: page.app
                         grid: gridView
                         pageVisible: page.pageActive
+                        detailOpen: detailDrawerLoader.active
+                            ? (detailDrawerLoader.item as WallpaperDetailDrawer).drawerOpen
+                            : false
                         sourceColors: model.sourceColors
+                        onOpenDetail: (path, video) => page.openDetail(path, video)
                         // GridView does not resize delegates; fill the cell like the old app.
                         width: gridView.cellWidth
                         height: gridView.cellHeight
@@ -265,6 +269,36 @@ Kirigami.Page {
                 explanation: searchField.text === "" ? qsTr("Pick a folder with images to get started.") : qsTr("Try a different search term.")
             }
         }
+    }
+
+    // Detail drawer opened by double-clicking a cell. Created lazily on
+    // first open: Kirigami 6.31's DrawerHandle template declares
+    // `parent: overlay?.parent ?? null` and its `x` binding reads
+    // `parent.width` without a null guard, so a handle created before the
+    // window's overlay exists logs
+    // "TypeError: Cannot read property 'width' of null" at startup.
+    // Creating the drawer on first double-click (window fully up by then)
+    // makes that state unreachable.
+    Component {
+        id: detailDrawerComponent
+        WallpaperDetailDrawer {
+            app: page.app
+            wallpaper: ""
+            isVideo: false
+            categorySwatches: page.categorySwatches
+        }
+    }
+    Loader {
+        id: detailDrawerLoader
+        sourceComponent: detailDrawerComponent
+    }
+
+    function openDetail(path, video) {
+        detailDrawerLoader.active = true
+        const drawer = detailDrawerLoader.item as WallpaperDetailDrawer
+        drawer.wallpaper = path
+        drawer.isVideo = video
+        drawer.drawerOpen = true
     }
 
     Component.onCompleted: gridView.forceActiveFocus()

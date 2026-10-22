@@ -1,7 +1,9 @@
 #pragma once
 
+#include "paletteextractor.h"
 #include "ulaunchercontroller.h"
 #include "wallpapermodel.h"
+#include "wallpapersinfo.h"
 
 #include <QtQml/qqmlregistration.h>
 
@@ -39,6 +41,8 @@ class AppController : public QObject
     Q_PROPERTY(bool colorCategoriesEnabled READ colorCategoriesEnabled WRITE setColorCategoriesEnabled NOTIFY colorCategoriesEnabledChanged)
     Q_PROPERTY(bool matugenAvailable READ matugenAvailable CONSTANT)
     Q_PROPERTY(UlauncherController *ulauncher READ ulauncher CONSTANT)
+    Q_PROPERTY(WallpapersInfo *wallpapersInfo READ wallpapersInfo CONSTANT)
+    Q_PROPERTY(PaletteExtractor *paletteExtractor READ paletteExtractor CONSTANT)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -67,6 +71,8 @@ public:
     bool starshipAvailable() const;
     bool ulauncherAvailable() const;
     UlauncherController *ulauncher() const;
+    WallpapersInfo *wallpapersInfo() const;
+    PaletteExtractor *paletteExtractor() const;
     bool matugenDotsEnabled() const;
     void setMatugenDotsEnabled(bool enabled);
     bool colorCategoriesEnabled() const;
@@ -109,6 +115,8 @@ private:
     // KConfig group so the preview settings persist in [Ulauncher] of
     // kwalrc.
     UlauncherController *m_ulauncher = nullptr;
+    // Owned by this object; runs palette extraction on a thread pool.
+    PaletteExtractor *m_paletteExtractor = nullptr;
     std::unique_ptr<KConfig> m_config;
     QStringList m_folders;
     int m_currentFolderIndex = 0;

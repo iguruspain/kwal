@@ -32,17 +32,26 @@ ItemDelegate {
     readonly property bool isSelected: root.path === root.app.selectedWallpaper
     // Whether the wallpapers page is currently visible; passed down by the page.
     property bool pageVisible: true
+    // Whether the detail drawer is open; passed down by the page. While it
+    // is, the drawer shows the video, so the cell's own live playback stays
+    // off (no double decode of the same file).
+    property bool detailOpen: false
     // The selected video cell plays live (muted, looping) instead of the
     // still. Media only exists while the cell is the active video, so at
     // most one MediaPlayer/VideoOutput exists at a time. Starting is
     // delayed (videoStartTimer) so the highlight transition is not lagged
     // by decoder/surface setup; stopping is immediate so switching tabs,
-    // folders or selection releases the GPU resources right away.
-    readonly property bool videoActive: root.isVideo && root.isSelected && root.pageVisible
+    // folders, selection or opening the drawer releases the GPU resources
+    // right away.
+    readonly property bool videoActive:
+        root.isVideo && root.isSelected && root.pageVisible && !root.detailOpen
     // Armed after the start delay; the Loader (whose active defaults to
     // true) is only loaded once armed, and it disarms itself immediately
     // whenever it stops.
     property bool videoArmed: false
+
+    // Double-click on a cell: the page opens the detail drawer for it.
+    signal openDetail(string path, bool isVideo)
 
     // Covers the highlight transition (GridView default ~250ms).
     Timer {
@@ -68,9 +77,17 @@ ItemDelegate {
 
     activeFocusOnTab: false
     hoverEnabled: true
-    onClicked: root.grid.currentIndex = index
 
     contentItem: Item {
+        // Single click selects, double click opens the detail drawer.
+        // Below all other children, so the apply button and color dots keep
+        // their own click handling.
+        MouseArea {
+            id: cellMouse
+            anchors.fill: parent
+            onClicked: root.grid.currentIndex = root.index
+            onDoubleClicked: root.openDetail(root.path, root.isVideo)
+        }
         // Rounded clipped container like the old app: keeps the hover/selection zoom inside the cell.
         Rectangle {
             id: thumbContainer

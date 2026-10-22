@@ -17,7 +17,9 @@
 class WallpapersInfo : public QObject
 {
     Q_OBJECT
+    QML_ELEMENT
     QML_SINGLETON
+    QML_UNCREATABLE("Provided by C++")
     Q_PROPERTY(bool matugenEnabled READ matugenEnabled WRITE setMatugenEnabled NOTIFY matugenEnabledChanged)
 public:
     struct Entry {
@@ -31,6 +33,9 @@ public:
         // matugen extraction succeeded for this file; a failed or missing run
         // is retried on the next scan.
         bool matugenDone = false;
+        // Categories/tags were edited manually in the UI; rescans preserve them.
+        bool categoriesManual = false;
+        bool tagsManual = false;
         double lastModified = 0.0;
     };
 
@@ -47,6 +52,9 @@ public:
     Q_INVOKABLE QStringList sourceColorsFor(const QString &path) const;
     Q_INVOKABLE QStringList colorCategoriesFor(const QString &path) const;
     Q_INVOKABLE QStringList tagsFor(const QString &path) const;
+    // Manual overrides from the UI; preserved across folder rescans.
+    Q_INVOKABLE void setCategories(const QString &path, const QStringList &categories);
+    Q_INVOKABLE void setTags(const QString &path, const QStringList &tags);
 
     bool ffmpegAvailable() const;
     bool matugenAvailable() const;

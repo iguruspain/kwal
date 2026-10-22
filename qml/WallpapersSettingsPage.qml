@@ -19,7 +19,9 @@ Kirigami.ScrollablePage {
         qsTr("Also apply to the lock screen"),
         qsTr("Resize videos"),
         qsTr("Target height"),
-        qsTr("Frame rate")
+        qsTr("Frame rate"),
+        qsTr("Folder"),
+        qsTr("Generate resizes")
     ]
 
     contentItem: Item {
@@ -74,7 +76,7 @@ Kirigami.ScrollablePage {
             KirigamiDelegates.SwitchSubtitleDelegate {
                 Layout.fillWidth: true
                 text: qsTr("Resize videos")
-                subtitle: qsTr("Create a scaled cache copy of videos instead of applying the original")
+                subtitle: qsTr("Apply the scaled copy instead of the original video")
                 checked: page.app.resizeEnabled
                 onToggled: page.app.resizeEnabled = checked
             }
@@ -86,7 +88,6 @@ Kirigami.ScrollablePage {
                     to: 4320
                     stepSize: 120
                     value: page.app.resizeHeight
-                    enabled: page.app.resizeEnabled
                     onValueModified: page.app.resizeHeight = value
                 }
 
@@ -99,9 +100,39 @@ Kirigami.ScrollablePage {
                         return value === 0 ? qsTr("Original") : value
                     }
                     value: page.app.resizeFps
-                    enabled: page.app.resizeEnabled
                     onValueModified: page.app.resizeFps = value
                 }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                ComboBox {
+                    id: folderCombo
+                    Layout.fillWidth: true
+                    model: page.app.videoFolders
+                    enabled: page.app.videoFolders.length > 0
+                }
+
+                Button {
+                    text: page.app.wallpapersInfo.resizing ? qsTr("Generating…") : qsTr("Generate resizes")
+                    enabled: page.app.videoFolders.length > 0 && !page.app.wallpapersInfo.resizing
+                    onClicked: {
+                        const index = folderCombo.currentIndex
+                        if (index >= 0 && index < folderCombo.model.length) {
+                            page.app.generateVideoResizes(folderCombo.model[index])
+                        }
+                    }
+                }
+            }
+
+            ProgressBar {
+                Layout.fillWidth: true
+                from: 0
+                to: Math.max(1, page.app.wallpapersInfo.resizeTotal)
+                value: page.app.wallpapersInfo.resizeCompleted
+                visible: page.app.wallpapersInfo.resizing
             }
         }
     }

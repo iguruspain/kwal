@@ -121,6 +121,18 @@ bool WallpaperModel::isVideo(const QString &filePath)
     return videoExtensions().contains(QFileInfo(filePath).suffix(), Qt::CaseInsensitive);
 }
 
+QStringList WallpaperModel::videoNameFilters()
+{
+    static const QStringList filters = [] {
+        QStringList out;
+        for (const QString &ext : videoExtensions()) {
+            out.append(QStringLiteral("*.") + ext);
+        }
+        return out;
+    }();
+    return filters;
+}
+
 void WallpaperModel::setSourceDirectory(const QString &directory)
 {
     if (m_directory == directory) {

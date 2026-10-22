@@ -22,6 +22,11 @@ class WallpapersInfo : public QObject
     QML_SINGLETON
     QML_UNCREATABLE("Provided by C++")
     Q_PROPERTY(bool matugenEnabled READ matugenEnabled WRITE setMatugenEnabled NOTIFY matugenEnabledChanged)
+    // The optional video-resize generation batch: how many videos the
+    // current "Generate resizes" run covers and how many have finished.
+    Q_PROPERTY(bool resizing READ resizing NOTIFY resizeProgressChanged)
+    Q_PROPERTY(int resizeTotal READ resizeTotal NOTIFY resizeProgressChanged)
+    Q_PROPERTY(int resizeCompleted READ resizeCompleted NOTIFY resizeProgressChanged)
 public:
     struct Entry {
         QString file;
@@ -39,9 +44,6 @@ public:
         // Categories/tags were edited manually in the UI; rescans preserve them.
         bool categoriesManual = false;
         bool tagsManual = false;
-        // The P5 resize plan ran to a conclusion for the current mtime; a
-        // failed or missing plan (no ffmpeg, probe error) is retried.
-        bool resizeDone = false;
         double lastModified = 0.0;
     };
 
@@ -50,8 +52,14 @@ public:
     static WallpapersInfo *instance();
 
     Q_INVOKABLE void refreshFile(const QString &path, const QString &type);
-    // Re-runs the P5 resize plan for one video (settings change).
+    // Enqueues one video in a resize batch (explicit "Generate resizes").
     Q_INVOKABLE void planResize(const QString &path);
+    // Starts a resize batch of <total> videos; resets the progress counters.
+    Q_INVOKABLE void beginResizeBatch(int total);
+    // True while a "Generate resizes" batch is running.
+    bool resizing() const;
+    int resizeTotal() const;
+    int resizeCompleted() const;
     // frames), plus any orphan frame PNGs in the cache. Call after a folder
     // scan; emits entryChanged for every removed path.
     Q_INVOKABLE void sweep();
@@ -70,8 +78,9 @@ public:
     bool matugenAvailable() const;
     bool matugenEnabled() const;
     void setMatugenEnabled(bool enabled);
-    // P5 resize settings, mirrored by AppController from KConfig.
-    void setResizeSettings(bool enabled, int height, int fps);
+    // Sets the resize target read by pool jobs; called just before a
+    // "Generate resizes" batch starts.
+    void setResizeParameters(int height, int fps);
 
     Entry entryFor(const QString &path) const;
     void load();
@@ -88,6 +97,8 @@ signals:
     void entryChanged(const QString &path);
     // Emitted after all refreshFile jobs queued so far have finished.
     void scanFinished();
+    // Emitted as a "Generate resizes" batch progresses.
+    void resizeProgressChanged();
     // Emitted when the matugen color-extraction toggle changed.
     void matugenEnabledChanged();
 
@@ -97,6 +108,8 @@ private:
     void saveLocked();
     void upsert(const Entry &entry);
     void jobFinished();
+    // Finishes one resize job; updates the batch progress on the object's thread.
+    void resizeJobFinished();
 
     QString jsonPath() const;
     QString framesDir() const;
@@ -108,10 +121,13 @@ private:
     int m_pending = 0; // refresh jobs in flight, guarded by m_mutex
     QThreadPool m_pool;
     std::atomic<bool> m_matugenEnabled{false};
-    // P5 resize settings, read by pool jobs.
-    std::atomic<bool> m_resizeEnabled{false};
+    // P5 resize target, read by pool jobs; set just before a batch starts.
     std::atomic<int> m_resizeHeight{1080};
     std::atomic<int> m_resizeFps{0};
+    // "Generate resizes" batch progress; touched only on the object's thread.
+    int m_resizeTotal = 0;
+    int m_resizeCompleted = 0;
+    int m_resizePending = 0;
     // One-time "ffmpeg/ffprobe not found" warning.
     std::atomic<bool> m_ffmpegWarned{false};
     void warnFfmpegOnce();

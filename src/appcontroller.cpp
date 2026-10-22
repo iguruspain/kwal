@@ -302,6 +302,7 @@ void AppController::addFolder(const QString &path)
     m_folders.append(trimmed);
     saveConfig();
     emit foldersChanged();
+    recomputeVideoFolders();
     setCurrentFolderIndex(m_folders.size() - 1);
 }
 
@@ -321,6 +322,7 @@ void AppController::removeFolder(int index)
         m_currentFolderIndex = m_folders.size() - 1;
     }
     emit foldersChanged();
+    recomputeVideoFolders();
     applyCurrentFolder();
     emit currentFolderIndexChanged();
 }
@@ -444,7 +446,6 @@ void AppController::loadConfig()
         m_matugenDots = group.readEntry("matugenDots", info->matugenAvailable());
         m_colorCategories = group.readEntry("colorCategories", true);
         info->setMatugenEnabled(m_matugenDots);
-        info->setResizeSettings(m_resizeEnabled, m_resizeHeight, m_resizeFps);
     }
 
     const KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
@@ -458,6 +459,10 @@ void AppController::loadConfig()
     m_transparencyLevel = qBound(kTransparencyLevelMin,
                                 generalGroup.readEntry("transparencyLevel", kTransparencyLevelDefault),
                                 kTransparencyLevelMax);
+
+    // The resize settings no longer drive auto-generation; rebuild the
+    // video-folder picker from the loaded folders.
+    recomputeVideoFolders();
 }
 
 void AppController::saveConfig()
@@ -517,7 +522,6 @@ void AppController::setResizeEnabled(bool enabled)
     m_resizeEnabled = enabled;
     saveConfig();
     emit resizeEnabledChanged();
-    applyResizeSettings();
 }
 
 int AppController::resizeHeight() const
@@ -534,7 +538,6 @@ void AppController::setResizeHeight(int height)
     m_resizeHeight = height;
     saveConfig();
     emit resizeHeightChanged();
-    applyResizeSettings();
 }
 
 int AppController::resizeFps() const
@@ -551,23 +554,54 @@ void AppController::setResizeFps(int fps)
     m_resizeFps = fps;
     saveConfig();
     emit resizeFpsChanged();
-    applyResizeSettings();
 }
 
-void AppController::applyResizeSettings()
+QStringList AppController::videoFolders() const
+{
+    return m_videoFolders;
+}
+
+void AppController::recomputeVideoFolders()
+{
+    QStringList out;
+    for (const QString &folder : m_folders) {
+        if (!videoFilesIn(folder).isEmpty()) {
+            out.append(folder);
+        }
+    }
+    if (m_videoFolders == out) {
+        return;
+    }
+    m_videoFolders = std::move(out);
+    emit videoFoldersChanged();
+}
+
+QStringList AppController::videoFilesIn(const QString &folder)
+{
+    QDir dir(folder);
+    const QFileInfoList entries =
+        dir.entryInfoList(WallpaperModel::videoNameFilters(), QDir::Files);
+    QStringList paths;
+    paths.reserve(entries.size());
+    for (const QFileInfo &info : entries) {
+        paths.append(info.absoluteFilePath());
+    }
+    return paths;
+}
+
+void AppController::generateVideoResizes(const QString &folder)
 {
     WallpapersInfo *info = WallpapersInfo::instance();
-    if (!info) {
+    if (info == nullptr) {
         return;
     }
-    info->setResizeSettings(m_resizeEnabled, m_resizeHeight, m_resizeFps);
-    if (!m_resizeEnabled) {
+    const QStringList videos = videoFilesIn(folder);
+    if (videos.isEmpty()) {
         return;
     }
-    // Re-plan the videos of the current folder with the new settings.
-    for (const QString &path : m_wallpaperModel->filePaths()) {
-        if (WallpaperModel::isVideo(path)) {
-            info->planResize(path);
-        }
+    info->setResizeParameters(m_resizeHeight, m_resizeFps);
+    info->beginResizeBatch(videos.size());
+    for (const QString &path : videos) {
+        info->planResize(path);
     }
 }

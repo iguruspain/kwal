@@ -192,33 +192,34 @@ void tst_WallpapersInfo::testVideoResize()
     QVERIFY(process.waitForFinished(60000));
     QCOMPARE(process.exitCode(), 0);
 
-    // P5: with the setting on, the scan plans the resize (360 -> 240, fps
-    // kept) and stores the cache copy path.
-    info->setResizeSettings(true, 240, 0);
+    // The scan no longer auto-generates resizes: refresh the entry first
+    // (first frame), then run an explicit "generate resizes" batch.
     info->refreshFile(video, QStringLiteral("video"));
-    QTRY_VERIFY_WITH_TIMEOUT(!info->entryFor(video).resized.isEmpty(), 60000);
+    QTRY_VERIFY_WITH_TIMEOUT(!info->entryFor(video).firstFrame.isEmpty(), 60000);
+
+    // Generate (360 -> 240, fps kept) stores the cache copy path.
+    info->setResizeParameters(240, 0);
+    info->beginResizeBatch(1);
+    info->planResize(video);
+    QTRY_VERIFY_WITH_TIMEOUT(!info->resizing(), 60000);
     QString resized = info->entryFor(video).resized;
     QCOMPARE(QFileInfo(resized).fileName(), contentMd5(video) + QStringLiteral("_240p30.mp4"));
     QVERIFY(QFileInfo(resized).size() > 0);
 
-    // A re-plan with settings that need no filter applies the original.
-    info->setResizeSettings(true, 1080, 0);
+    // A re-plan with settings that need no filter clears the cache copy
+    // (the original is used).
+    info->setResizeParameters(1080, 0);
+    info->beginResizeBatch(1);
     info->planResize(video);
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(video).resized.isEmpty(), 30000);
-    QCOMPARE(info->entryFor(video).resizeDone, true);
+    QTRY_VERIFY_WITH_TIMEOUT(!info->resizing(), 30000);
+    QVERIFY(info->entryFor(video).resized.isEmpty());
 
     // A lower fps is applied as an fps-only pass (no scaling: 360 < 480).
-    info->setResizeSettings(true, 480, 15);
+    info->setResizeParameters(480, 15);
+    info->beginResizeBatch(1);
     info->planResize(video);
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(video).resized.endsWith(QStringLiteral("_360p15.mp4")), 60000);
-
-    // While disabled, a re-scan does not re-plan (apply is gated by the
-    // flag; the original would be used).
-    info->setResizeSettings(false, 480, 15);
-    info->refreshFile(video, QStringLiteral("video"));
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(video).resized.endsWith(QStringLiteral("_360p15.mp4")), 30000);
-
-    info->setResizeSettings(false, 1080, 0);
+    QTRY_VERIFY_WITH_TIMEOUT(!info->resizing(), 60000);
+    QVERIFY(info->entryFor(video).resized.endsWith(QStringLiteral("_360p15.mp4")));
 }
 
 void tst_WallpapersInfo::testColorCategory()

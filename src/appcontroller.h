@@ -12,6 +12,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
 
 class KConfig;
 
@@ -31,6 +32,9 @@ class AppController : public QObject
     Q_PROPERTY(bool resizeEnabled READ resizeEnabled WRITE setResizeEnabled NOTIFY resizeEnabledChanged)
     Q_PROPERTY(int resizeHeight READ resizeHeight WRITE setResizeHeight NOTIFY resizeHeightChanged)
     Q_PROPERTY(int resizeFps READ resizeFps WRITE setResizeFps NOTIFY resizeFpsChanged)
+    // Configured folders that contain at least one video; drives the
+    // "Generate resizes" folder picker.
+    Q_PROPERTY(QStringList videoFolders READ videoFolders NOTIFY videoFoldersChanged)
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(int selectedSourceColorIndex READ selectedSourceColorIndex WRITE setSelectedSourceColorIndex NOTIFY selectedSourceColorIndexChanged)
@@ -66,6 +70,7 @@ public:
     void setResizeHeight(int height);
     int resizeFps() const;
     void setResizeFps(int fps);
+    QStringList videoFolders() const;
     QString selectedWallpaper() const;
     QString selectedWallpaperSize() const;
     int selectedSourceColorIndex() const;
@@ -95,6 +100,8 @@ public:
     Q_INVOKABLE void setCurrentFolderIndex(int index);
     Q_INVOKABLE void selectWallpaper(const QString &filePath);
     Q_INVOKABLE void applyWallpaper();
+    // Runs the P5 video-resize generation for every video in <folder>.
+    Q_INVOKABLE void generateVideoResizes(const QString &folder);
 
     // file:// URL (percent-encoded) for a local path; for QML media sources.
     Q_INVOKABLE QString fileUrl(const QString &path) const;
@@ -102,6 +109,7 @@ public:
 signals:
     void foldersChanged();
     void currentFolderIndexChanged();
+    void videoFoldersChanged();
     void wallpaperBusyChanged();
     void wallpaperSetResult(bool success, const QString &message);
     void currentWallpaperChanged();
@@ -124,7 +132,8 @@ private:
     void applyCurrentFolder();
     void setCurrentWallpaper(const QString &filePath);
     void setWallpaper(const QString &filePath);
-    void applyResizeSettings();
+    void recomputeVideoFolders();
+    static QStringList videoFilesIn(const QString &folder);
 
     WallpaperModel *m_wallpaperModel = nullptr;
     // Owned by this object; the D-Bus apply + linear config edits run from
@@ -138,6 +147,7 @@ private:
     PaletteExtractor *m_paletteExtractor = nullptr;
     std::unique_ptr<KConfig> m_config;
     QStringList m_folders;
+    QStringList m_videoFolders;
     int m_currentFolderIndex = 0;
     bool m_wallpaperBusy = false;
     QString m_currentWallpaper;

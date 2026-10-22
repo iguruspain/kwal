@@ -44,6 +44,9 @@ public:
 
     // True if the file has one of the supported video extensions.
     static bool isVideo(const QString &filePath);
+    // Name filters (e.g. "*.mp4") for the supported video extensions; the
+    // single source for enumerating video files in a folder.
+    static QStringList videoNameFilters();
     QString filterText() const;
     void setFilterText(const QString &text);
 

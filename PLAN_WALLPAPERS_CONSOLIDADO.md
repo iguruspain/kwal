@@ -10,7 +10,7 @@
 > | P2 Colores + búsqueda | implementada | corregir R1–R5, R9; migración R10 al final (R7 → P4) |
 > | P3 Drawer de detalle | implementada | reconciliada (R4 hecha: paleta mcu, 16 swatches; drawer modal desde `98d036d`) |
 | P4 Aplicación | implementada (2026-10-22) | hecha: D-Bus `setWallpaper` + fallback `appletsrc` (D9), fallback vídeo `org.kde.video` (D11), lockscreen (D15) + toggle, JS muerto eliminado; verificado (build limpio + `tst_plasmaapply`) |
-| P5 Resize | implementada (2026-10-22) | hecha: plan ffprobe/ffmpeg, `video_resizes/`, replan al cambiar settings, objetivo `resized` en el apply; verificado (build limpio + `testVideoResize`) |
+| P5 Resize | implementada (2026-10-22; on-demand 2026-10-23) | hecha: plan ffprobe/ffmpeg, `video_resizes/`, **generación on-demand** (botón "Generate resizes" por carpeta + batch con progreso), objetivo `resized` en el apply; verificado (build limpio + `testVideoResize`) |
 > | P6 Transiciones | pendiente | |
 > | P7 Limpieza de huérfanos | pendiente | extiende `sweep()` existente (D12 reformulado) |
 
@@ -257,21 +257,21 @@ QML:
 
 **Verificación:** tests puros `tests/tst_plasmaapply.cpp`: vectores de `fileUrl` (espacio → `%20`, UTF-8 → `%C3%A1`, chars preservados), `computeVideoUrls` (añadir/deshabilitar/conservar claves), `Ini` (get/set/crear sección/preservar), `desktopIds` sobre fixture de appletsrc. kwin: aplicar imagen (pantalla de fondo cambia — captura antes/después); aplicar **vídeo** (reborn instalado): captura con el vídeo reproduciéndose en el escritorio; inspeccionar `appletsrc` (contenido de `VideoUrls` con target habilitado y otros deshabilitados). Lockscreen: toggle on → tras aplicar imagen, `kscreenlockerrc` contiene `[Greeter] WallpaperPlugin=org.kde.image` y la clave `Image` (y tras aplicar vídeo, `VideoUrls`/`LastVideo`); toggle off → el fichero queda intacto.
 
-### P5 — Resize de vídeo  ✅ implementada (2026-10-22)
+### P5 — Resize de vídeo  ✅ implementada (2026-10-22) · ✅ **on-demand** (revisión 2026-10-23: generación explícita, no auto)
 
 **Objetivo:** redimensionado opcional de vídeos antes de aplicar (ffmpeg), configurable.
 
 - `WallpapersInfo` (extiende):
   - Settings: `resizeEnabled` (default false), `resizeHeight` (default 1080), `resizeFps` (default 0 = original) — KConfig vía `AppController`.
-  - Planificación por vídeo (solo si `resizeEnabled`):
+  - Planificación por vídeo (`processResize`, al generar on-demand):
     - `ffprobe -v error -select_streams v:0 -show_entries stream=width,height,avg_frame_rate:format=duration -of json <video>` → srcH, srcFps.
     - Normalización (como el ref. Rust): `targetH = min(resizeHeight, srcH) & ~1`; `scale = targetH < (srcH & ~1)`; `fpsFilter = resizeFps>0 && resizeFps < srcFps - 0.01`; sin scale ni fps → `resized = ""` (se aplica el original).
     - Salida `video_resizes/<md5>_<targetH>p<fpsToken>.mp4` (`fpsToken` = fpsFilter o `round(srcFps)`); skip si existe no-vacío.
     - `ffmpeg -v error -y -progress pipe:1 -nostats -i <video> -map 0:v:0 -an -sn -dn -vf scale=-2:<H>:flags=lanczos[,fps=<f>] -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -movflags +faststart -f mp4 <tmp>` (tmp + rename).
     - Guardar `resized`, `entryChanged`.
-  - Cambio de settings (activar/altura/fps) → replanear los vídeos del folder actual (las salidas con nombre distinto quedan huérfanas — D12).
+  - **Generación on-demand (revisión 2026-10-23):** el cambio de settings **ya no** replanea. La generación es **explícita**: `AppController::videoFolders` (carpetas configuradas con ≥1 vídeo, rutas completas) alimenta el picker; el botón "Generate resizes" → `generateVideoResizes(folder)` → `setResizeParameters(height, fps)` + `beginResizeBatch(n)` + `planResize(path)` por vídeo (batch con progreso `resizing`/`resizeTotal`/`resizeCompleted`; `processResize` re-intenta las entradas ausentes/no-vídeo sin romper el batch). Las salidas con nombre distinto al objetivo quedan huérfanas — **D12/P7** (purga al `sweep()`).
 - Objetivo de aplicación (en `AppController::setWallpaper`, sobre `PlasmaApply` de P4): para vídeo con `resizeEnabled`, usar la copia `resized` si existe en disco, else original (mismas URLs de D9/D10 sobre la copia de caché).
-- `qml/WallpapersSettingsPage.qml`: grupo "Redimensionado": Switch + `SpinBox` altura (480–4320, step 120) + `SpinBox` FPS (0–240, "0 = original").
+- `qml/WallpapersSettingsPage.qml`: grupo "Redimensionado": Switch "Resize videos" (aplica la copia `resized` en vez del original) + `SpinBox` altura (480–4320, step 120) + `SpinBox` FPS (0–240, "0 = original") + `ComboBox` de carpetas con vídeo (`videoFolders`, rutas completas) + botón "Generate resizes" + `ProgressBar` de batch.
 - Sin ffmpeg → `resized=""` + warning único (comportamiento del ref. Rust).
 
 **Verificación:** tests (en `tst_wallpapersinfo.cpp`): planificación (srcH<altura → no-op; fps menor → filtro) con ffprobe mock/fijo; kwin: activar resize → archivo creado en `video_resizes/` (verificar con `ffprobe` que altura/fps coinciden) → aplicar vídeo → `VideoUrls` apunta a la copia de caché; desactivar → aplicar usa el original.

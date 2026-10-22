@@ -490,14 +490,10 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
             || !it->sourceColorIndex.isEmpty() || it->matugenDone;
         const bool categoriesOk = it == m_entries.constEnd()
             || it->categoriesManual || !it->colorCategories.isEmpty();
-        // P5: while the setting is on, the resize plan must have a recorded
-        // conclusion for the current mtime (it is re-planned otherwise).
-        const bool resizeOk = !m_resizeEnabled
-            || it == m_entries.constEnd() || it->resizeDone;
         upToDate = it != m_entries.constEnd()
             && it->lastModified == mtime
             && !(type == QLatin1String("video") && it->firstFrame.isEmpty())
-            && matugenOk && categoriesOk && resizeOk;
+            && matugenOk && categoriesOk;
         if (it != m_entries.constEnd()) {
             carryCategoriesManual = it->categoriesManual;
             carryTagsManual = it->tagsManual;
@@ -518,16 +514,6 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
         const QString framePath = framesDir() + QStringLiteral("/") + contentMd5(path) + QStringLiteral(".png");
         if (QFileInfo(framePath).size() > 0 || extractFirstFrame(path, framePath)) {
             entry.firstFrame = framePath;
-        }
-        // P5: optional resized cache copy; planned only while enabled.
-        if (m_resizeEnabled) {
-            const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
-            if (result.noFfmpeg) {
-                warnFfmpegOnce();
-            } else if (result.planned) {
-                entry.resized = result.output;
-                entry.resizeDone = true;
-            }
         }
     }
     const QString image = (type == QLatin1String("video")) ? entry.firstFrame : path;
@@ -673,7 +659,6 @@ void WallpapersInfo::load()
         entry.file = obj.value(QStringLiteral("file")).toString();
         entry.type = obj.value(QStringLiteral("type")).toString();
         entry.resized = obj.value(QStringLiteral("resized")).toString();
-        entry.resizeDone = obj.value(QStringLiteral("resize_done")).toBool();
         entry.firstFrame = obj.value(QStringLiteral("first_frame")).toString();
         entry.sourceColorIndex = jsonStringList(obj.value(QStringLiteral("source_color_index")));
         entry.colorCategories = jsonStringList(obj.value(QStringLiteral("color_categories")));
@@ -719,9 +704,6 @@ void WallpapersInfo::saveLocked()
         }
         if (entry.tagsManual) {
             obj[QStringLiteral("tags_manual")] = true;
-        }
-        if (entry.resizeDone) {
-            obj[QStringLiteral("resize_done")] = true;
         }
         files.append(obj);
     }
@@ -867,21 +849,57 @@ void WallpapersInfo::setMatugenEnabled(bool enabled)
     emit matugenEnabledChanged();
 }
 
-void WallpapersInfo::setResizeSettings(bool enabled, int height, int fps)
+void WallpapersInfo::setResizeParameters(int height, int fps)
 {
-    m_resizeEnabled = enabled;
     m_resizeHeight = height;
     m_resizeFps = fps;
+}
+
+void WallpapersInfo::beginResizeBatch(int total)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        m_resizeTotal = total;
+        m_resizeCompleted = 0;
+        m_resizePending = total;
+    }
+    emit resizeProgressChanged();
+}
+
+void WallpapersInfo::resizeJobFinished()
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_resizePending > 0) {
+            --m_resizePending;
+        }
+        ++m_resizeCompleted;
+    }
+    emit resizeProgressChanged();
+}
+
+bool WallpapersInfo::resizing() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_resizePending > 0;
+}
+
+int WallpapersInfo::resizeTotal() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_resizeTotal;
+}
+
+int WallpapersInfo::resizeCompleted() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_resizeCompleted;
 }
 
 void WallpapersInfo::planResize(const QString &path)
 {
     if (path.isEmpty()) {
         return;
-    }
-    {
-        QMutexLocker locker(&m_mutex);
-        ++m_pending;
     }
     m_pool.start(new ResizeJob(QPointer<WallpapersInfo>(this), path));
 }
@@ -893,22 +911,19 @@ void WallpapersInfo::processResize(const QString &path)
         QMutexLocker locker(&m_mutex);
         const auto it = m_entries.constFind(path);
         if (it == m_entries.constEnd() || it->type != QLatin1String("video")) {
-            jobFinished();
+            resizeJobFinished();
             return;
         }
         entry = *it;
     }
-    if (m_resizeEnabled) {
-        const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
-        if (result.noFfmpeg) {
-            warnFfmpegOnce();
-        } else if (result.planned) {
-            entry.resized = result.output;
-            entry.resizeDone = true;
-            upsert(entry);
-        }
+    const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
+    if (result.noFfmpeg) {
+        warnFfmpegOnce();
+    } else {
+        entry.resized = result.planned ? result.output : QString();
     }
-    jobFinished();
+    upsert(entry);
+    resizeJobFinished();
 }
 
 void WallpapersInfo::warnFfmpegOnce()

@@ -56,8 +56,14 @@ QImage FdoThumbnailProvider::thumbnailImage(const QString &path)
     }
 
     // Cache miss: downscale the original (bounded memory) and populate the cache.
+    // QImageReader::setScaledSize() only keeps the aspect ratio when a single
+    // dimension is set; setting both (256x256) stretches to fill. Compute the
+    // fitted size ourselves; sources smaller than 256 px are not upscaled.
     QImageReader reader(path);
-    reader.setScaledSize(QSize(kMaxThumbnailSize, kMaxThumbnailSize));
+    const QSize sourceSize = reader.size();
+    if (sourceSize.isValid()) {
+        reader.setScaledSize(sourceSize.scaled(kMaxThumbnailSize, kMaxThumbnailSize, Qt::KeepAspectRatio));
+    }
     const QImage original = reader.read();
     if (original.isNull()) {
         return {};

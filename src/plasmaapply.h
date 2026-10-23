@@ -23,10 +23,12 @@ QString fileUrl(const QString &path);
 QString rawVideoUrl(const QString &path);
 
 // Computes the video plugin's VideoUrls JSON (compact, no whitespace):
-// the target video is enabled, every other entry disabled, order and the
-// per-entry custom fields preserved, and the target appended with default
-// fields when missing. <existingJson> is the current VideoUrls value
-// ("" when absent).
+// the target video is enabled, every other entry disabled, entry order
+// preserved, and the target appended with default fields when missing.
+// Fields are emitted in the plugin page's own serialization order (its
+// JSON.stringify round-trip), so the stored string stays byte-identical and
+// the page never reports unsaved changes. <existingJson> is the current
+// VideoUrls value ("" when absent).
 QString computeVideoUrls(const QString &existingJson, const QString &targetUrl);
 
 // Line-based rc file editor: preserves byte-for-byte everything it does

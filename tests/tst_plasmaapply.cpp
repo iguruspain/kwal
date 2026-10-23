@@ -70,7 +70,7 @@ void tst_PlasmaApply::testComputeVideoUrls()
     QCOMPARE(first.value(QStringLiteral("dayNightPhase")).toInt(), 4);
 
     // Existing playlist: the target becomes enabled, the others disabled,
-    // order and per-entry custom fields preserved.
+    // entry order and the canonical fields preserved.
     const QString existing = QStringLiteral("[{\"filename\":\"file:///v/a.mp4\",\"enabled\":true,\"loop\":true}]");
     entries = QJsonDocument::fromJson(plasmaapply::computeVideoUrls(existing, target).toUtf8()).array();
     QCOMPARE(entries.size(), 2);
@@ -86,6 +86,27 @@ void tst_PlasmaApply::testComputeVideoUrls()
     entries = QJsonDocument::fromJson(plasmaapply::computeVideoUrls(existingTarget, target).toUtf8()).array();
     QCOMPARE(entries.size(), 1);
     QCOMPARE(entries.at(0).toObject().value(QStringLiteral("enabled")).toBool(), true);
+
+    // The plugin's config page re-serializes the playlist in its own field
+    // order; the stored string must round-trip byte-identically through it
+    // or the page reports unsaved changes. Pin the exact serialization.
+    QCOMPARE(plasmaapply::computeVideoUrls(QString(), target),
+             QStringLiteral("[{\"filename\":\"file:///v/b.mp4\",\"enabled\":true,\"duration\":0,"
+                            "\"customDuration\":0,\"playbackRate\":0,\"alternativePlaybackRate\":0,"
+                            "\"loop\":false,\"dayNightPhase\":4}]"));
+
+    // A playlist as the plugin UI wrote it (canonical field order) stays
+    // canonical: only the enabled flags change and the target is appended.
+    const QString pluginState = QStringLiteral(
+        "[{\"filename\":\"file:///v/a.mp4\",\"enabled\":true,\"duration\":0,\"customDuration\":0,"
+        "\"playbackRate\":1.5,\"alternativePlaybackRate\":0,\"loop\":true,\"dayNightPhase\":4}]");
+    QCOMPARE(plasmaapply::computeVideoUrls(pluginState, target),
+             QStringLiteral("[{\"filename\":\"file:///v/a.mp4\",\"enabled\":false,\"duration\":0,"
+                            "\"customDuration\":0,\"playbackRate\":1.5,\"alternativePlaybackRate\":0,"
+                            "\"loop\":true,\"dayNightPhase\":4},"
+                            "{\"filename\":\"file:///v/b.mp4\",\"enabled\":true,\"duration\":0,"
+                            "\"customDuration\":0,\"playbackRate\":0,\"alternativePlaybackRate\":0,"
+                            "\"loop\":false,\"dayNightPhase\":4}]"));
 }
 
 void tst_PlasmaApply::testIniEditor()

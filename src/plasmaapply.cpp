@@ -14,7 +14,6 @@
 #include <QThread>
 #include <QVariantMap>
 
-#include <algorithm>
 #include <optional>
 
 namespace plasmaapply {
@@ -86,35 +85,56 @@ QString computeVideoUrls(const QString &existingJson, const QString &targetUrl)
             entries = doc.array();
         }
     }
-    for (int i = 0; i < entries.size(); ++i) {
-        if (!entries.at(i).isObject()) {
-            continue;
+
+    // The plugin's config page re-serializes the playlist with JSON.stringify
+    // in this exact field order (updateConfig in config.qml), dropping entries
+    // without a filename. The stored string must round-trip byte-identically
+    // through that serialization, or the page reports unsaved changes as soon
+    // as the model is touched.
+    const auto json = [](const QJsonValue &value) {
+        QJsonArray wrapper;
+        wrapper.append(value);
+        const QByteArray compact = QJsonDocument(wrapper).toJson(QJsonDocument::Compact);
+        return QString::fromUtf8(compact.constData() + 1, compact.size() - 2);
+    };
+    const auto fieldOf = [](const QJsonObject &entry, const QString &key, const QJsonValue &fallback) {
+        return entry.contains(key) ? entry.value(key) : fallback;
+    };
+    QStringList rendered;
+    bool present = false;
+    for (const QJsonValue &value : entries) {
+        const QJsonObject entry = value.toObject();
+        const QString filename = entry.value(QStringLiteral("filename")).toString();
+        if (filename.isEmpty()) {
+            continue; // the page drops such entries
         }
-        QJsonObject entry = entries.at(i).toObject();
-        const bool isTarget = entry.value(QStringLiteral("filename")).toString() == targetUrl;
-        entry.insert(QStringLiteral("enabled"), isTarget);
-        entries[i] = entry;
+        const bool isTarget = filename == targetUrl;
+        if (isTarget) {
+            present = true;
+        }
+        rendered.append(QStringLiteral("{\"filename\":") + json(QJsonValue(filename))
+                        + QStringLiteral(",\"enabled\":") + json(QJsonValue(isTarget))
+                        + QStringLiteral(",\"duration\":")
+                        + json(fieldOf(entry, QStringLiteral("duration"), QJsonValue(0)))
+                        + QStringLiteral(",\"customDuration\":")
+                        + json(fieldOf(entry, QStringLiteral("customDuration"), QJsonValue(0)))
+                        + QStringLiteral(",\"playbackRate\":")
+                        + json(fieldOf(entry, QStringLiteral("playbackRate"), QJsonValue(0)))
+                        + QStringLiteral(",\"alternativePlaybackRate\":")
+                        + json(fieldOf(entry, QStringLiteral("alternativePlaybackRate"), QJsonValue(0)))
+                        + QStringLiteral(",\"loop\":")
+                        + json(fieldOf(entry, QStringLiteral("loop"), QJsonValue(false)))
+                        + QStringLiteral(",\"dayNightPhase\":")
+                        + json(fieldOf(entry, QStringLiteral("dayNightPhase"), QJsonValue(4)))
+                        + QStringLiteral("}"));
     }
-    const bool present = std::any_of(entries.cbegin(),
-                                     entries.cend(),
-                                     [&targetUrl](const QJsonValue &value) {
-                                         return value.isObject()
-                                             && value.toObject().value(QStringLiteral("filename")).toString() == targetUrl;
-                                     });
     if (!present) {
-        // Default fields, identical to what the plugin UI creates.
-        QJsonObject entry;
-        entry.insert(QStringLiteral("filename"), targetUrl);
-        entry.insert(QStringLiteral("enabled"), true);
-        entry.insert(QStringLiteral("duration"), 0);
-        entry.insert(QStringLiteral("customDuration"), 0);
-        entry.insert(QStringLiteral("playbackRate"), 0);
-        entry.insert(QStringLiteral("alternativePlaybackRate"), 0);
-        entry.insert(QStringLiteral("loop"), false);
-        entry.insert(QStringLiteral("dayNightPhase"), 4);
-        entries.append(entry);
+        rendered.append(QStringLiteral("{\"filename\":") + json(QJsonValue(targetUrl))
+                        + QStringLiteral(",\"enabled\":true,\"duration\":0,\"customDuration\":0,"
+                                         "\"playbackRate\":0,\"alternativePlaybackRate\":0,"
+                                         "\"loop\":false,\"dayNightPhase\":4}"));
     }
-    return QString::fromUtf8(QJsonDocument(entries).toJson(QJsonDocument::Compact));
+    return QStringLiteral("[") + rendered.join(QStringLiteral(",")) + QStringLiteral("]");
 }
 
 Ini::Ini(const QString &content)

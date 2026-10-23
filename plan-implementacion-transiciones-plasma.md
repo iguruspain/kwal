@@ -341,8 +341,8 @@ Entrada: `Frac(f)` (fracción) o `Px(p)` (píxeles lógicos) por eje, tamaño l�
 
 ### 4.3 Overlay
 
-- Una superficie por pantalla de destino, anclada a los 4 bordes, **exclusive zone -1** (cubre toda la salida aunque haya paneles), **entrada transparente** (los clics atraviesan), sin foco de teclado. Capa por defecto `Bottom` (por encima del fondo, por debajo de las ventanas); configurable.
-- Imagen del overlay a **resolución física** (`size * devicePixelRatio`), no lógica; Qt la reduce al tamaño lógico. Verificar a escala 1.0, 1.25 y 1.5 que no hay zoom ni desplazamiento.
+- Una superficie por pantalla de destino, anclada a los 4 bordes, **exclusive zone -1** (cubre toda la salida aunque haya paneles), **entrada transparente** (los clics atraviesan), sin foco de teclado. Capa por defecto `Bottom` (por encima del fondo, por debajo de las ventanas); configurable — la app elige la capa con el setting `transitionLayer` (capas válidas y apilado: §9, resultado H0).
+- Imagen del overlay a **resolución física** (`size * devicePixelRatio`), no lógica; Qt la reduce al tamaño lógico. Verificar a escala 1.0, 1.25 y 1.5 que no hay zoom ni desplazamiento. **Verificado en KWin 6.8 a 1.25 y 1.5 (2026-10-23, escritorio real): sin zoom ni desplazamiento.** Nota de campo: en esa máquina `devicePixelRatio()` reportó 2 en ambas escalas → el buffer quedó sobre-muestreado (el compositor lo remuestra; seguro, ver §9 S3); **no usar `QScreen::physicalSize()`** para el tamaño de buffer (derivado de los mm de EDID, no fiable en Wayland — dio 606×344 constante).
 - Ajuste del fondo (`FillMode` de la config de Plasma): `0` estirar, `1` ajustar con barras del color `Color`, `2` recortar centrado (por defecto), `6` centrado sin escalar; 3 a 5 (mosaico) se aproximan con recorte.
 - Cada pantalla usa su **propio** tamaño de modo; el desplazamiento entre pantallas de distinto tamaño fue un error real en la referencia.
 - La decodificación y el reescalado de una imagen 4K cuestan unos 0.8 s: hacerlos en un hilo de trabajo (`QtConcurrent`), nunca en el hilo de GUI.
@@ -435,7 +435,7 @@ class MediaCache : public QObject {   // todo asíncrono
 
 1. **Efectos (QtTest, sin Wayland):** portar las pruebas de `effects.rs`: monotonicidad y progreso incremental == directo; Reveal y Cover complementarios (alfa suma 254 a 256); wipe/wave idénticos a una evaluación píxel a píxel de referencia para ángulos 0, 17, 45, 90, 133, 180, 225, 270, 359 y olas `(20,0)`, `(20,12)`, `(7,5)`; estado final exacto; invariante premultiplicado (R,G,B <= A); bezier monótono. Usar además los vectores exactos del Apéndice C y las propiedades de 4.2.11.
 2. **Contra la referencia:** generar con el binario Rust fotogramas de salida para parámetros fijos (volcado a PNG o hash) y comprobar que la versión C++ coincide **exactamente** en `grow`, `outer` y `wipe`.
-3. **Opciones y rutas:** gramática de `pos`, `bezier`, `wave`, `resize`, `first-frame`; percent-encoding y decoding; expansión de `~`; propiedades del nombre de caché (mismo contenido y otro nombre, mismo archivo; parámetros equivalentes, mismo archivo).
+ 3. **Opciones y rutas:** gramática de `pos`, `bezier`, `wave`, `resize`, `first-frame`; percent-decoding (H1: `transitions::percentDecode`; el encoding no tiene función propia, lo hace `QUrl` en `PlasmaClient` en H2); expansión de `~`; propiedades del nombre de caché (mismo contenido y otro nombre, mismo archivo; parámetros equivalentes, mismo archivo).
 4. **Plasma falso:** servicio D-Bus de prueba (apéndice B) que numera las pantallas al revés que el compositor; comprobar `--display`-equivalente `[0]`, `[0,1]`, rechazo de pantallas inexistentes, mapeo de `screenGeometry` y respaldo a fichero. Comprobar `kscreenlockerrc` en los tres casos (imagen, vídeo, fichero inexistente) y que **sin** la opción no se toca.
 5. **Overlay real:** sway headless con dos salidas de distinto tamaño y capturas con `grim` (apéndice B).
 6. **ffmpeg:** pruebas condicionadas a su presencia (clip sintético con `lavfi`).
@@ -443,7 +443,24 @@ class MediaCache : public QObject {   // todo asíncrono
 ## 9. Hitos y criterios de aceptación
 
 - **H0 (spikes, antes de escribir código de producción):** S1 integración de shell de LayerShellQt con ventanas normales; S2 ventana transparente con entrada transparente y `exclusiveZone=-1` en KWin y en sway; S3 escalas 1.25 y 1.5 sin zoom ni desplazamiento; S4 ritmo por `requestUpdate()`; S5 mapeo `QScreen` a id de Plasma. Entregable: nota con resultados y elección Plan A o B.
+
+**H0 — resultado: COMPLETO (spike 2026-10-22 en sesión aislada KWin 6.8 + escritorio real 2026-10-23): Plan A confirmado (go), S1–S3 y S5 en PASS.**
+
+- **Stack instalado (la cabecera instalada es la evidencia):** `layer-shell-qt 6.8.0` (paquete Plasma; target CMake `LayerShellQt::Interface`; headers `/usr/include/LayerShellQt/`); KWin 6.8 expone `zwlr_layer_shell_v1` v5; **Qt 6.12 sin layer-shell nativo** en QtWaylandClient (sin símbolo `QLayerShellWindow`). `Shell::useLayerShell()` está deprecated desde 6.6 ("not needed since Qt 6.5"): internamente es `qputenv("QT_WAYLAND_SHELL_INTEGRATION","layer-shell")` — el riesgo S1 (env var global) **ya no aplica**; la API vigente es per-`QWindow` (`LayerShellQt::Window::get(QWindow*)`).
+- **S1 (coexistencia): PASS.** Spike de un proceso con top-level normal + ventana layer (Bottom, anclas 4 bordes, zone=-1, teclado None), sin env var ni `useLayerShell()`: la layer se mapea a `(0,0)` con el tamaño completo de la salida y la top-level decorada queda encima.
+- **S2 (transparencia + entrada): PASS.** El alfa se respeta (overlay translúcido sobre el fondo); un clic en el botón de cerrar de la top-level la cierra (el overlay no interfiere la entrada de las ventanas apiladas encima); `exclusiveZone=-1` respetado (cobertura total, incluida la zona de paneles).
+- **S3 (escala fraccional 1.25/1.5): PASS** (escritorio real del usuario, 2026-10-23, KWin 6.8, 2560×1440, monitor DP-2): en ambas ejecuciones el overlay cubre toda la salida — sin huecos, sin desplazamiento, sin zoom (criterio visual verificado por el usuario); la top-level nítida e interactiva. El tamaño lógico sigue exactamente al slider (`2048×1152` a 1.25; `1707×960` a 1.5). **Anomalía abierta (no bloqueante):** `devicePixelRatio()` reportó **2** en ambas escalas (se esperaban 1.25/1.5) → el buffer `size()×dpr` quedó sobre-muestreado (4096×2304 / 3414×1920 para la salida 2560×1440); el compositor lo remuestra y el resultado es correcto, así que la fórmula del §4.3 es segura aquí (solo añade coste de decodificación, cubierto por el presupuesto off-thread). Causa no diagnosticada; check opcional: relanzar el spike a 100% (si `dpr` baja a 1 sigue el slider; si sigue en 2, queda fijado por la sesión).
+- **S4 (ritmo de animación):** se valida junto con el primer código de animación de H1; no es puerta.
+- **S5 (mapeo `QScreen` → id de Plasma): PASS** (plasmashell real, 2026-10-23): `screenCount`/`screenGeometry(i)` funcionan en `evaluateScript` y devuelven geometría **lógica** — `0:0,0,2048,1152` a 1.25 y `0:0,0,1707,960` a 1.5, **exactamente iguales** a la `QScreen::geometry()` de Qt (mismo tamaño, mismo `topLeft (0,0)`). La regla de casado de §4.5 (por `geometry().topLeft()`) queda validada; índice 0 ↔ pantalla primaria. El fallback (orden de `QGuiApplication::screens()` con aviso) queda solo para el caso sin D-Bus.
+- **Decisión:** **Plan A** (overlay in-proceso). Superficie de overlay: `QRasterWindow` (`QWindow` plano no acepta `QPainter`; `QRasterWindow` es `QPaintDeviceWindow`), `LayerShellQt::Window::get()` por ventana de overlay. El Plan B (proceso auxiliar) queda solo como fallback si S3/S5 fallaran en el escritorio real.
+- **Elegir la capa (API):** `Window::setLayer()` admite las 4 capas del protocolo (`LayerBackground`, `LayerBottom`, `LayerTop`, `LayerOverlay`). Apilado en KWin (de abajo arriba): `Background` (bajo el wallpaper — **nunca visible**, excluida) → `Bottom` (sobre el wallpaper, bajo las ventanas — **default**, comportamiento de la referencia Rust) → `Top` (sobre las ventanas normales) → `Overlay` (lo más alto, sobre paneles). La app lo expone como setting `transitionLayer` (P6 del plan consolidado; valores `bottom|top|overlay`, default `bottom`).
+
 - **H1:** `Effects`, `TransitionSpec`, pruebas 1 a 3. Aceptación: haber leído 4.2 y el Apéndice C antes de empezar; todo verde, coincidencia exacta con la referencia y con los vectores del Apéndice C.
+ 
+ **H1 — resultado: COMPLETO (2026-10-23).** Biblioteca estática `kwal_transitions` (`src/transitions/`: `effects.{h,cpp}` primitivas + grow/outer/wipe/wave/fade + conductor; `transitionspec.{h,cpp}` gramática awww + `resolve()`; `path.{h,cpp}` `expandTilde` + `percentDecode`) y `tests/tst_transitions.cpp` (19 pruebas, todo verde en `ctest`):
+ - Vectores exactos: `grow` Reveal/Cover r=2.0 (generado con la referencia Rust no modificada, 2026-10-23) y r=3.2 (tabla del Apéndice C, **confirmando el apéndice**); `wipe`/`wave` Reveal (Apéndice C); `scalePx` (tabla del Apéndice C); `bezierEase` (5 valores, tolerancia 1e-5).
+ - Propiedades §4.2.11: `drawWipe` == evaluación píxel a píxel de `wipeCover` (ángulos 0/17/45/90/133/180/225/270/359, olas (20,0)/(20,12)/(7,5), 11 frentes); incremental == directo (grow, wipe); invariante premultiplicado; ciclo de vida de Cover; Reveal + Cover complementarios (alfa 254..256); `outer` Reveal == `grow` Cover; estado final exacto (`done`); conductor `stepFrame`/`drawFrame` (none/simple/fade/grow/outer/wipe); `resolve()` (direcciones, `any`/`random` con `rand` inyectado, clamps); gramática `Pos`/`Bezier`/`Wave`/tipo.
+ - Desviaciones respecto a la referencia (acordadas con el estado del repo): `parseTransitionType` y `Pos::parse` aceptan nombres **case-insensitivamente** (la referencia Rust/clap es case-sensitive; aquí es más permisivo, nunca rechaza entrada válida); los helpers de ruta solo implementan `expandTilde` y `percentDecode` (sin `percentEncode`: el encoding lo hará `QUrl` en H2); `resolve()` conserva la `wave` del spec en `left/right/top/bottom` (default (20,20), el wipe plano se fuerza solo en el tipo `wipe` y en el conductor del overlay).
 - **H2:** `PlasmaConfig`, `PlasmaClient`, `ScreenMap`, `WallpaperSwitcher` sin overlay (cambio directo e `includeLockscreen`). Aceptación: prueba 4.
 - **H3:** overlay y transiciones en ambas direcciones. Aceptación: escenarios de sway del apéndice B con las cifras indicadas y sin overlay residual.
 - **H4:** `MediaCache`, `resize`, `firstFrame`, integración con Cover de `reborn`. Aceptación: prueba 6 y la norma de nombres sin duplicados.
@@ -452,9 +469,9 @@ class MediaCache : public QObject {   // todo asíncrono
 ## 10. Riesgos y decisiones abiertas
 
 1. **Licencia**: decidida (MIT, con regla de sala limpia respecto a awww); ver sección 11. Solo se reabre si se quiere copiar código de awww (entonces GPL-3.0-or-later).
-2. **S1** puede forzar el Plan B (proceso auxiliar); el diseño ya lo contempla.
+2. **S1** resuelto (2026-10-22, §9): no aplica en `layer-shell-qt 6.8` — el riesgo era la env var global de `useLayerShell()`, deprecated y reemplazada por la API per-ventana; Plan A confirmado. S3/S5 verificados en el escritorio real (2026-10-23); abierta la anomalía `devicePixelRatio()=2` (no bloqueante: buffer sobre-muestreado, el compositor lo remuestra).
 3. **GPU frente a CPU:** si el rendimiento de la CPU en pantallas 4K no cumple el presupuesto, evaluar el backend GPU.
-4. **Plasma de la app:** las llamadas D-Bus `screenCount`/`screenGeometry` de `evaluateScript` no se han podido comprobar contra un plasmashell real; verificarlas en una sesión Plasma 6 y, si fallan, usar el orden de `QScreen` con aviso.
+4. **Plasma de la app:** resuelto (2026-10-23, plasmashell real, §9 S5): `screenCount`/`screenGeometry` de `evaluateScript` funcionan y devuelven geometría lógica casable 1:1 con `QScreen::geometry()`; el fallback al orden de `QScreen` con aviso queda solo para el caso sin D-Bus.
 5. **Sin ffmpeg:** `resize` avisa y usa el original; `firstFrame` falla sin cambiar nada; el primer fotograma para Cover degrada a cambio sin transición.
 6. **Tamaño de la lista de reproducción de `reborn`:** reproducir exactamente `compute_video_urls`; hay pruebas en la referencia que sirven de modelo.
 
@@ -595,3 +612,156 @@ FF FF FF FF FF FF FF 72 00 00 00 00
 | `0xFFFFFFFF` | 255 | `0xFEFEFEFE` |
 
 **Fotogramas finales:** `grow` con `r = rMax + 2` y `outer` con `r = -1` sobre cualquier tamaño dejan el buffer entero a `0` en Reveal; en Cover, `grow` final (`rMax + 2`) y `outer` final (`-1`) dejan el buffer idéntico a `orig`.
+
+## Apéndice D: spike H0 (S1/S2/S3/S5) — copia persistente
+
+Spike de un solo proceso (top-level normal + overlay LayerShell bottom) para el escritorio Plasma real; prueba S1/S2 de regreso y S3/S5 (datos de escala y numeración de Plasma). Código desechable, **fuera del build del repo**. El fichero vivía en `/tmp/kwal-spikes/h0_desktop_spike.cpp` (el `/tmp` se limpia; esta sección es la copia persistente — reescribirla tal cual y compilar).
+
+Compilar y lanzar (en el escritorio real del usuario, con el plasmashell corriendo):
+
+```
+g++ -std=c++20 -fPIC h0_desktop_spike.cpp -o h0_desktop_spike \
+  -I/usr/include $(pkg-config --cflags --libs Qt6Gui) -lLayerShellQtInterface
+./h0_desktop_spike
+```
+
+La ventana verde (overlay, capa bottom) debe cubrir toda la salida sin huecos ni zoom; la ventana roja decorada (240×160) debe quedar encima, nítida y clicable (su botón de cierre funciona: S2). Cerrar con Ctrl+C o la X.
+
+Salida típica medida (2026-10-23, KWin 6.8, 2560×1440, una pantalla, monitor DP-2):
+
+```
+SPIKE screens=1
+SPIKE name="DP-2" logical=2048x1152 dpr=2 physical=606x344 geometryTopLeft=0,0   (escala 125%)
+SPIKE plasmaScreens=0:0,0,2048,1152
+SPIKE name="DP-2" logical=1707x960 dpr=2 physical=606x344 geometryTopLeft=0,0     (escala 150%)
+SPIKE plasmaScreens=0:0,0,1707,960
+```
+
+(ver la anomalía `dpr=2` y el aviso sobre `physicalSize()` en §9, S3)
+
+```cpp
+// H0 desktop spike (S3 + S5, and S1/S2 regression) for the real Plasma session.
+//
+// One process with:
+//   (A) a normal decorated top-level (QRasterWindow), 240x160 at (40, 40);
+//   (B) a LayerShell bottom-layer overlay (QRasterWindow), all four anchors,
+//       exclusive zone -1, no keyboard interactivity, translucent green.
+// No QT_WAYLAND_SHELL_INTEGRATION env var, no Shell::useLayerShell().
+//
+// On startup it prints, per QScreen: name, logical size, devicePixelRatio and
+// physicalSize (S3: expect dpr 1.25 -> physical 2560x1440 at the user's 125%),
+// and asks plasmashell for its screen numbering via the exact
+// evaluateScript script of plan-implementacion-transiciones-plasma.md §4.5
+// (S5: compare each "i:x,y,w,h" with the QScreen geometry().topLeft()).
+//
+// Build:
+//   g++ -std=c++20 -fPIC h0_desktop_spike.cpp -o h0_desktop_spike \
+//     -I/usr/include $(pkg-config --cflags --libs Qt6Gui) -lLayerShellQtInterface
+
+#include <LayerShellQt/window.h>
+
+#include <QDBusInterface>
+#include <QDBusReply>
+#include <QGuiApplication>
+#include <QPainter>
+#include <QRasterWindow>
+#include <QScreen>
+
+class TopLevelWindow : public QRasterWindow
+{
+public:
+    TopLevelWindow() = default;
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.fillRect(QRect(QPoint(0, 0), size()), Qt::red);
+        p.setPen(Qt::white);
+        p.setFont(QFont(QStringLiteral("Sans"), 12));
+        p.drawText(QRect(QPoint(0, 0), size()), Qt::AlignCenter,
+                   QStringLiteral("TOPLEVEL (A) 240x160 logical\n"
+                                  "must stay crisp + interactive"));
+    }
+};
+
+class OverlayWindow : public QRasterWindow
+{
+public:
+    explicit OverlayWindow(QScreen *screen)
+    {
+        setScreen(screen);
+        auto *ls = LayerShellQt::Window::get(this);
+        ls->setLayer(LayerShellQt::Window::LayerBottom);
+        ls->setAnchors(LayerShellQt::Window::Anchors(
+                LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorBottom |
+                LayerShellQt::Window::AnchorLeft | LayerShellQt::Window::AnchorRight));
+        ls->setExclusiveZone(-1);
+        ls->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+        ls->setActivateOnShow(false);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.fillRect(QRect(QPoint(0, 0), size()), QColor(0, 200, 0, 110));
+        p.setPen(Qt::white);
+        p.setFont(QFont(QStringLiteral("Sans"), 16));
+        p.drawText(QRect(QPoint(0, 0), size()), Qt::AlignLeft | Qt::AlignTop,
+                   QStringLiteral("OVERLAY (B) bottom layer, anchors=all, zone=-1\n"
+                                  "must cover the full output: no gaps, no offset, no zoom"));
+    }
+};
+
+int main(int argc, char *argv[])
+{
+    QGuiApplication app(argc, argv);
+
+    // S3: per-screen scale data.
+    const QList<QScreen *> screens = QGuiApplication::screens();
+    qInfo() << "SPIKE"
+            << "screens=" << screens.size();
+    for (const QScreen *s : screens) {
+        qInfo() << "SPIKE"
+                << "name=" << s->name()
+                << "logical=" << s->size()
+                << "dpr=" << s->devicePixelRatio()
+                << "physical=" << s->physicalSize()
+                << "geometryTopLeft=" << s->geometry().topLeft();
+    }
+
+    // S5: Plasma screen numbering, exact script of the transitions doc §4.5.
+    QDBusInterface shell(QStringLiteral("org.kde.plasmashell"),
+                         QStringLiteral("/PlasmaShell"),
+                         QStringLiteral("org.kde.PlasmaShell"));
+    if (shell.isValid()) {
+        QDBusReply<QString> reply = shell.call(
+                QStringLiteral("evaluateScript"),
+                QStringLiteral("var r=[];for(var i=0;i<screenCount;i++){"
+                               "var g=screenGeometry(i);"
+                               "r.push(i+':'+g.x+','+g.y+','+g.width+','+g.height)};"
+                               "print(r.join(';'))"));
+        if (reply.isValid()) {
+            qInfo() << "SPIKE"
+                    << "plasmaScreens=" << reply.value().trimmed();
+        } else {
+            qInfo() << "SPIKE"
+                    << "plasmaScreens=FAILED:" << reply.error().message();
+        }
+    } else {
+        qInfo() << "SPIKE"
+                << "plasmaScreens=NO_DBUS";
+    }
+
+    OverlayWindow overlay(QGuiApplication::primaryScreen());
+    overlay.show();
+
+    TopLevelWindow win;
+    win.resize(240, 160);
+    win.setPosition(QPoint(40, 40));
+    win.show();
+
+    return app.exec();
+}
+```

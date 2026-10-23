@@ -2,7 +2,7 @@
 
 > **FUENTE DE VERDAD ÚNICA.** Este documento consolida `KWAL_WALLPAPERS_PLAN.md` (el plan con las decisiones correctas D1–D17) y lo útil de `plan-implementacion-wallpapers.md` (el plan que el agente ejecutó y fue modificando). Sustituye a ambos. No se edita ninguna decisión sin aprobación del usuario.
 >
-> **Estado:** P1, P2 y P3 están **implementadas bajo el plan antiguo**; la auditoría de código (2026-10-22) fijó la reconciliación final en **§2b**, que incluye tres puntos donde **el código se bendice y el plan se corrige** (R6, R7, R8). P4 y P5 están **implementadas** (2026-10-22); P6–P7 siguen **pendientes** y siguen este documento tal cual.
+> **Estado:** P1, P2 y P3 están **implementadas bajo el plan antiguo**; la auditoría de código (2026-10-22) fijó la reconciliación final en **§2b**, que incluye tres puntos donde **el código se bendice y el plan se corrige** (R6, R7, R8). P4 y P5 están **implementadas** (2026-10-22); P6 está **en curso** (H0 y H1 de transiciones completos, 2026-10-23) y P7 sigue **pendiente**; ambas siguen este documento tal cual.
 >
 > | Fase | Estado | Acción |
 > |---|---|---|
@@ -11,7 +11,7 @@
 > | P3 Drawer de detalle | implementada | reconciliada (R4 hecha: paleta mcu, 16 swatches; drawer modal desde `98d036d`) |
 | P4 Aplicación | implementada (2026-10-22) | hecha: D-Bus `setWallpaper` + fallback `appletsrc` (D9), fallback vídeo `org.kde.video` (D11), lockscreen (D15) + toggle, JS muerto eliminado; verificado (build limpio + `tst_plasmaapply`) |
 | P5 Resize | implementada (2026-10-22; on-demand 2026-10-23) | hecha: plan ffprobe/ffmpeg, `video_resizes/`, **generación on-demand** (botón "Generate resizes" por carpeta + batch con progreso), objetivo `resized` en el apply; verificado (build limpio + `testVideoResize`) |
-> | P6 Transiciones | pendiente | |
+| P6 Transiciones | en curso (H0 ✅, H1 ✅ 2026-10-23) | H2–H5 pendientes |
 > | P7 Limpieza de huérfanos | pendiente | extiende `sweep()` existente (D12 reformulado) |
 
 ## 1. Objetivo
@@ -120,7 +120,7 @@ Comportamiento del drawer: drawer **modal** (`modal: true`, `handleVisible: true
 - **Modificados:** `src/appcontroller.{h,cpp}` (config nueva, apply nuevo), `src/wallpapermodel.{h,cpp}` (vídeos, filtros, roles), `src/fdothumbnailprovider.cpp` (caché de thumbnails propia `~/.cache/kwal/thumbnails/`, sin puente — D16), `src/main.cpp` (init `WallpapersInfo`, Qt6::Multimedia), `CMakeLists.txt` (fuentes, `Qt6::Multimedia`, `FetchContent` de `material-color-utilities` en P2, `LayerShellQt::Interface` en P6), `qml/Main.qml`, `qml/WallpapersPage.qml`, `qml/WallpaperItem.qml`, `qml/SettingsWindow.qml`.
 - **Nuevos QML:** `qml/WallpaperDetailDrawer.qml`, `qml/WallpapersSettingsPage.qml` (reemplaza al placeholder de Wallpapers).
 - **Nuevos tests:** `tests/tst_wallpapersinfo.cpp`, `tests/tst_plasmaapply.cpp`; extensión de `tests/tst_appcontroller.cpp`.
-- **KConfig `[Wallpapers]`** (grupo existente, se extiende; conserva `folders`, `currentFolderIndex`, `currentWallpaper`): `matugenDots`, `colorCategories`, `resizeEnabled`, `resizeHeight`, `resizeFps`, `lockscreen`, `transitionsEnabled`, `transitionType`, `transitionDuration`, `transitionFps`, `transitionStep`, `transitionAngle`, `transitionPos`, `transitionInvertY`, `transitionBezier`, `transitionWave`.
+- **KConfig `[Wallpapers]`** (grupo existente, se extiende; conserva `folders`, `currentFolderIndex`, `currentWallpaper`): `matugenDots`, `colorCategories`, `resizeEnabled`, `resizeHeight`, `resizeFps`, `lockscreen`, `transitionsEnabled`, `transitionType`, `transitionDuration`, `transitionFps`, `transitionStep`, `transitionAngle`, `transitionPos`, `transitionInvertY`, `transitionBezier`, `transitionWave`, `transitionLayer`.
 - Se **elimina** el snippet `wallpaperScript` (JS de `evaluateScript`) de `AppController::setWallpaper`: código muerto tras P4 (cutover limpio). `imageResolution()` (QImageReader, local) se **conserva**: alimenta la propiedad `selectedWallpaperSize` (la etiqueta de resolución de `WallpapersPage.qml`).
 
 ## 4. Fases
@@ -276,19 +276,19 @@ QML:
 
 **Verificación:** tests (en `tst_wallpapersinfo.cpp`): planificación (srcH<altura → no-op; fps menor → filtro) con ffprobe mock/fijo; kwin: activar resize → archivo creado en `video_resizes/` (verificar con `ffprobe` que altura/fps coinciden) → aplicar vídeo → `VideoUrls` apunta a la copia de caché; desactivar → aplicar usa el original.
 
-### P6 — Transiciones  ⏳ pendiente
+### P6 — Transiciones  🚧 en curso (H0+H1 completos, 2026-10-23; H2–H5 pendientes)
 
 **Objetivo:** transiciones de wallpaper según `plan-implementacion-transiciones-plasma.md`.
 
 - **Implementar los hitos H0–H5 de ese documento** (§9), con sus contratos (§4), API (§5), concurrencia (§6) y criterios de aceptación (§9). No se duplica aquí su contenido; este plan solo añade la integración con el app:
-  - `H0` (spike de integración LayerShell con ventana normal en este KWin) = **puerta go/no-go**: si falla el criterio del documento, seguir su plan B (proceso auxiliar) con sus reglas de decisión.
+  - `H0` (spike de integración LayerShell con ventana normal en este KWin) = **completado (2026-10-22 sesión aislada + 2026-10-23 escritorio real; nota en §9 del documento)**: S1/S2 PASS en KWin 6.8 — `layer-shell-qt 6.8` con API per-ventana (el riesgo de env var global ya no aplica), sin `useLayerShell()` ni env var; **Plan A** (overlay in-proceso: `QRasterWindow` + `LayerShellQt::Window`) confirmado. S3 (escala fraccional 1.25/1.5) y S5 (mapeo de pantallas) **verificados en el escritorio real del usuario**: sin zoom ni desplazamiento en ambas escalas; `screenGeometry` de Plasma devuelve geometría lógica, igual exacta a `QScreen::geometry()`. Anomalía abierta no bloqueante: `devicePixelRatio()=2` en esa máquina (buffer sobre-muestreado; el compositor lo remuestra, resultado correcto).
   - Nuevo árbol `src/transitions/` (effects, transitionspec, wallpaperswitcher, plasmacomp, screenmap, overlay LayerShell).
   - `CMakeLists.txt`: `find_package(LayerShellQt 6 REQUIRED CONFIG)` → enlazar `LayerShellQt::Interface` (target verificado en `/usr/lib/cmake/LayerShellQt/`); `Qt6::Concurrent` (decodificar/escalar off-thread).
   - Cabeceras MIT + regla clean-room según §11 del documento (D17).
   - **Lockscreen:** `SwitchOptions.includeLockscreen` = la config `lockscreen` (D15); el camino de lockscreen del switcher sigue el documento (línea 374: `kscreenlockerrc`, único fondo para todas las pantallas).
 - Integración con el app:
   - `AppController::setWallpaper` (P4): si `transitionsEnabled` y el overlay está disponible → `WallpaperSwitcher` (Cover/Reveal según §4.4 del doc); si no, apply directo (P4) sin transición.
-  - `qml/WallpapersSettingsPage.qml`: grupo "Transiciones": Switch (default off, D14), tipo (`none, simple, fade, left, right, top, bottom, wipe, wave, grow, center, outer, random`), duración (0.1–10 s, def 0.9), FPS (0=auto), step simple (1–16), ángulo (−360–360, def 45), pos (`center, top, bottom, left, right, corners`), invertY, bezier (def `.54,0,.34,.99`), wave W×H (def `20,20`) — claves KConfig de §3.
+  - `qml/WallpapersSettingsPage.qml`: grupo "Transiciones": Switch (default off, D14), capa (ComboBox `bottom`|`top`|`overlay`, def `bottom`; `background` excluida — el wallpaper la cubre, resultado H0), tipo (`none, simple, fade, left, right, top, bottom, wipe, wave, grow, center, outer, random`), duración (0.1–10 s, def 0.9), FPS (0=auto), step simple (1–16), ángulo (−360–360, def 45), pos (`center, top, bottom, left, right, corners`), invertY, bezier (def `.54,0,.34,.99`), wave W×H (def `20,20`) — claves KConfig de §3.
 - El parámetro `includeLockscreen` del §4.5 del doc sale de la misma config `lockscreen` (D15).
 
 **Verificación:** los criterios de aceptación de §9 del documento (H1: match de vectores de efectos contra tabla de referencia; H3: overlay por encima de Plasma; H5: aplicación completa) + kwin: transición visible al cambiar de wallpaper (imagen y vídeo — portada del vídeo = `first_frame` de P1), captura antes/durante/después.

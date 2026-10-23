@@ -427,6 +427,29 @@ target_link_libraries(tst_ulauncher
 )
 add_test(NAME tst_ulauncher COMMAND tst_ulauncher)
 
+# Pure transition maths (H1): ported from the Rust reference and tested
+# against the Appendix C vectors of the plan. Not linked into the app yet.
+qt_add_library(kwal_transitions STATIC
+ src/transitions/effects.cpp
+ src/transitions/effects.h
+ src/transitions/path.cpp
+ src/transitions/path.h
+ src/transitions/transitionspec.cpp
+ src/transitions/transitionspec.h
+)
+target_link_libraries(kwal_transitions PUBLIC Qt6::Core)
+
+qt_add_executable(tst_transitions
+ tests/tst_transitions.cpp
+)
+target_include_directories(tst_transitions PRIVATE src/transitions)
+target_link_libraries(tst_transitions
+ PRIVATE
+ kwal_transitions
+ Qt6::Test
+)
+add_test(NAME tst_transitions COMMAND tst_transitions)
+
 install(FILES org.kde.kwal.desktop
  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
  RENAME kwal.desktop

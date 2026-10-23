@@ -32,6 +32,12 @@ Kirigami.ScrollablePage {
         }
         spacing: Kirigami.Units.smallSpacing
 
+        Kirigami.Heading {
+            Layout.fillWidth: true
+            text: qsTr("Window")
+            level: 3
+        }
+
         KirigamiDelegates.SwitchSubtitleDelegate {
             id: transparencySwitch
             Layout.fillWidth: true
@@ -54,15 +60,7 @@ Kirigami.ScrollablePage {
                 enabled: page.app.enableTransparency
                 onValueModified: page.app.transparencyLevel = value
             }
-        }
 
-        Kirigami.Heading {
-            Layout.fillWidth: true
-            text: qsTr("Window")
-            level: 3
-        }
-
-        Kirigami.FormLayout {
             SpinBox {
                 Kirigami.FormData.label: qsTr("Default width")
                 from: 700

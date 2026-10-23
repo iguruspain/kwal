@@ -199,6 +199,7 @@ qt_add_qml_module(kwal
  qml/Main.qml
  qml/WallpapersPage.qml
  qml/WallpaperDetailDrawer.qml
+ qml/CollapsibleSection.qml
  qml/FolderSidebar.qml
  qml/FolderRow.qml
  qml/WallpaperItem.qml

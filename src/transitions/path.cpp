@@ -1,65 +1,60 @@
-// SPDX-FileCopyrightText: 2026 KDE
-// SPDX-License-Identifier: MIT
 #include "path.h"
 
 #include <QByteArray>
 
-#include <cstddef>
 
-namespace transitions
-{
+namespace transitions {
 
 QString expandTilde(const QString &path)
 {
     QString rest;
-    bool tilde = false;
+    bool hasRest = false;
     if (path == QLatin1String("~")) {
-        tilde = true;
+        hasRest = true;
     } else if (path.startsWith(QLatin1String("~/"))) {
         rest = path.mid(2);
-        tilde = true;
+        hasRest = true;
     }
-    if (!tilde)
-        return path;
-    const QByteArray home = qgetenv("HOME");
-    if (home.isEmpty())
-        return path;
-    if (rest.isEmpty())
-        return QString::fromUtf8(home);
-    QString h = QString::fromUtf8(home);
-    while (h.endsWith(QLatin1Char('/')))
-        h.chop(1);
-    return h + QLatin1Char('/') + rest;
+    if (hasRest) {
+        const QString home = qEnvironmentVariable("HOME");
+        if (!home.isEmpty()) {
+            return rest.isEmpty() ? home : home + QLatin1Char('/') + rest;
+        }
+    }
+    return path;
 }
 
 QString percentDecode(const QString &s)
 {
-    const QByteArray in = s.toUtf8();
-    QByteArray out;
-    out.reserve(in.size());
+    const QByteArray b = s.toUtf8();
     auto hex = [](char c) -> int {
-        const unsigned char u = static_cast<unsigned char>(c);
-        if (u >= '0' && u <= '9')
-            return u - '0';
-        if (u >= 'a' && u <= 'f')
-            return u - 'a' + 10;
-        if (u >= 'A' && u <= 'F')
-            return u - 'A' + 10;
+        const unsigned char uc = static_cast<unsigned char>(c);
+        if (uc >= '0' && uc <= '9') {
+            return uc - '0';
+        }
+        if (uc >= 'a' && uc <= 'f') {
+            return uc - 'a' + 10;
+        }
+        if (uc >= 'A' && uc <= 'F') {
+            return uc - 'A' + 10;
+        }
         return -1;
     };
-    for (std::size_t i = 0; i < in.size(); ++i) {
-        if (in[i] == '%' && i + 2 < in.size()) {
-            const int h = hex(in[i + 1]);
-            const int l = hex(in[i + 2]);
-            if (h >= 0 && l >= 0) {
-                out.append(static_cast<char>((h << 4) | l));
+    QByteArray out;
+    out.reserve(b.size());
+    for (size_t i = 0; i < b.size(); ++i) {
+        if (b[i] == '%' && i + 2 < b.size()) {
+            const int hi = hex(b[i + 1]);
+            const int lo = hex(b[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out.append(static_cast<char>((hi << 4) | lo));
                 i += 2;
                 continue;
             }
         }
-        out.append(in[i]);
+        out.append(b[i]);
     }
     return QString::fromUtf8(out);
 }
 
-}
+} // namespace transitions

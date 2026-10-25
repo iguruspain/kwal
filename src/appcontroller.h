@@ -51,6 +51,23 @@ class AppController : public QObject
     Q_PROPERTY(UlauncherController *ulauncher READ ulauncher CONSTANT)
     Q_PROPERTY(WallpapersInfo *wallpapersInfo READ wallpapersInfo CONSTANT)
     Q_PROPERTY(PaletteExtractor *paletteExtractor READ paletteExtractor CONSTANT)
+    // [Transitions]: layer-shell overlay animation applied on wallpaper
+    // switches.
+    Q_PROPERTY(bool transitionEnabled READ transitionEnabled WRITE setTransitionEnabled NOTIFY transitionEnabledChanged)
+    Q_PROPERTY(QString transitionLayer READ transitionLayer WRITE setTransitionLayer NOTIFY transitionLayerChanged)
+    Q_PROPERTY(QStringList transitionLayers READ transitionLayers CONSTANT)
+    Q_PROPERTY(QStringList transitionTypes READ transitionTypes CONSTANT)
+    Q_PROPERTY(QString transitionType READ transitionType WRITE setTransitionType NOTIFY transitionTypeChanged)
+    Q_PROPERTY(bool transitionAdvanced READ transitionAdvanced WRITE setTransitionAdvanced NOTIFY transitionAdvancedChanged)
+    Q_PROPERTY(double transitionDuration READ transitionDuration WRITE setTransitionDuration NOTIFY transitionDurationChanged)
+    Q_PROPERTY(int transitionFps READ transitionFps WRITE setTransitionFps NOTIFY transitionFpsChanged)
+    Q_PROPERTY(int transitionStep READ transitionStep WRITE setTransitionStep NOTIFY transitionStepChanged)
+    Q_PROPERTY(double transitionAngle READ transitionAngle WRITE setTransitionAngle NOTIFY transitionAngleChanged)
+    Q_PROPERTY(QString transitionPos READ transitionPos WRITE setTransitionPos NOTIFY transitionPosChanged)
+    Q_PROPERTY(bool transitionInvertY READ transitionInvertY WRITE setTransitionInvertY NOTIFY transitionInvertYChanged)
+    Q_PROPERTY(QString transitionBezier READ transitionBezier WRITE setTransitionBezier NOTIFY transitionBezierChanged)
+    Q_PROPERTY(double transitionWaveWidth READ transitionWaveWidth WRITE setTransitionWaveWidth NOTIFY transitionWaveWidthChanged)
+    Q_PROPERTY(double transitionWaveHeight READ transitionWaveHeight WRITE setTransitionWaveHeight NOTIFY transitionWaveHeightChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -94,6 +111,34 @@ public:
     bool colorCategoriesEnabled() const;
     void setColorCategoriesEnabled(bool enabled);
     bool matugenAvailable() const;
+    bool transitionEnabled() const;
+    void setTransitionEnabled(bool enabled);
+    QString transitionLayer() const;
+    void setTransitionLayer(const QString &layer);
+    QStringList transitionLayers() const;
+    QStringList transitionTypes() const;
+    QString transitionType() const;
+    void setTransitionType(const QString &type);
+    bool transitionAdvanced() const;
+    void setTransitionAdvanced(bool enabled);
+    double transitionDuration() const;
+    void setTransitionDuration(double duration);
+    int transitionFps() const;
+    void setTransitionFps(int fps);
+    int transitionStep() const;
+    void setTransitionStep(int step);
+    double transitionAngle() const;
+    void setTransitionAngle(double angle);
+    QString transitionPos() const;
+    void setTransitionPos(const QString &pos);
+    bool transitionInvertY() const;
+    void setTransitionInvertY(bool invertY);
+    QString transitionBezier() const;
+    void setTransitionBezier(const QString &bezier);
+    double transitionWaveWidth() const;
+    void setTransitionWaveWidth(double width);
+    double transitionWaveHeight() const;
+    void setTransitionWaveHeight(double height);
 
     Q_INVOKABLE void addFolder(const QString &path);
     Q_INVOKABLE void removeFolder(int index);
@@ -126,12 +171,28 @@ signals:
     void defaultWindowHeightChanged();
     void matugenDotsEnabledChanged();
     void colorCategoriesEnabledChanged();
+    void transitionEnabledChanged();
+    void transitionLayerChanged();
+    void transitionTypeChanged();
+    void transitionAdvancedChanged();
+    void transitionDurationChanged();
+    void transitionFpsChanged();
+    void transitionStepChanged();
+    void transitionAngleChanged();
+    void transitionPosChanged();
+    void transitionInvertYChanged();
+    void transitionBezierChanged();
+    void transitionWaveWidthChanged();
+    void transitionWaveHeightChanged();
 private:
     void loadConfig();
     void saveConfig();
     void applyCurrentFolder();
     void setCurrentWallpaper(const QString &filePath);
     void setWallpaper(const QString &filePath);
+    // Shared finish handler for the wallpaper switch (direct path and
+    // transition binary).
+    void wallpaperFinished(bool allOk, const QString &message);
     void recomputeVideoFolders();
     static QStringList videoFilesIn(const QString &folder);
 
@@ -174,6 +235,21 @@ private:
     // Show the color-category chips in the wallpapers search; persisted in
     // [Wallpapers] "colorCategories".
     bool m_colorCategories = false;
+    // [Transitions] "transitionEnabled"/"transitionLayer"/…; the overlay
+    // animation settings, built into a TransitionConfig on each apply.
+    bool m_transitionEnabled = false;
+    QString m_transitionLayer = QStringLiteral("bottom");
+    QString m_transitionType = QStringLiteral("grow");
+    bool m_transitionAdvanced = false;
+    double m_transitionDuration = 0.9;
+    int m_transitionFps = 0;
+    int m_transitionStep = 2;
+    double m_transitionAngle = 45.0;
+    QString m_transitionPos = QStringLiteral("center");
+    bool m_transitionInvertY = false;
+    QString m_transitionBezier = QStringLiteral(".54,0,.34,.99");
+    double m_transitionWaveWidth = 20.0;
+    double m_transitionWaveHeight = 20.0;
     bool m_fastfetchAvailable = false;
     bool m_starshipAvailable = false;
     bool m_ulauncherAvailable = false;

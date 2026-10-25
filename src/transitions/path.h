@@ -1,18 +1,16 @@
-// SPDX-FileCopyrightText: 2026 KDE
-// SPDX-License-Identifier: MIT
+// Path helpers shared by the transition plane readers (port of the lib.rs
+// helpers of the Rust reference).
 #pragma once
 
 #include <QString>
 
-namespace transitions
-{
+namespace transitions {
 
-// `~` and `~/...` at the start of the path expand to $HOME (the rest is
-// untouched); anything else and a missing/empty HOME pass through as-is.
+// Expands a leading `~` / `~/` to `$HOME`. Needed because a shell does not
+// expand `~` inside quotes (`"~/Videos/a b.mp4"`).
 QString expandTilde(const QString &path);
 
-// `%XX` becomes the byte 0xXX; invalid sequences are kept verbatim
-// (percentDecode is Rust percent-decoding).
+// `%XX` -> byte (invalid sequences are kept verbatim).
 QString percentDecode(const QString &s);
 
-}
+} // namespace transitions

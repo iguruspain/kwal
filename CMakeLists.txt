@@ -149,6 +149,72 @@ add_library(mcu_lib STATIC
 target_include_directories(mcu_lib PUBLIC ${mcu_SOURCE_DIR})
 target_compile_features(mcu_lib PUBLIC cxx_std_20)
 
+# Wayland client protocols for the wallpaper transition overlay: the
+# vendored XMLs plus the Wayland core protocol (libwayland-client no
+# longer ships wl_compositor & co. in its headers) are compiled with
+# wayland-scanner into a client header (inline request functions,
+# listener structs) and a client implementation (the interface structs)
+# at build time.
+enable_language(C)
+pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
+find_program(WAYLAND_SCANNER wayland-scanner)
+if (NOT WAYLAND_SCANNER)
+    message(FATAL_ERROR "wayland-scanner not found")
+endif()
+set(_kwal_transition_protocols
+ "wayland.xml wayland-core"
+ "viewporter.xml viewporter"
+ "wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1"
+ "xdg-output-unstable-v1.xml xdg-output-unstable-v1"
+ "xdg-shell.xml xdg-shell"
+)
+add_library(kwal_transitions STATIC
+ src/transitions/effects.cpp
+ src/transitions/effects.h
+ src/transitions/outputs.cpp
+ src/transitions/outputs.h
+ src/transitions/overlay.cpp
+ src/transitions/overlay.h
+ src/transitions/path.cpp
+ src/transitions/path.h
+ src/transitions/planes.cpp
+ src/transitions/planes.h
+ src/transitions/transitionspec.cpp
+ src/transitions/transitionspec.h
+)
+target_include_directories(kwal_transitions PUBLIC src/transitions)
+target_link_libraries(kwal_transitions
+ PUBLIC
+ Qt6::Core
+ Qt6::Gui
+ PkgConfig::WAYLAND_CLIENT
+)
+set(_kwal_transition_generated)
+foreach(_entry IN LISTS _kwal_transition_protocols)
+    string(REPLACE " " ";" _parts "${_entry}")
+    list(GET _parts 0 _xml)
+    list(GET _parts 1 _base)
+    set(_xml_path "${CMAKE_CURRENT_SOURCE_DIR}/src/transitions/protocols/${_xml}")
+add_custom_command(
+    OUTPUT "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
+    COMMAND ${WAYLAND_SCANNER} client-header "${_xml_path}" "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
+    DEPENDS "${_xml_path}"
+    COMMENT "Generating ${_base} client header"
+)
+    add_custom_command(
+        OUTPUT "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.c"
+        COMMAND ${WAYLAND_SCANNER} private-code "${_xml_path}" "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.c"
+        DEPENDS "${_xml_path}"
+        COMMENT "Generating ${_base} client protocol"
+    )
+    list(APPEND _kwal_transition_generated
+        "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
+        "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.c"
+    )
+endforeach()
+target_sources(kwal_transitions PRIVATE ${_kwal_transition_generated})
+target_include_directories(kwal_transitions PUBLIC "${CMAKE_BINARY_DIR}/transitions")
+
 qt_standard_project_setup(REQUIRES 6.8)
 
 enable_testing()
@@ -232,8 +298,56 @@ Qt6::WebEngineQuick
     KF6::Kirigami
     PkgConfig::AVUTIL
  mcu_lib
+ kwal_transitions
  tomlplusplus::tomlplusplus
 )
+
+# Standalone wallpaper transition binary: the app launches it through
+# QProcess when a transition is enabled; it can also be run by hand to
+# test transitions against the live desktop.
+qt_add_executable(kwal-transition
+ src/kwal-transition.cpp
+ src/plasmaapply.cpp
+ src/plasmaapply.h
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
+ src/colorcategory.cpp
+ src/colorcategory.h
+)
+target_include_directories(kwal-transition PRIVATE src)
+target_link_libraries(kwal-transition
+ PRIVATE
+ kwal_transitions
+ Qt6::Core
+ Qt6::Gui
+ Qt6::Qml
+ Qt6::DBus
+ mcu_lib
+)
+
+qt_add_executable(tst_transitions
+ tests/tst_transitions.cpp
+ src/plasmaapply.cpp
+ src/plasmaapply.h
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
+ src/colorcategory.cpp
+ src/colorcategory.h
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
+)
+target_include_directories(tst_transitions PRIVATE src)
+target_link_libraries(tst_transitions
+ PRIVATE
+ kwal_transitions
+ Qt6::Core
+ Qt6::Gui
+ Qt6::Qml
+ Qt6::DBus
+ Qt6::Test
+ mcu_lib
+)
+add_test(NAME tst_transitions COMMAND tst_transitions)
 
 target_include_directories(kwal PRIVATE src)
 qt_add_executable(tst_appcontroller
@@ -276,6 +390,7 @@ target_link_libraries(tst_appcontroller
  Qt6::Test
  mcu_lib
  KF6::ConfigCore
+ kwal_transitions
 )
 add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
 qt_add_executable(tst_wallpapersinfo
@@ -317,6 +432,7 @@ target_link_libraries(tst_plasmaapply
  Qt6::Qml
  Qt6::Test
  mcu_lib
+ kwal_transitions
 )
 add_test(NAME tst_plasmaapply COMMAND tst_plasmaapply)
 qt_add_executable(tst_paletteextractor
@@ -426,29 +542,6 @@ target_link_libraries(tst_ulauncher
  KF6::ConfigCore
 )
 add_test(NAME tst_ulauncher COMMAND tst_ulauncher)
-
-# Pure transition maths (H1): ported from the Rust reference and tested
-# against the Appendix C vectors of the plan. Not linked into the app yet.
-qt_add_library(kwal_transitions STATIC
- src/transitions/effects.cpp
- src/transitions/effects.h
- src/transitions/path.cpp
- src/transitions/path.h
- src/transitions/transitionspec.cpp
- src/transitions/transitionspec.h
-)
-target_link_libraries(kwal_transitions PUBLIC Qt6::Core)
-
-qt_add_executable(tst_transitions
- tests/tst_transitions.cpp
-)
-target_include_directories(tst_transitions PRIVATE src/transitions)
-target_link_libraries(tst_transitions
- PRIVATE
- kwal_transitions
- Qt6::Test
-)
-add_test(NAME tst_transitions COMMAND tst_transitions)
 
 install(FILES org.kde.kwal.desktop
  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications

@@ -1,303 +1,310 @@
-// SPDX-FileCopyrightText: 2026 KDE
-// SPDX-License-Identifier: MIT
 #include "effects.h"
 
-#include <array>
-#include <cmath>
-
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <unistd.h>
 
-namespace transitions
-{
+namespace transitions {
 
-px scalePx(px p, std::uint32_t a)
-{
-    const px rb = (((p & 0x00FF00FFu) * a) >> 8) & 0x00FF00FFu;
-    const px ag = (((p >> 8) & 0x00FF00FFu) * a) & 0xFF00FF00u;
-    return rb | ag;
-}
+namespace {
 
-std::uint32_t keep256(double cover)
+// Transparency `cover` (0 = opaque, 1 = fully transparent) -> pixel scale.
+constexpr std::uint32_t keep256(double cover)
 {
     return static_cast<std::uint32_t>((1.0 - std::clamp(cover, 0.0, 1.0)) * 256.0 + 0.5);
 }
 
-void put(Paint m, px *buf, const px *orig, std::size_t i, double cover)
+// Pixels [a, b) are entirely inside the shape.
+void fillFull(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, size_t a, size_t b)
 {
-    const std::uint32_t k = (m == Paint::Reveal) ? keep256(cover) : 256 - keep256(cover);
-    buf[i] = scalePx(orig[i], k);
-}
-
-void fillFull(Paint m, px *buf, const px *orig, std::size_t a, std::size_t b)
-{
-    if (b <= a)
-        return;
-    if (m == Paint::Reveal)
-        std::fill(buf + a, buf + b, 0u);
-    else
-        std::copy(orig + a, orig + b, buf + a);
-}
-
-void drawFade(px *buf, const px *orig, std::size_t n, std::uint32_t keep)
-{
-    keep = std::min<std::uint32_t>(keep, 256);
-    if (keep == 0) {
-        std::fill(buf, buf + n, 0u);
+    if (b <= a) {
         return;
     }
-    for (std::size_t i = 0; i < n; ++i)
-        buf[i] = scalePx(orig[i], keep);
+    if (paint == Paint::Reveal) {
+        std::fill(buf.begin() + static_cast<long>(a), buf.begin() + static_cast<long>(b), Pixel(0));
+    } else {
+        std::copy(orig.begin() + static_cast<long>(a), orig.begin() + static_cast<long>(b),
+                  buf.begin() + static_cast<long>(a));
+    }
 }
 
-QPointF resolveCenter(const Pos &pos, bool invertY, int logicalW, int logicalH, int bufW, int bufH)
+// Pixel `i` is `cover` (0..1) inside the shape.
+void putPixel(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, size_t i, double cover)
 {
-    const double lw = std::max(1.0, static_cast<double>(logicalW));
-    const double lh = std::max(1.0, static_cast<double>(logicalH));
-    const double bw = static_cast<double>(bufW);
-    const double bh = static_cast<double>(bufH);
-    const double x = pos.xKind == Coord::Frac ? pos.x * bw : pos.x * bw / lw;
-    const double y = pos.yKind == Coord::Frac ? (invertY ? pos.y : 1.0 - pos.y) * bh
-                                              : (invertY ? pos.y : lh - pos.y) * bh / lh;
-    return {x, y};
+    const std::uint32_t keep =
+        paint == Paint::Reveal ? keep256(cover) : 256 - keep256(cover);
+    buf[i] = scalePx(orig[i], keep);
+}
+
+// Per-row split of a half-plane edge. d(x) = a - dxX*x is the signed
+// distance (px, positive = revealed) at pixel index x ignoring any wave, m
+// the margin within which the exact cover must be evaluated. Returns
+// (b0, f0, f1, b1): pixels [f0, f1) are fully transparent, [b0, f0) and
+// [f1, b1) need per-pixel evaluation, the rest is untouched.
+std::array<size_t, 4> rowRanges(size_t w, double a, double dx, double m)
+{
+    const double wf = static_cast<double>(w);
+    const auto cl = [&w](double v) {
+        return static_cast<size_t>(std::clamp(v, 0.0, static_cast<double>(w)));
+    };
+    if (std::abs(dx) < 1e-9) {
+        if (a >= m) {
+            return {0, 0, w, w};
+        }
+        if (a <= -m) {
+            return {0, 0, 0, 0};
+        }
+        return {0, 0, 0, w};
+    }
+    if (dx > 0.0) {
+        // d decreases with x: full for x <= (a-m)/dx, untouched past (a+m)/dx.
+        const size_t f1 = cl(std::floor((a - m) / dx) + 1.0);
+        const size_t b1 = std::max(cl(std::ceil((a + m) / dx)), f1);
+        return {0, 0, f1, b1};
+    }
+    // d increases with x.
+    const double k = -dx;
+    const size_t f0 = cl(std::ceil((m - a) / k));
+    const size_t b0 = std::min(cl(std::floor((-m - a) / k)), f0);
+    return {b0, f0, w, w};
+}
+
+// Exact cover of pixel (x, y) for a wipe whose front is at `front` along
+// dir, with an optional sine wave (width, height) on the edge.
+double wipeCover(size_t x, size_t y, double dirX, double dirY, double front,
+                 double waveW, double waveH)
+{
+    const double px = static_cast<double>(x) + 0.5;
+    const double py = static_cast<double>(y) + 0.5;
+    const double s = px * dirX + py * dirY;
+    double off = 0.0;
+    if (waveH != 0.0) {
+        const double perp = -px * dirY + py * dirX;
+        off = std::sin(perp / std::max(std::abs(waveW), 1e-3)) * waveH;
+    }
+    return front + off - s + 0.5;
+}
+
+} // namespace
+
+double bezierEase(const Bezier &b, double t)
+{
+    if (t <= 0.0) {
+        return 0.0;
+    }
+    if (t >= 1.0) {
+        return 1.0;
+    }
+    const auto coef = [](double a, double bb) {
+        const double c = 3.0 * a;
+        const double d = 3.0 * (bb - a) - c;
+        return std::array<double, 3>{1.0 - c - d, d, c};
+    };
+    const auto eval = [](const std::array<double, 3> &c, double s) {
+        return (c[0] * s + c[1]) * s * s + c[2] * s;
+    };
+    const auto cx = coef(b.x1, b.x2);
+    const auto cy = coef(b.y1, b.y2);
+    double lo = 0.0;
+    double hi = 1.0;
+    for (int i = 0; i < 32; ++i) {
+        const double mid = (lo + hi) / 2.0;
+        if (eval(cx, mid) < t) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    return eval(cy, (lo + hi) / 2.0);
+}
+
+Pixel scalePx(Pixel p, std::uint32_t a)
+{
+    const std::uint32_t rb = (((p & 0x00FF00FF) * a) >> 8) & 0x00FF00FF;
+    const std::uint32_t ag = (((p >> 8) & 0x00FF00FF) * a) & 0xFF00FF00;
+    return rb | ag;
+}
+
+void drawFade(std::span<Pixel> buf, std::span<const Pixel> orig, std::uint32_t keep)
+{
+    keep = std::min(keep, std::uint32_t(256));
+    if (keep == 0) {
+        std::fill(buf.begin(), buf.end(), Pixel(0));
+        return;
+    }
+    for (size_t i = 0; i < buf.size(); ++i) {
+        buf[i] = scalePx(orig[i], keep);
+    }
 }
 
 double maxRadius(double cx, double cy, int w, int h)
 {
-    return std::hypot(std::max(cx, static_cast<double>(w) - cx),
-                      std::max(cy, static_cast<double>(h) - cy));
+    const double dx = std::max(cx, static_cast<double>(w) - cx);
+    const double dy = std::max(cy, static_cast<double>(h) - cy);
+    return std::hypot(dx, dy);
 }
 
-void drawGrow(Paint m, px *buf, const px *orig, int w, int h, double cx, double cy, double r)
+void drawGrow(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, int w, int h,
+              double cx, double cy, double r)
 {
-    if (r <= 0)
+    if (r <= 0.0) {
         return;
-    const double rIn = r - 0.5, rOut = r + 0.5;
-    const int y0 = static_cast<int>(std::max(0.0, std::floor(cy - rOut)));
-    const int y1 = static_cast<int>(std::clamp(std::ceil(cy + rOut), 0.0, static_cast<double>(h)));
-    for (int y = y0; y < y1; ++y) {
-        const double dy = y + 0.5 - cy;
+    }
+    const int wu = w;
+    const int hu = h;
+    const double rIn = r - 0.5;
+    const double rOut = r + 0.5;
+    const size_t y0 = static_cast<size_t>(std::max(std::floor(cy - rOut), 0.0));
+    const size_t y1 = static_cast<size_t>(std::max(std::min(std::ceil(cy + rOut), static_cast<double>(hu)), 0.0));
+    for (size_t y = y0; y < y1; ++y) {
+        const double dy = static_cast<double>(y) + 0.5 - cy;
         const double ho2 = rOut * rOut - dy * dy;
-        if (ho2 <= 0)
-            continue; // the disc does not touch this row
+        if (ho2 <= 0.0) {
+            continue;
+        }
         const double ho = std::sqrt(ho2);
-        const std::size_t row = static_cast<std::size_t>(y) * w;
-        const int xo0 = static_cast<int>(std::max(0.0, std::floor(cx - ho - 0.5)));
-        const int xo1 = static_cast<int>(std::max(0.0, std::min(std::ceil(cx + ho - 0.5),
-                                                                static_cast<double>(w) - 1.0)));
-        int xi0 = 0, xi1 = 0; // fully covered stretch [xi0, xi1)
+        const size_t row = y * static_cast<size_t>(wu);
+        const size_t xo0 = static_cast<size_t>(std::max(std::floor(cx - ho - 0.5), 0.0));
+        const size_t xo1 = static_cast<size_t>(std::max(std::min(std::ceil(cx + ho - 0.5), static_cast<double>(wu) - 1.0), 0.0));
+
+        // Fully transparent interior: pixel centres within r - 0.5.
         const double ri2 = rIn * rIn - dy * dy;
-        if (rIn > 0 && ri2 > 0) {
-            const double hi = std::sqrt(ri2);
-            const double a = std::max(0.0, std::ceil(cx - hi - 0.5));
-            const double b = std::min(std::floor(cx + hi - 0.5), static_cast<double>(w) - 1.0);
+        size_t xi0 = 0;
+        size_t xi1 = 0;
+        if (rIn > 0.0 && ri2 > 0.0) {
+            const double hiR = std::sqrt(ri2);
+            const double a = std::max(std::ceil(cx - hiR - 0.5), 0.0);
+            const double b = std::min(std::floor(cx + hiR - 0.5), static_cast<double>(wu) - 1.0);
             if (a <= b) {
-                xi0 = static_cast<int>(a);
-                xi1 = static_cast<int>(b) + 1;
+                xi0 = static_cast<size_t>(a);
+                xi1 = static_cast<size_t>(b) + 1;
             }
         }
-        auto rim = [&](int x) {
-            const double dx = x + 0.5 - cx;
-            put(m, buf, orig, row + x, rOut - std::sqrt(dx * dx + dy * dy));
+        const auto rim = [&](size_t x) {
+            const double dx = static_cast<double>(x) + 0.5 - cx;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            putPixel(paint, buf, orig, row + x, rOut - d);
         };
         if (xi1 > xi0) {
-            fillFull(m, buf, orig, row + xi0, row + xi1);
-            for (int x = xo0; x < std::min(xi0, xo1 + 1); ++x)
+            fillFull(paint, buf, orig, row + xi0, row + xi1);
+            for (size_t x = xo0; x < std::min(xi0, xo1 + 1); ++x) {
                 rim(x);
-            for (int x = xi1; x <= xo1; ++x)
+            }
+            for (size_t x = xi1; x <= xo1; ++x) {
                 rim(x);
+            }
         } else {
-            for (int x = xo0; x <= xo1; ++x)
-                rim(x); // small radius: only the rim
+            for (size_t x = xo0; x <= xo1; ++x) {
+                rim(x);
+            }
         }
     }
 }
 
-void drawOuter(Paint m, px *buf, const px *orig, int w, int h, double cx, double cy, double r)
+void drawOuter(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, int w, int h,
+               double cx, double cy, double r)
 {
-    const double rIn = r - 0.5, rOut = r + 0.5;
-    for (int y = 0; y < h; ++y) {
-        const double dy = y + 0.5 - cy;
-        const std::size_t row = static_cast<std::size_t>(y) * w;
+    const int wu = w;
+    const int hu = h;
+    const double rIn = r - 0.5;
+    const double rOut = r + 0.5;
+    for (size_t y = 0; y < static_cast<size_t>(hu); ++y) {
+        const double dy = static_cast<double>(y) + 0.5 - cy;
+        const size_t row = y * static_cast<size_t>(wu);
         const double ho2 = rOut * rOut - dy * dy;
-        if (rOut <= 0 || ho2 <= 0) {
-            fillFull(m, buf, orig, row, row + w);
-            continue; // the whole row is outside
+        if (rOut <= 0.0 || ho2 <= 0.0) {
+            fillFull(paint, buf, orig, row, row + static_cast<size_t>(wu));
+            continue;
         }
         const double ho = std::sqrt(ho2);
-        const int lEnd = static_cast<int>(std::clamp(std::floor(cx - ho - 0.5) + 1.0, 0.0,
-                                                     static_cast<double>(w)));
-        const int rStart = std::max(static_cast<int>(std::clamp(std::ceil(cx + ho - 0.5), 0.0,
-                                                                static_cast<double>(w))),
-                                    lEnd);
-        fillFull(m, buf, orig, row, row + lEnd);          // outside on the left
-        fillFull(m, buf, orig, row + rStart, row + w);    // outside on the right
-        int i0 = rStart, i1 = rStart; // untouched interior [i0, i1)
+        // Fully transparent: centre distance >= r + 0.5.
+        const size_t lEnd = static_cast<size_t>(std::clamp(std::floor(cx - ho - 0.5) + 1.0, 0.0, static_cast<double>(wu)));
+        size_t rStart = static_cast<size_t>(std::clamp(std::ceil(cx + ho - 0.5), 0.0, static_cast<double>(wu)));
+        rStart = std::max(rStart, lEnd);
+        fillFull(paint, buf, orig, row, row + lEnd);
+        fillFull(paint, buf, orig, row + rStart, row + static_cast<size_t>(wu));
+
+        // Untouched interior: centre distance <= r - 0.5.
         const double ri2 = rIn * rIn - dy * dy;
-        if (rIn > 0 && ri2 > 0) {
-            const double hi = std::sqrt(ri2);
-            i0 = std::clamp(static_cast<int>(std::max(0.0, std::ceil(cx - hi - 0.5))), lEnd, rStart);
-            i1 = std::clamp(static_cast<int>(std::clamp(std::floor(cx + hi - 0.5) + 1.0, 0.0,
-                                                        static_cast<double>(w))),
-                            i0, rStart);
+        size_t i0 = rStart;
+        size_t i1 = rStart;
+        if (rIn > 0.0 && ri2 > 0.0) {
+            const double hiR = std::sqrt(ri2);
+            i0 = std::clamp(static_cast<size_t>(std::max(std::ceil(cx - hiR - 0.5), 0.0)), lEnd, rStart);
+            i1 = std::clamp(static_cast<size_t>(std::clamp(std::floor(cx + hiR - 0.5) + 1.0, 0.0, static_cast<double>(wu))), i0, rStart);
         }
-        auto rim = [&](int x) {
-            const double dx = x + 0.5 - cx;
-            put(m, buf, orig, row + x, std::sqrt(dx * dx + dy * dy) - rIn); // cover = dist - (r - 0.5)
+        const auto rim = [&](size_t x) {
+            const double dx = static_cast<double>(x) + 0.5 - cx;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            putPixel(paint, buf, orig, row + x, d - rIn);
         };
-        for (int x = lEnd; x < i0; ++x)
+        for (size_t x = lEnd; x < i0; ++x) {
             rim(x);
-        for (int x = i1; x < rStart; ++x)
+        }
+        for (size_t x = i1; x < rStart; ++x) {
             rim(x);
+        }
     }
 }
 
-double wipeCover(int x, int y, double dx, double dy, double front, const Wave &wv)
+std::pair<double, double> projRange(int w, int h, double dirX, double dirY)
 {
-    const double px = x + 0.5, py = y + 0.5;
-    const double s = px * dx + py * dy;
-    double off = 0;
-    if (wv.height != 0) {
-        const double perp = -px * dy + py * dx;
-        off = std::sin(perp / std::max(std::abs(wv.width), 1e-3)) * wv.height;
-    }
-    return front + off - s + 0.5; // >= 1 fully covered, <= 0 untouched
-}
-
-Span rowRanges(std::size_t w, double a, double dx, double m)
-{
-    auto cl = [&](double v) {
-        return static_cast<std::size_t>(std::clamp(v, 0.0, static_cast<double>(w)));
+    const double c[4] = {
+        0.0,
+        static_cast<double>(w) * dirX,
+        static_cast<double>(h) * dirY,
+        static_cast<double>(w) * dirX + static_cast<double>(h) * dirY,
     };
-    if (std::abs(dx) < 1e-9) // horizontal front: the whole row is equal
-        return a >= m ? Span{0, 0, w, w} : a <= -m ? Span{0, 0, 0, 0} : Span{0, 0, 0, w};
-    if (dx > 0) { // d decreases with x
-        const std::size_t f1 = cl(std::floor((a - m) / dx) + 1.0);
-        const std::size_t b1 = std::max(cl(std::ceil((a + m) / dx)), f1);
-        return {0, 0, f1, b1};
+    double lo = c[0];
+    double hi = c[0];
+    for (double v : c) {
+        lo = std::min(lo, v);
+        hi = std::max(hi, v);
     }
-    const double k = -dx; // d increases with x
-    const std::size_t f0 = cl(std::ceil((m - a) / k));
-    const std::size_t b0 = std::min(cl(std::floor((-m - a) / k)), f0);
-    return {b0, f0, w, w};
+    return {lo, hi};
 }
 
-void drawWipe(Paint m, px *buf, const px *orig, int w, int h, double dx, double dy, double front,
-              const Wave &wv)
+void drawWipe(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, int w, int h,
+              double dirX, double dirY, double front,
+              double waveW, double waveH)
 {
-    const double margin = std::abs(wv.height) + 0.5;
-    for (int y = 0; y < h; ++y) {
-        const double a = front - 0.5 * dx - (y + 0.5) * dy;
-        const Span sp = rowRanges(static_cast<std::size_t>(w), a, dx, margin);
-        const std::size_t row = static_cast<std::size_t>(y) * w;
-        fillFull(m, buf, orig, row + sp.f0, row + sp.f1);
-        for (std::size_t x = sp.b0; x < sp.f0; ++x)
-            put(m, buf, orig, row + x, wipeCover(static_cast<int>(x), y, dx, dy, front, wv));
-        for (std::size_t x = sp.f1; x < sp.b1; ++x)
-            put(m, buf, orig, row + x, wipeCover(static_cast<int>(x), y, dx, dy, front, wv));
+    const int wu = w;
+    const int hu = h;
+    const double m = std::abs(waveH) + 0.5;
+    for (size_t y = 0; y < static_cast<size_t>(hu); ++y) {
+        const double a = front - 0.5 * dirX - (static_cast<double>(y) + 0.5) * dirY;
+        const auto [b0, f0, f1, b1] = rowRanges(static_cast<size_t>(wu), a, dirX, m);
+        const size_t row = y * static_cast<size_t>(wu);
+        fillFull(paint, buf, orig, row + f0, row + f1);
+        for (size_t x = b0; x < f0; ++x) {
+            putPixel(paint, buf, orig, row + x, wipeCover(x, y, dirX, dirY, front, waveW, waveH));
+        }
+        for (size_t x = f1; x < b1; ++x) {
+            putPixel(paint, buf, orig, row + x, wipeCover(x, y, dirX, dirY, front, waveW, waveH));
+        }
     }
 }
 
-std::pair<double, double> projRange(int w, int h, double dx, double dy)
+double randUnit()
 {
-    const double c[4] = {0.0,
-                         static_cast<double>(w) * dx,
-                         static_cast<double>(h) * dy,
-                         static_cast<double>(w) * dx + static_cast<double>(h) * dy};
-    return {*std::min_element(c, c + 4), *std::max_element(c, c + 4)};
+    static std::atomic<std::uint64_t> state(0);
+    std::uint64_t x = state.load(std::memory_order_relaxed);
+    if (x == 0) {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        const std::uint64_t t = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(now).count());
+        x = t ^ (static_cast<std::uint64_t>(::getpid()) << 32) | 1u;
+    }
+    x += 0x9E3779B97F4A7C15u;
+    state.store(x, std::memory_order_relaxed);
+    std::uint64_t z = x;
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9u;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBu;
+    z ^= z >> 31;
+    return static_cast<double>(z >> 11) / std::ldexp(1.0, 53);
 }
 
-double bezierEase(const Bezier &b, double t)
-{
-    if (t <= 0)
-        return 0;
-    if (t >= 1)
-        return 1;
-    auto coef = [](double a, double c2) {
-        const double c = 3 * a;
-        const double bb = 3 * (c2 - a) - c;
-        return std::array<double, 3>{1 - c - bb, bb, c};
-    };
-    auto ev = [](const std::array<double, 3> &k, double s) {
-        return ((k[0] * s + k[1]) * s + k[2]) * s;
-    };
-    const auto kx = coef(b.x1, b.x2);
-    const auto ky = coef(b.y1, b.y2);
-    double lo = 0, hi = 1;
-    for (int i = 0; i < 32; ++i) {
-        const double mid = (lo + hi) / 2;
-        if (ev(kx, mid) < t)
-            lo = mid;
-        else
-            hi = mid;
-    }
-    return ev(ky, (lo + hi) / 2);
-}
-
-Frame stepFrame(const TransitionSpec::Resolved &spec, double t, int frameN)
-{
-    t = std::clamp(t, 0.0, 1.0);
-    Frame f;
-    switch (spec.effect) {
-    case TransitionSpec::Resolved::Effect::None:
-        f.p = 1.0;
-        f.done = true;
-        break;
-    case TransitionSpec::Resolved::Effect::Simple: {
-        const int covered = std::min(frameN * spec.step, 255);
-        f.p = covered / 255.0;
-        f.done = covered >= 255;
-        break;
-    }
-    default:
-        f.p = bezierEase(spec.bezier, t);
-        f.done = t >= 1.0;
-        break;
-    }
-    return f;
-}
-
-void drawFrame(const TransitionSpec::Resolved &spec, Paint m, px *buf, const px *orig, int bufW,
-               int bufH, int logicalW, int logicalH, double p, bool done)
-{
-    switch (spec.effect) {
-    case TransitionSpec::Resolved::Effect::None:
-    case TransitionSpec::Resolved::Effect::Simple:
-    case TransitionSpec::Resolved::Effect::Fade: {
-        std::uint32_t keep;
-        if (done)
-            keep = (m == Paint::Reveal) ? 0 : 256;
-        else
-            keep = (m == Paint::Reveal) ? static_cast<std::uint32_t>(std::lround((1.0 - p) * 256.0))
-                                        : static_cast<std::uint32_t>(std::lround(p * 256.0));
-        drawFade(buf, orig, static_cast<std::size_t>(bufW) * bufH, keep);
-        break;
-    }
-    case TransitionSpec::Resolved::Effect::Wipe:
-    case TransitionSpec::Resolved::Effect::Wave: {
-        const Wave wv = spec.wave; // Wipe: {20, 0}; Wave: {width, |height|} (see resolve())
-        const double a = spec.angle * M_PI / 180.0;
-        const double dx = -std::cos(a), dy = std::sin(a);
-        const auto [lo, hi] = projRange(bufW, bufH, dx, dy);
-        const double mg = std::abs(wv.height) + 1.0;
-        const double front = done ? hi + mg : (lo - mg) + p * ((hi + mg) - (lo - mg));
-        drawWipe(m, buf, orig, bufW, bufH, dx, dy, front, wv);
-        break;
-    }
-    case TransitionSpec::Resolved::Effect::Grow: {
-        const QPointF c = resolveCenter(spec.pos, spec.invertY, logicalW, logicalH, bufW, bufH);
-        const double rMax = maxRadius(c.x(), c.y(), bufW, bufH);
-        const double r = done ? rMax + 2.0 : p * rMax;
-        drawGrow(m, buf, orig, bufW, bufH, c.x(), c.y(), r);
-        break;
-    }
-    case TransitionSpec::Resolved::Effect::Outer: {
-        const QPointF c = resolveCenter(spec.pos, spec.invertY, logicalW, logicalH, bufW, bufH);
-        const double rMax = maxRadius(c.x(), c.y(), bufW, bufH) + 1.0;
-        const double r = done ? -1.0 : (1.0 - p) * rMax - p;
-        drawOuter(m, buf, orig, bufW, bufH, c.x(), c.y(), r);
-        break;
-    }
-    }
-}
-
-}
+} // namespace transitions

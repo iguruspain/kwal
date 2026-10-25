@@ -1,4 +1,5 @@
 #include "plasmaapply.h"
+#include "transitions/perf.h"
 #include "wallpapersinfo.h"
 
 #include <QDBusInterface>
@@ -19,16 +20,6 @@
 namespace plasmaapply {
 
 namespace {
-
-constexpr char kImagePluginId[] = "org.kde.image";
-constexpr char kRebornPluginId[] = "luisbocanegra.smart.video.wallpaper.reborn";
-
-// Live desktop IDs via the shell scripting API (same script as the Rust
-// reference); empty when D-Bus is unavailable or the call fails.
-constexpr char kDesktopIdsScript[] = "var d = desktops(); var r = []; "
-                                     "for (var i = 0; i < d.length; i++) { "
-                                     "if (d[i].formFactor == 0) { r.push(d[i].id); } } "
-                                     "print(r.join(','));";
 
 QString configPath(const QString &fileName)
 {
@@ -299,6 +290,7 @@ using plasmaapply::fileUrl;
 using plasmaapply::kDesktopIdsScript;
 using plasmaapply::kImagePluginId;
 using plasmaapply::kRebornPluginId;
+using plasmaapply::kScreenGeomsScript;
 using plasmaapply::pluginSection;
 using plasmaapply::rawVideoUrl;
 using plasmaapply::Ini;
@@ -322,8 +314,10 @@ bool PlasmaApply::rebornAvailable() const
     return false;
 }
 
-void PlasmaApply::applyWallpaper(const QString &type, const QString &path, bool includeLockscreen)
+void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
+                                 bool includeLockscreen)
 {
+    qWarning("perf: %lld apply: start", perfMs());
     // 1. Resolve the target plugin and its config values.
     QString plugin = QString::fromLatin1(kImagePluginId);
     QString imageUrl;
@@ -366,6 +360,7 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path, bool 
             desktops = reply.value().trimmed().split(QLatin1Char(','), Qt::SkipEmptyParts);
         }
     }
+    qWarning("perf: %lld apply: desktopIds", perfMs());
     if (desktops.isEmpty()) {
         desktops = appletsrc.desktopIds();
     }
@@ -403,6 +398,7 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path, bool 
             failed.append(id);
         }
     }
+    qWarning("perf: %lld apply: dbus switch: done", perfMs());
 
     if (!failed.isEmpty()) {
         if (appliedDbus > 0) {
@@ -434,25 +430,32 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path, bool 
     }
 
     // 4. Optional lock screen (D15): one wallpaper for all screens.
-    if (includeLockscreen) {
-        const QString lockscreenPath = configPath(QStringLiteral("kscreenlockerrc"));
-        Ini lockscreen = Ini::fromFile(lockscreenPath);
-        lockscreen.set({QStringLiteral("Greeter")}, QStringLiteral("WallpaperPlugin"), plugin);
-        const QStringList lsec = {QStringLiteral("Greeter"), QStringLiteral("Wallpaper"), plugin, QStringLiteral("General")};
-        if (plugin == QLatin1String(kRebornPluginId)) {
-            lockscreen.set(lsec,
-                           QStringLiteral("VideoUrls"),
-                           computeVideoUrls(lockscreen.get(lsec, QStringLiteral("VideoUrls")), videoEntryUrl));
-            lockscreen.set(lsec, QStringLiteral("LastVideo"), videoLastUrl);
-            lockscreen.set(lsec, QStringLiteral("LastVideoPosition"), QStringLiteral("0"));
-        } else {
-            lockscreen.set(lsec, QStringLiteral("Image"), imageUrl);
-        }
-        if (!lockscreen.save(lockscreenPath)) {
-            emit result(false, QStringLiteral("Could not write %1").arg(lockscreenPath));
-            return;
-        }
+    if (includeLockscreen && !mirrorLockscreen(plugin, imageUrl, videoEntryUrl, videoLastUrl)) {
+        emit result(false, QStringLiteral("Could not write kscreenlockerrc."));
+        return;
     }
 
+    qWarning("perf: %lld apply: done", perfMs());
+
     emit result(true, QStringLiteral("Wallpaper set."));
+}
+
+bool PlasmaApply::mirrorLockscreen(const QString &plugin, const QString &imageUrl,
+                                   const QString &videoEntryUrl,
+                                   const QString &videoLastUrl)
+{
+    const QString lockscreenPath = configPath(QStringLiteral("kscreenlockerrc"));
+    Ini lockscreen = Ini::fromFile(lockscreenPath);
+    lockscreen.set({QStringLiteral("Greeter")}, QStringLiteral("WallpaperPlugin"), plugin);
+    const QStringList lsec = {QStringLiteral("Greeter"), QStringLiteral("Wallpaper"), plugin, QStringLiteral("General")};
+    if (plugin == QLatin1String(kRebornPluginId)) {
+        lockscreen.set(lsec,
+                       QStringLiteral("VideoUrls"),
+                       computeVideoUrls(lockscreen.get(lsec, QStringLiteral("VideoUrls")), videoEntryUrl));
+        lockscreen.set(lsec, QStringLiteral("LastVideo"), videoLastUrl);
+        lockscreen.set(lsec, QStringLiteral("LastVideoPosition"), QStringLiteral("0"));
+    } else {
+        lockscreen.set(lsec, QStringLiteral("Image"), imageUrl);
+    }
+    return lockscreen.save(lockscreenPath);
 }

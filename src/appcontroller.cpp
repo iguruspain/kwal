@@ -1,6 +1,7 @@
 #include "appcontroller.h"
 #include "templateinstaller.h"
 #include "paletteextractor.h"
+#include "transitions/transitionspec.h"
 #include "wallpapermodel.h"
 #include "wallpapersinfo.h"
 #include <KConfig>
@@ -9,10 +10,14 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QProcess>
 #include <QRunnable>
 #include <QStandardPaths>
 #include <QThreadPool>
 #include <QUrl>
+#include <QDebug>
+#include "transitions/perf.h"
+#include <functional>
 
 namespace {
 // "WxH" string for a readable image, empty if it cannot be determined.
@@ -30,21 +35,110 @@ bool isToolInstalled(const QString &binary)
     return !QStandardPaths::findExecutable(binary).isEmpty();
 }
 
-// Runs PlasmaApply off the main thread (D-Bus round trips + config edits).
+// Runs the wallpaper switch off the main thread (D-Bus round trips +
+// config edits), directly through PlasmaApply or, when a transition is
+// enabled, through the standalone transition binary (the binary runs the
+// overlay + switch + holds; the lockscreen mirror happens here).
 class WallpaperApplyJob : public QRunnable
 {
 public:
-    WallpaperApplyJob(PlasmaApply *apply, QString type, QString path, bool lockscreen)
+    WallpaperApplyJob(PlasmaApply *apply, QString type, QString path, bool lockscreen,
+                      const QString &binaryPath, QString framePath,
+                      transitions::TransitionConfig cfg,
+                      std::function<void(bool, const QString &)> finish)
         : m_apply(apply)
         , m_type(std::move(type))
         , m_path(std::move(path))
         , m_lockscreen(lockscreen)
+        , m_binaryPath(binaryPath)
+        , m_framePath(std::move(framePath))
+        , m_cfg(std::move(cfg))
+        , m_finish(std::move(finish))
     {
     }
 
     void run() override
     {
-        m_apply->applyWallpaper(m_type, m_path, m_lockscreen);
+        if (!m_cfg.enabled || m_binaryPath.isEmpty()) {
+            m_apply->applyWallpaper(m_type, m_path, m_lockscreen);
+            return;
+        }
+        // Transition mode: run the standalone binary; its exit code is the
+        // result.
+        QStringList args;
+        args << QStringLiteral("--type") << m_type
+             << QStringLiteral("--file") << m_path;
+        if (!m_framePath.isEmpty()) {
+            args << QStringLiteral("--frame") << m_framePath;
+        }
+        args << QStringLiteral("--layer") << m_cfg.layer
+             << QStringLiteral("--effect") << m_cfg.type
+             << QStringLiteral("--duration") << QString::number(m_cfg.duration)
+             << QStringLiteral("--fps") << QString::number(m_cfg.fps)
+             << QStringLiteral("--step") << QString::number(m_cfg.step)
+             << QStringLiteral("--angle") << QString::number(m_cfg.angle)
+             << QStringLiteral("--pos") << m_cfg.pos
+             << QStringLiteral("--bezier") << m_cfg.bezier
+             << QStringLiteral("--wave-width") << QString::number(m_cfg.waveWidth)
+             << QStringLiteral("--wave-height") << QString::number(m_cfg.waveHeight);
+        if (m_cfg.advancedEnabled) {
+            args << QStringLiteral("--advanced");
+        }
+        if (m_cfg.invertY) {
+            args << QStringLiteral("--invert-y");
+        }
+        QProcess proc;
+        proc.start(m_binaryPath, args);
+        if (!proc.waitForStarted(5000)) {
+            m_finish(false, QStringLiteral("Could not start the transition process."));
+            return;
+        }
+        // The animation is a few seconds plus the holds; be generous.
+        if (!proc.waitForFinished(120000)) {
+            proc.kill();
+            proc.waitForFinished(3000);
+            m_finish(false, QStringLiteral("The transition timed out."));
+            return;
+        }
+        const QByteArray err = proc.readAllStandardError();
+        if (!err.isEmpty()) {
+            qWarning().noquote() << err.constData();
+        }
+        const bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
+        if (ok && m_lockscreen) {
+            // The binary does not touch kscreenlockerrc; mirror it here
+            // with the same plugin/URL resolution as the direct path.
+            QString plugin = QString::fromLatin1(plasmaapply::kImagePluginId);
+            QString imageUrl;
+            QString videoEntryUrl;
+            QString videoLastUrl;
+            if (m_type == QLatin1String("video") && m_apply->rebornAvailable()) {
+                plugin = QString::fromLatin1(plasmaapply::kRebornPluginId);
+                videoEntryUrl = plasmaapply::fileUrl(m_path);
+                videoLastUrl = plasmaapply::rawVideoUrl(m_path);
+            } else {
+                imageUrl = plasmaapply::fileUrl(m_framePath.isEmpty() ? m_path : m_framePath);
+            }
+            if (!m_apply->mirrorLockscreen(plugin, imageUrl, videoEntryUrl, videoLastUrl)) {
+                m_finish(false, QStringLiteral("Could not write kscreenlockerrc."));
+                return;
+            }
+        }
+        QString message;
+        if (!ok) {
+            // The binary prints "kwal-transition: <reason>" to stderr on
+            // failure; use the last such line.
+            for (const QByteArray &line : err.split('\n')) {
+                const QString lineStr = QString::fromUtf8(line);
+                if (lineStr.startsWith(QStringLiteral("kwal-transition:"))) {
+                    message = lineStr.mid(17);
+                }
+            }
+            if (message.isEmpty()) {
+                message = QStringLiteral("The wallpaper switch failed.");
+            }
+        }
+        m_finish(ok, ok ? QStringLiteral("Wallpaper set.") : message);
     }
 
 private:
@@ -52,7 +146,12 @@ private:
     QString m_type;
     QString m_path;
     bool m_lockscreen;
+    QString m_binaryPath;
+    QString m_framePath;
+    transitions::TransitionConfig m_cfg;
+    std::function<void(bool, const QString &)> m_finish;
 };
+
 } // namespace
 
 AppController::AppController(QObject *parent)
@@ -68,12 +167,7 @@ AppController::AppController(QObject *parent)
     m_ulauncher = new UlauncherController(m_config->group(QStringLiteral("Ulauncher")), this);
     loadConfig();
     connect(m_plasmaApply, &PlasmaApply::result, this, [this](bool allOk, const QString &message) {
-        m_wallpaperBusy = false;
-        emit wallpaperBusyChanged();
-        if (allOk) {
-            setCurrentWallpaper(m_selectedWallpaper);
-        }
-        emit wallpaperSetResult(allOk, message);
+        wallpaperFinished(allOk, message);
     });
     // Kick the media info cache (first frames, ...) after every folder
     // re-scan. Must precede applyCurrentFolder(): the initial scan is
@@ -400,10 +494,65 @@ void AppController::setWallpaper(const QString &filePath)
     }
     m_wallpaperBusy = true;
     emit wallpaperBusyChanged();
-    QThreadPool::globalInstance()->start(new WallpaperApplyJob(m_plasmaApply,
-                                                               video ? QStringLiteral("video") : QStringLiteral("image"),
-                                                               target,
-                                                               m_lockscreen));
+    qWarning("perf: %lld setWallpaper: job starting", perfMs());
+    transitions::TransitionConfig cfg;
+    cfg.enabled = m_transitionEnabled;
+    cfg.layer = m_transitionLayer;
+    cfg.type = m_transitionType;
+    cfg.advancedEnabled = m_transitionAdvanced;
+    cfg.duration = m_transitionDuration;
+    cfg.fps = m_transitionFps;
+    cfg.step = m_transitionStep;
+    cfg.angle = m_transitionAngle;
+    cfg.pos = m_transitionPos;
+    cfg.invertY = m_transitionInvertY;
+    cfg.bezier = m_transitionBezier;
+    cfg.waveWidth = m_transitionWaveWidth;
+    cfg.waveHeight = m_transitionWaveHeight;
+    QString binaryPath;
+    if (cfg.enabled) {
+        // Standalone transition binary; without it (pre-install build)
+        // fall back to the direct switch.
+        binaryPath = QCoreApplication::applicationDirPath() + QStringLiteral("/kwal-transition");
+        if (!QFileInfo::exists(binaryPath)) {
+            binaryPath = QStandardPaths::findExecutable(QStringLiteral("kwal-transition"));
+        }
+        if (binaryPath.isEmpty()) {
+            qWarning() << "kwal-transition binary not found; applying without transition";
+        }
+    }
+    // First frame for a video: what the binary paints in Cover and what
+    // Plasma shows as the video fallback (the entry is keyed by the
+    // original path, not the resize target).
+    QString framePath;
+    if (video) {
+        if (WallpapersInfo *info = WallpapersInfo::instance()) {
+            framePath = info->entryFor(filePath).firstFrame;
+        }
+    }
+    QThreadPool::globalInstance()->start(
+        new WallpaperApplyJob(m_plasmaApply,
+                              video ? QStringLiteral("video") : QStringLiteral("image"),
+                              target,
+                              m_lockscreen,
+                              binaryPath,
+                              framePath,
+                              cfg,
+                              [this](bool allOk, const QString &message) {
+                                  wallpaperFinished(allOk, message);
+                              }));
+}
+
+// Shared finish handler for both switch paths (direct PlasmaApply and the
+// transition binary).
+void AppController::wallpaperFinished(bool allOk, const QString &message)
+{
+    m_wallpaperBusy = false;
+    emit wallpaperBusyChanged();
+    if (allOk) {
+        setCurrentWallpaper(m_selectedWallpaper);
+    }
+    emit wallpaperSetResult(allOk, message);
 }
 
 void AppController::setCurrentWallpaper(const QString &filePath)
@@ -448,6 +597,21 @@ void AppController::loadConfig()
         info->setMatugenEnabled(m_matugenDots);
     }
 
+    const KConfigGroup transitionsGroup = m_config->group(QStringLiteral("Transitions"));
+    m_transitionEnabled = transitionsGroup.readEntry("transitionEnabled", false);
+    m_transitionLayer = transitionsGroup.readEntry("transitionLayer", QStringLiteral("bottom"));
+    m_transitionType = transitionsGroup.readEntry("transitionType", QStringLiteral("grow"));
+    m_transitionAdvanced = transitionsGroup.readEntry("transitionAdvanced", false);
+    m_transitionDuration = transitionsGroup.readEntry("transitionDuration", 0.9);
+    m_transitionFps = qBound(0, transitionsGroup.readEntry("transitionFps", 0), 240);
+    m_transitionStep = qBound(1, transitionsGroup.readEntry("transitionStep", 2), 255);
+    m_transitionAngle = transitionsGroup.readEntry("transitionAngle", 45.0);
+    m_transitionPos = transitionsGroup.readEntry("transitionPos", QStringLiteral("center"));
+    m_transitionInvertY = transitionsGroup.readEntry("transitionInvertY", false);
+    m_transitionBezier = transitionsGroup.readEntry("transitionBezier", QStringLiteral(".54,0,.34,.99"));
+    m_transitionWaveWidth = transitionsGroup.readEntry("transitionWaveWidth", 20.0);
+    m_transitionWaveHeight = transitionsGroup.readEntry("transitionWaveHeight", 20.0);
+
     const KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
     m_defaultWindowWidth = qBound(kMinimumWindowWidth,
                                   generalGroup.readEntry("windowWidth", kDefaultWindowWidth),
@@ -477,6 +641,20 @@ void AppController::saveConfig()
     group.writeEntry("resizeEnabled", m_resizeEnabled);
     group.writeEntry("resizeHeight", m_resizeHeight);
     group.writeEntry("resizeFps", m_resizeFps);
+    KConfigGroup transitionsGroup = m_config->group(QStringLiteral("Transitions"));
+    transitionsGroup.writeEntry("transitionEnabled", m_transitionEnabled);
+    transitionsGroup.writeEntry("transitionLayer", m_transitionLayer);
+    transitionsGroup.writeEntry("transitionType", m_transitionType);
+    transitionsGroup.writeEntry("transitionAdvanced", m_transitionAdvanced);
+    transitionsGroup.writeEntry("transitionDuration", m_transitionDuration);
+    transitionsGroup.writeEntry("transitionFps", m_transitionFps);
+    transitionsGroup.writeEntry("transitionStep", m_transitionStep);
+    transitionsGroup.writeEntry("transitionAngle", m_transitionAngle);
+    transitionsGroup.writeEntry("transitionPos", m_transitionPos);
+    transitionsGroup.writeEntry("transitionInvertY", m_transitionInvertY);
+    transitionsGroup.writeEntry("transitionBezier", m_transitionBezier);
+    transitionsGroup.writeEntry("transitionWaveWidth", m_transitionWaveWidth);
+    transitionsGroup.writeEntry("transitionWaveHeight", m_transitionWaveHeight);
     KConfigGroup generalGroup = m_config->group(QStringLiteral("General"));
     generalGroup.writeEntry("windowWidth", m_defaultWindowWidth);
     generalGroup.writeEntry("windowHeight", m_defaultWindowHeight);
@@ -604,4 +782,213 @@ void AppController::generateVideoResizes(const QString &folder)
     for (const QString &path : videos) {
         info->planResize(path);
     }
+}
+
+bool AppController::transitionEnabled() const
+{
+    return m_transitionEnabled;
+}
+
+void AppController::setTransitionEnabled(bool enabled)
+{
+    if (m_transitionEnabled == enabled) {
+        return;
+    }
+    m_transitionEnabled = enabled;
+    saveConfig();
+    emit transitionEnabledChanged();
+}
+
+QString AppController::transitionLayer() const
+{
+    return m_transitionLayer;
+}
+
+void AppController::setTransitionLayer(const QString &layer)
+{
+    if (m_transitionLayer == layer) {
+        return;
+    }
+    m_transitionLayer = layer;
+    saveConfig();
+    emit transitionLayerChanged();
+}
+
+QStringList AppController::transitionLayers() const
+{
+    return {QStringLiteral("background"), QStringLiteral("bottom"), QStringLiteral("top"),
+            QStringLiteral("overlay")};
+}
+
+QStringList AppController::transitionTypes() const
+{
+    return {QStringLiteral("grow"), QStringLiteral("fade"), QStringLiteral("wipe"),
+            QStringLiteral("wave"), QStringLiteral("left"), QStringLiteral("right"),
+            QStringLiteral("top"), QStringLiteral("bottom"), QStringLiteral("center"),
+            QStringLiteral("outer"), QStringLiteral("simple"), QStringLiteral("any"),
+            QStringLiteral("random")};
+}
+
+QString AppController::transitionType() const
+{
+    return m_transitionType;
+}
+
+void AppController::setTransitionType(const QString &type)
+{
+    if (m_transitionType == type) {
+        return;
+    }
+    m_transitionType = type;
+    saveConfig();
+    emit transitionTypeChanged();
+}
+
+bool AppController::transitionAdvanced() const
+{
+    return m_transitionAdvanced;
+}
+
+void AppController::setTransitionAdvanced(bool enabled)
+{
+    if (m_transitionAdvanced == enabled) {
+        return;
+    }
+    m_transitionAdvanced = enabled;
+    saveConfig();
+    emit transitionAdvancedChanged();
+}
+
+double AppController::transitionDuration() const
+{
+    return m_transitionDuration;
+}
+
+void AppController::setTransitionDuration(double duration)
+{
+    if (m_transitionDuration == duration) {
+        return;
+    }
+    m_transitionDuration = duration;
+    saveConfig();
+    emit transitionDurationChanged();
+}
+
+int AppController::transitionFps() const
+{
+    return m_transitionFps;
+}
+
+void AppController::setTransitionFps(int fps)
+{
+    if (m_transitionFps == fps) {
+        return;
+    }
+    m_transitionFps = fps;
+    saveConfig();
+    emit transitionFpsChanged();
+}
+
+int AppController::transitionStep() const
+{
+    return m_transitionStep;
+}
+
+void AppController::setTransitionStep(int step)
+{
+    if (m_transitionStep == step) {
+        return;
+    }
+    m_transitionStep = step;
+    saveConfig();
+    emit transitionStepChanged();
+}
+
+double AppController::transitionAngle() const
+{
+    return m_transitionAngle;
+}
+
+void AppController::setTransitionAngle(double angle)
+{
+    if (m_transitionAngle == angle) {
+        return;
+    }
+    m_transitionAngle = angle;
+    emit transitionAngleChanged();
+}
+
+QString AppController::transitionPos() const
+{
+    return m_transitionPos;
+}
+
+void AppController::setTransitionPos(const QString &pos)
+{
+    if (m_transitionPos == pos) {
+        return;
+    }
+    m_transitionPos = pos;
+    saveConfig();
+    emit transitionPosChanged();
+}
+
+bool AppController::transitionInvertY() const
+{
+    return m_transitionInvertY;
+}
+
+void AppController::setTransitionInvertY(bool invertY)
+{
+    if (m_transitionInvertY == invertY) {
+        return;
+    }
+    m_transitionInvertY = invertY;
+    saveConfig();
+    emit transitionInvertYChanged();
+}
+
+QString AppController::transitionBezier() const
+{
+    return m_transitionBezier;
+}
+
+void AppController::setTransitionBezier(const QString &bezier)
+{
+    if (m_transitionBezier == bezier) {
+        return;
+    }
+    m_transitionBezier = bezier;
+    saveConfig();
+    emit transitionBezierChanged();
+}
+
+double AppController::transitionWaveWidth() const
+{
+    return m_transitionWaveWidth;
+}
+
+void AppController::setTransitionWaveWidth(double width)
+{
+    if (m_transitionWaveWidth == width) {
+        return;
+    }
+    m_transitionWaveWidth = width;
+    saveConfig();
+    emit transitionWaveWidthChanged();
+}
+
+double AppController::transitionWaveHeight() const
+{
+    return m_transitionWaveHeight;
+}
+
+void AppController::setTransitionWaveHeight(double height)
+{
+    if (m_transitionWaveHeight == height) {
+        return;
+    }
+    m_transitionWaveHeight = height;
+    saveConfig();
+    emit transitionWaveHeightChanged();
 }

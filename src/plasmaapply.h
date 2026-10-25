@@ -2,17 +2,35 @@
 
 #include <QList>
 #include <QString>
+#include <QObject>
 #include <QStringList>
 
 #include <optional>
 #include <utility>
 
-#include <QObject>
 
 // Pure helpers for the Plasma wallpaper application pipeline: file URL
 // encoding, the video playlist computation, and a byte-preserving linear
 // editor for the appletsrc/kscreenlockerrc rc files.
 namespace plasmaapply {
+
+// Plasma wallpaper plugin ids (org.kde.image and the "Smart Video Wallpaper
+// (reborn)" video plugin).
+constexpr char kImagePluginId[] = "org.kde.image";
+constexpr char kRebornPluginId[] = "luisbocanegra.smart.video.wallpaper.reborn";
+
+// Shell scripting snippets for the `evaluateScript` D-Bus method: the
+// live desktop ids and the logical geometry of every Plasma screen
+// ("id:x,y,w,h;…"). The appletsrc parse (Ini::desktopIds) is the fallback.
+constexpr char kDesktopIdsScript[] = "var d = desktops(); var r = []; "
+                                 "for (var i = 0; i < d.length; i++) { "
+                                 "if (d[i].formFactor == 0) { r.push(d[i].id); } } "
+                                 "print(r.join(','));";
+constexpr char kScreenGeomsScript[] = "var r = []; "
+                                  "for (var i = 0; i < screenCount; i++) { "
+                                  "var g = screenGeometry(i); "
+                                  "r.push(i + ':' + g.x + ',' + g.y + ',' + g.width + ',' + g.height); } "
+                                  "print(r.join(';'));";
 
 // "file://" + percent-encoded path, preserving A-Za-z0-9-_.~/ (the same
 // encoding the Rust reference and Plasma write into config values).
@@ -84,7 +102,18 @@ public:
     // video falls back to its cached first frame when the reborn plugin is
     // not installed. With <includeLockscreen>, kscreenlockerrc is written
     // too. Emits result() when the operation finishes.
-    Q_INVOKABLE void applyWallpaper(const QString &type, const QString &path, bool includeLockscreen);
+    Q_INVOKABLE void applyWallpaper(const QString &type, const QString &path,
+                                    bool includeLockscreen);
+
+    // Mirrors the applied wallpaper into kscreenlockerrc as the greeter
+    // background (one wallpaper for all screens). <plugin> is the Plasma
+    // wallpaper plugin id; <imageUrl> is the file URL of the image; for the
+    // video plugin <videoEntryUrl> is the percent-encoded playlist entry
+    // and <videoLastUrl> the raw LastVideo URL. Returns false when the
+    // file cannot be written.
+    bool mirrorLockscreen(const QString &plugin, const QString &imageUrl,
+                          const QString &videoEntryUrl,
+                          const QString &videoLastUrl);
 
 signals:
     void result(bool allOk, const QString &message);

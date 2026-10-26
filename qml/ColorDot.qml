@@ -40,7 +40,7 @@ Item {
             ? root.color
             : "transparent"
         border.color: root.selected
-            ? Kirigami.Theme.highlightColor
+            ? Kirigami.Theme.positiveTextColor
             : Kirigami.Theme.textColor
         border.width: root.selected ? 2 : 1
 

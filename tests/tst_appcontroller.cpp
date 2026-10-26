@@ -1,12 +1,12 @@
 #include "appcontroller.h"
 #include "wallpapermodel.h"
 
+#include <KConfig>
 #include <QCoreApplication>
-#include <QDir>
-#include <QFile>
-#include <QFileInfo>
-#include <QImage>
 #include <QStandardPaths>
+#include <QTemporaryDir>
+#include <QVariantMap>
+
 #include <QtTest>
 
 class tst_AppController : public QObject
@@ -23,6 +23,8 @@ private slots:
     void testTransparencyPersistence();
     void testTransparencyLevelPersistence();
     void testToolDetection();
+    void testCustomCommands();
+    void testCustomCommandExpansion();
 
 private:
     static void saveImage(const QString &path, Qt::GlobalColor color)
@@ -238,6 +240,115 @@ void tst_AppController::testToolDetection()
 
     qputenv("PATH", previousPath);
     QDir().remove(fakeBin);
+}
+
+void tst_AppController::testCustomCommands()
+{
+    AppController app;
+    QCOMPARE(app.selectedSourceColorIndex(), 0); // first dot selected by default
+    QCOMPARE(app.customCommands().size(), 0);
+
+    QSignalSpy spy(&app, &AppController::customCommandsChanged);
+
+    app.addCustomCommand();
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(app.customCommands().size(), 1);
+    app.updateCustomCommand(0, QStringLiteral("notify-send 'x %path%'"));
+    app.updateCustomCommand(0, QStringLiteral("notify-send 'x %path%'")); // no-op
+    QCOMPARE(spy.count(), 2);
+
+    app.addCustomCommand();
+    app.updateCustomCommand(1, QStringLiteral("echo %scolor% %sc%"));
+    app.setCustomCommandEnabled(0, false);
+    app.setCustomCommandEnabled(0, false); // no-op
+    QCOMPARE(spy.count(), 5);
+
+    // Round-trip through a fresh controller over the same [Commands] group.
+    AppController app2;
+    QCOMPARE(app2.customCommands().size(), 2);
+    const QVariantMap first = app2.customCommands().at(0).toMap();
+    QCOMPARE(first.value("command").toString(), QStringLiteral("notify-send 'x %path%'"));
+    QCOMPARE(first.value("enabled").toBool(), false);
+    const QVariantMap second = app2.customCommands().at(1).toMap();
+    QCOMPARE(second.value("command").toString(), QStringLiteral("echo %scolor% %sc%"));
+    QCOMPARE(second.value("enabled").toBool(), true);
+
+    // Out-of-range indices and self-moves are no-ops.
+    app2.updateCustomCommand(9, QStringLiteral("nope"));
+    app2.setCustomCommandEnabled(-1, false);
+    app2.removeCustomCommand(9);
+    app2.moveCustomCommand(-1, 1);
+    app2.moveCustomCommand(0, 2);
+    app2.moveCustomCommand(0, 0);
+    QCOMPARE(app2.customCommands().size(), 2);
+
+    // A real move reorders and persists.
+    app2.moveCustomCommand(0, 1);
+    QCOMPARE(app2.customCommands().at(0).toMap().value("command").toString(),
+             QStringLiteral("echo %scolor% %sc%"));
+    AppController app3;
+    QCOMPARE(app3.customCommands().size(), 2);
+    QCOMPARE(app3.customCommands().at(0).toMap().value("command").toString(),
+             QStringLiteral("echo %scolor% %sc%"));
+
+    app2.removeCustomCommand(1);
+    QCOMPARE(app2.customCommands().size(), 1);
+    app2.removeCustomCommand(0);
+    QCOMPARE(app2.customCommands().size(), 0);
+    AppController app4;
+    QCOMPARE(app4.customCommands().size(), 0);
+}
+
+void tst_AppController::testCustomCommandExpansion()
+{
+    AppController app;
+    QTemporaryDir dir;
+    const QString wallpaper = dir.path() + QStringLiteral("/wall.png");
+    const QString out = dir.path() + QStringLiteral("/expanded.txt");
+    const QString second = dir.path() + QStringLiteral("/second.txt");
+
+    app.selectWallpaper(wallpaper);
+    app.setSelectedSourceColorIndex(2);
+
+    // %mode% defaults to "dark"; %ccolor% is empty until picked; both
+    // persist to [Commands].
+    QCOMPARE(app.themeMode(), QStringLiteral("dark"));
+    QCOMPARE(app.customColor(), QString());
+    app.setThemeMode(QStringLiteral("light"));
+    app.setCustomColor(QStringLiteral("#123456"));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%mode%")), QStringLiteral("light"));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%ccolor%")), QStringLiteral("#123456"));
+    AppController modeApp;
+    QCOMPARE(modeApp.themeMode(), QStringLiteral("light"));
+    QCOMPARE(modeApp.customColor(), QStringLiteral("#123456"));
+
+    // No source colors for the selection: %path% and %image% expand quoted,
+    // %sc% to the index, %scolor% to an empty string.
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%path%")),
+             QStringLiteral("\"%1\"").arg(wallpaper));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%image%")),
+             QStringLiteral("\"%1\"").arg(wallpaper));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%sc%")), QStringLiteral("2"));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%scolor%")), QString());
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("a %path% %sc% b")),
+             QStringLiteral("a \"%1\" 2 b").arg(wallpaper));
+
+    // The enabled commands run as one detached shell chain; disabled and
+    // empty commands are skipped.
+    app.addCustomCommand();
+    app.updateCustomCommand(0, QStringLiteral("echo %path% > %1").arg(out));
+    app.addCustomCommand();
+    app.updateCustomCommand(1, QStringLiteral("echo x > %1").arg(second));
+    app.setCustomCommandEnabled(1, false);
+    app.addCustomCommand(); // empty command, skipped
+    app.runCustomCommands();
+
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(out), 5000);
+    QFile file(out);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(file.readLine()).trimmed(),
+             wallpaper);
+    QVERIFY(!QFile::exists(second));
 }
 
 int main(int argc, char *argv[])

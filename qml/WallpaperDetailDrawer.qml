@@ -531,11 +531,216 @@ Kirigami.OverlayDrawer {
                     }
                 }
 
-                // Commands page: placeholder for the custom-commands UI.
+                // Commands page: the matugen source colors (the selected dot
+                // feeds the %scolor%/%sc% placeholders, first one by default)
+                // and the custom commands list, executed last on every
+                // wallpaper apply.
                 Component {
                     id: commandsPageComponent
 
-                    Item {
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: Kirigami.Units.gridUnit
+
+                        CollapsibleSection {
+                            Layout.fillWidth: true
+                            title: qsTr("Source colors")
+                            sectionContent: Component {
+                                ColumnLayout {
+                                    width: parent.width
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    Flow {
+                                        Layout.fillWidth: true
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        Repeater {
+                                            model: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper)
+                                            delegate: ColorDot {
+                                                required property string modelData
+                                                required property int index
+                                                color: modelData
+                                                selected: drawer.app.selectedSourceColorIndex === index
+                                                onClicked: drawer.app.selectedSourceColorIndex = index
+                                            }
+                                        }
+                                    }
+
+                                    Label {
+                                        visible: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper).length === 0
+                                        text: qsTr("No matugen source colors for this wallpaper")
+                                        color: Kirigami.Theme.disabledTextColor
+                                    }
+                                }
+                            }
+                        }
+
+                        CollapsibleSection {
+                            Layout.fillWidth: true
+                            title: qsTr("Custom commands")
+                            sectionContent: Component {
+                                ColumnLayout {
+                                    width: parent.width
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    // Mirrors app.customCommands (the source of truth):
+                                    // each edit below updates both this local model and
+                                    // the app's slots; on (re)load the model is rebuilt
+                                    // from the app.
+                                    ListModel { id: commandModel }
+
+                                    Component.onCompleted: {
+                                        commandModel.clear()
+                                        for (const c of drawer.app.customCommands) {
+                                            commandModel.append({ command: c.command,
+                                                                    isEnabled: c.enabled })
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        Kirigami.Icon {
+                                            source: "lighttable-symbolic"
+                                            Layout.preferredWidth: Kirigami.Units.gridUnit
+                                            Layout.preferredHeight: Kirigami.Units.gridUnit
+                                            color: Kirigami.Theme.highlightColor
+                                        }
+
+                                        Switch {
+                                            Layout.fillHeight: true
+                                            checked: drawer.app.themeMode === "dark"
+                                            Accessible.name: qsTr("Dark mode")
+                                            ToolTip.text: qsTr("%mode% placeholder: dark or light")
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: Kirigami.Units.toolTipDelay
+                                            onToggled: drawer.app.themeMode = checked ? "dark" : "light"
+                                        }
+
+                                        Label {
+                                            text: drawer.app.themeMode === "dark" ? qsTr("Dark") : qsTr("Light")
+                                            color: Kirigami.Theme.disabledTextColor
+                                            font: Kirigami.Theme.smallFont
+                                        }
+
+                                        Item { Layout.fillWidth: true }
+
+                                        Label {
+                                            text: qsTr("Custom color:")
+                                            color: Kirigami.Theme.disabledTextColor
+                                            font: Kirigami.Theme.smallFont
+                                        }
+
+                                        ColorDot {
+                                            Layout.alignment: Qt.AlignVCenter
+                                            dotSize: Kirigami.Units.gridUnit
+                                            color: drawer.app.customColor
+                                            enablePicker: true
+                                            onAccepted: (hex) => drawer.app.customColor = hex
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                        textFormat: Text.RichText
+                                        text: qsTr("Run after the wallpaper is set. Placeholders: <b>%path%</b> wallpaper path, <b>%image%</b> image (or video frame) path, <b>%scolor%</b> selected source color, <b>%sc%</b> its index, <b>%mode%</b> dark/light mode, <b>%ccolor%</b> custom color.")
+                                    }
+
+                                    Button {
+                                        text: qsTr("Add command")
+                                        icon.name: "list-add"
+                                        onClicked: {
+                                            commandModel.append({ command: "", isEnabled: true })
+                                            drawer.app.addCustomCommand()
+                                        }
+                                    }
+
+                                    // Reorderable by drag: the handle repositions the
+                                    // delegate while dragging and move() applies the
+                                    // model change; the list is as tall as its content.
+                                    ListView {
+                                        id: commandList
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: contentHeight
+                                        interactive: false
+                                        spacing: Kirigami.Units.smallSpacing
+                                        model: commandModel
+                                        moveDisplaced: Transition {
+                                            YAnimator {
+                                                duration: Kirigami.Units.longDuration
+                                                easing.type: Easing.InOutQuad
+                                            }
+                                        }
+
+                                        delegate: Item {
+                                            id: commandDelegate
+                                            required property int index
+                                            required property string command
+                                            required property bool isEnabled
+
+                                            width: commandList.width
+                                            height: commandRow.implicitHeight
+
+                                            ItemDelegate {
+                                                id: commandRow
+                                                width: parent.width
+                                                contentItem: RowLayout {
+                                                    spacing: Kirigami.Units.smallSpacing
+
+                                                    Kirigami.ListItemDragHandle {
+                                                        Layout.alignment: Qt.AlignVCenter
+                                                        enabled: commandList.model.count > 1
+                                                        opacity: enabled ? 1 : 0.3
+                                                        listItem: commandRow
+                                                        listView: commandList
+                                                        onMoveRequested: (oldIndex, newIndex) => {
+                                                            commandModel.move(oldIndex, newIndex, 1)
+                                                            drawer.app.moveCustomCommand(oldIndex, newIndex)
+                                                        }
+                                                    }
+
+                                                    Label {
+                                                        Layout.fillHeight: true
+                                                        text: String(commandDelegate.index + 1)
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        verticalAlignment: Text.AlignVCenter
+                                                        font.bold: true
+                                                        color: commandDelegate.isEnabled ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                                                    }
+
+                                                    Switch {
+                                                        Layout.fillHeight: true
+                                                        checked: commandDelegate.isEnabled
+                                                        Accessible.name: checked ? qsTr("Enabled") : qsTr("Disabled")
+                                                        onToggled: drawer.app.setCustomCommandEnabled(commandDelegate.index, checked)
+                                                    }
+
+                                                    TextField {
+                                                        id: commandField
+                                                        Layout.fillWidth: true
+                                                        text: commandDelegate.command
+                                                        placeholderText: qsTr("e.g.: notify-send 'Wallpaper changed to %path%'")
+                                                        onEditingFinished: drawer.app.updateCustomCommand(commandDelegate.index, commandField.text)
+                                                    }
+
+                                                    ToolButton {
+                                                        icon.name: "edit-clear"
+                                                        Accessible.name: qsTr("Remove command")
+                                                        ToolTip.text: qsTr("Remove command")
+                                                        ToolTip.visible: hovered
+                                                        ToolTip.delay: Kirigami.Units.toolTipDelay
+                                                        onClicked: {
+                                                            commandModel.remove(commandDelegate.index)
+                                                            drawer.app.removeCustomCommand(commandDelegate.index)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

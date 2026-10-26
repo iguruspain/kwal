@@ -16,7 +16,12 @@
 
 class KConfig;
 
-// Application state and services; registered for QML and owned by the Main window.
+// One custom command: the shell line and whether it runs on apply.
+struct CustomCommand {
+    QString command;
+    bool enabled = true;
+};
+
 class AppController : public QObject
 {
     Q_OBJECT
@@ -38,6 +43,13 @@ class AppController : public QObject
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(int selectedSourceColorIndex READ selectedSourceColorIndex WRITE setSelectedSourceColorIndex NOTIFY selectedSourceColorIndexChanged)
+    // Custom commands, the last step of a wallpaper apply; the drawer
+    // edits and drag-reorders them, persisted in [Commands] of kwalrc.
+    Q_PROPERTY(QVariantList customCommands READ customCommands NOTIFY customCommandsChanged)
+    // Custom command placeholder state, persisted in [Commands]: the
+    // mode (dark/light) for %mode% and the custom color hex for %ccolor%.
+    Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
+    Q_PROPERTY(QString customColor READ customColor WRITE setCustomColor NOTIFY customColorChanged)
     Q_PROPERTY(bool enableTransparency READ enableTransparency WRITE setEnableTransparency NOTIFY enableTransparencyChanged)
     Q_PROPERTY(int transparencyLevel READ transparencyLevel WRITE setTransparencyLevel NOTIFY transparencyLevelChanged)
     Q_PROPERTY(int defaultWindowWidth READ defaultWindowWidth WRITE setDefaultWindowWidth NOTIFY defaultWindowWidthChanged)
@@ -90,8 +102,13 @@ public:
     QStringList videoFolders() const;
     QString selectedWallpaper() const;
     QString selectedWallpaperSize() const;
+    QVariantList customCommands() const;
     int selectedSourceColorIndex() const;
     void setSelectedSourceColorIndex(int index);
+    QString themeMode() const;
+    void setThemeMode(const QString &mode);
+    QString customColor() const;
+    void setCustomColor(const QString &color);
     bool enableTransparency() const;
     void setEnableTransparency(bool enabled);
     int transparencyLevel() const;
@@ -151,6 +168,15 @@ public:
     // file:// URL (percent-encoded) for a local path; for QML media sources.
     Q_INVOKABLE QString fileUrl(const QString &path) const;
 
+    // Custom commands, in execution order; the drawer's list mirrors these.
+    Q_INVOKABLE void addCustomCommand();
+    Q_INVOKABLE void updateCustomCommand(int index, const QString &command);
+    Q_INVOKABLE void setCustomCommandEnabled(int index, bool enabled);
+    Q_INVOKABLE void removeCustomCommand(int index);
+    // Reorders the command at <from> to the position <to> (new-list
+    // numbering, as Kirigami.ListItemDragHandle reports it).
+    Q_INVOKABLE void moveCustomCommand(int from, int to);
+
 signals:
     void foldersChanged();
     void currentFolderIndexChanged();
@@ -160,6 +186,9 @@ signals:
     void currentWallpaperChanged();
     void selectedWallpaperChanged();
     void selectedSourceColorIndexChanged();
+    void customCommandsChanged();
+    void themeModeChanged();
+    void customColorChanged();
     void lockscreenChanged();
     void resizeEnabledChanged();
     void resizeHeightChanged();
@@ -185,6 +214,9 @@ signals:
     void transitionWaveWidthChanged();
     void transitionWaveHeightChanged();
 private:
+    // Test access to the custom-command pipeline (placeholder expansion
+    // and execution); the tests must not go through the D-Bus apply path.
+    friend class tst_AppController;
     void loadConfig();
     void saveConfig();
     void applyCurrentFolder();
@@ -193,6 +225,12 @@ private:
     // Shared finish handler for the wallpaper switch (direct path and
     // transition binary).
     void wallpaperFinished(bool allOk, const QString &message);
+    // Expands the placeholders of one custom command for the current
+    // selection: %path%, %image%, %scolor%, %sc%, %mode% and %ccolor%.
+    QString expandPlaceholders(const QString &command) const;
+    // Joins the enabled commands into one shell chain and starts it
+    // detached; the last step of a wallpaper apply.
+    void runCustomCommands();
     void recomputeVideoFolders();
     static QStringList videoFilesIn(const QString &folder);
 
@@ -222,9 +260,17 @@ private:
     int m_resizeFps = 0;
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
-    // Index of the selected matugen source color dot of the current wallpaper;
-    // -1 = none. Reset on every wallpaper change.
-    int m_selectedSourceColorIndex = -1;
+    // Index of the selected matugen source color dot of the current
+    // wallpaper; the first dot is selected by default. Reset on every
+    // wallpaper change.
+    int m_selectedSourceColorIndex = 0;
+    // Custom commands, in execution order; persisted as a compact JSON
+    // array in [Commands] "commands" of kwalrc.
+    QList<CustomCommand> m_customCommands;
+    // [Commands] "themeMode"/"customColor": the %mode% and %ccolor%
+    // placeholder state of the custom commands.
+    QString m_themeMode = QStringLiteral("dark");
+    QString m_customColor;
     bool m_enableTransparency = true;
     // Window background opacity in percent (0-100) used when transparency
     // is enabled; steps of 5 in the settings SpinBox.

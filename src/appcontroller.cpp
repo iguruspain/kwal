@@ -10,6 +10,10 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QVariantMap>
 #include <QProcess>
 #include <QRunnable>
 #include <QStandardPaths>
@@ -248,6 +252,36 @@ void AppController::setSelectedSourceColorIndex(int index)
     emit selectedSourceColorIndexChanged();
 }
 
+QString AppController::themeMode() const
+{
+    return m_themeMode;
+}
+
+void AppController::setThemeMode(const QString &mode)
+{
+    if (m_themeMode == mode) {
+        return;
+    }
+    m_themeMode = mode;
+    saveConfig();
+    emit themeModeChanged();
+}
+
+QString AppController::customColor() const
+{
+    return m_customColor;
+}
+
+void AppController::setCustomColor(const QString &color)
+{
+    if (m_customColor == color) {
+        return;
+    }
+    m_customColor = color;
+    saveConfig();
+    emit customColorChanged();
+}
+
 bool AppController::enableTransparency() const
 {
     return m_enableTransparency;
@@ -447,8 +481,8 @@ void AppController::selectWallpaper(const QString &filePath)
         }
     }
     m_selectedWallpaperSize = source.isEmpty() ? QString() : imageResolution(source);
-    if (m_selectedSourceColorIndex != -1) {
-        m_selectedSourceColorIndex = -1;
+    if (m_selectedSourceColorIndex != 0) {
+        m_selectedSourceColorIndex = 0;
         emit selectedSourceColorIndexChanged();
     }
     emit selectedWallpaperChanged();
@@ -553,6 +587,9 @@ void AppController::wallpaperFinished(bool allOk, const QString &message)
         setCurrentWallpaper(m_selectedWallpaper);
     }
     emit wallpaperSetResult(allOk, message);
+    // The custom commands are the last step of the apply, regardless of
+    // the switch result (the old app ran them after the qdbus call too).
+    runCustomCommands();
 }
 
 void AppController::setCurrentWallpaper(const QString &filePath)
@@ -560,6 +597,117 @@ void AppController::setCurrentWallpaper(const QString &filePath)
     m_currentWallpaper = filePath;
     saveConfig();
     emit currentWallpaperChanged();
+}
+
+QVariantList AppController::customCommands() const
+{
+    QVariantList list;
+    for (const CustomCommand &command : m_customCommands) {
+        QVariantMap map;
+        map[QStringLiteral("command")] = command.command;
+        map[QStringLiteral("enabled")] = command.enabled;
+        list.append(map);
+    }
+    return list;
+}
+
+void AppController::addCustomCommand()
+{
+    m_customCommands.append({QString(), true});
+    saveConfig();
+    emit customCommandsChanged();
+}
+
+void AppController::updateCustomCommand(int index, const QString &command)
+{
+    if (index < 0 || index >= m_customCommands.size() || m_customCommands[index].command == command) {
+        return;
+    }
+    m_customCommands[index].command = command;
+    saveConfig();
+    emit customCommandsChanged();
+}
+
+void AppController::setCustomCommandEnabled(int index, bool enabled)
+{
+    if (index < 0 || index >= m_customCommands.size() || m_customCommands[index].enabled == enabled) {
+        return;
+    }
+    m_customCommands[index].enabled = enabled;
+    saveConfig();
+    emit customCommandsChanged();
+}
+
+void AppController::removeCustomCommand(int index)
+{
+    if (index < 0 || index >= m_customCommands.size()) {
+        return;
+    }
+    m_customCommands.removeAt(index);
+    saveConfig();
+    emit customCommandsChanged();
+}
+
+void AppController::moveCustomCommand(int from, int to)
+{
+    const int size = m_customCommands.size();
+    if (from < 0 || from >= size || to < 0 || to >= size || from == to) {
+        return;
+    }
+    const CustomCommand command = m_customCommands.takeAt(from);
+    m_customCommands.insert(to, command);
+    saveConfig();
+    emit customCommandsChanged();
+}
+
+QString AppController::expandPlaceholders(const QString &command) const
+{
+    QString image = m_selectedWallpaper;
+    QStringList colors;
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        // For videos the "image" is the cached first frame (what Plasma
+        // shows as the fallback); the entry is keyed by the original path.
+        if (WallpaperModel::isVideo(image)) {
+            image = info->firstFrameFor(image);
+        }
+        colors = info->sourceColorsFor(m_selectedWallpaper);
+    }
+    if (image.isEmpty()) {
+        image = m_selectedWallpaper;
+    }
+    const QString scolor = (m_selectedSourceColorIndex >= 0 && m_selectedSourceColorIndex < colors.size())
+        ? colors.at(m_selectedSourceColorIndex)
+        : QString();
+    QString result = command;
+    result.replace(QStringLiteral("%path%"), QStringLiteral("\"%1\"").arg(m_selectedWallpaper));
+    result.replace(QStringLiteral("%image%"), QStringLiteral("\"%1\"").arg(image));
+    result.replace(QStringLiteral("%ccolor%"), m_customColor);
+    result.replace(QStringLiteral("%mode%"), m_themeMode);
+    result.replace(QStringLiteral("%scolor%"), scolor);
+    result.replace(QStringLiteral("%sc%"), QString::number(m_selectedSourceColorIndex));
+    return result;
+}
+
+void AppController::runCustomCommands()
+{
+    QStringList parts;
+    for (const CustomCommand &command : m_customCommands) {
+        if (!command.enabled) {
+            continue;
+        }
+        const QString expanded = expandPlaceholders(command.command).trimmed();
+        if (!expanded.isEmpty()) {
+            parts << expanded;
+        }
+    }
+    if (parts.isEmpty()) {
+        return;
+    }
+    // One shell chain, started detached (fire and forget).
+    if (!QProcess::startDetached(QStringLiteral("sh"),
+                                 {QStringLiteral("-c"), parts.join(QStringLiteral(" && "))})) {
+        qWarning("Failed to launch the custom commands");
+    }
 }
 
 void AppController::loadConfig()
@@ -595,6 +743,21 @@ void AppController::loadConfig()
         m_matugenDots = group.readEntry("matugenDots", info->matugenAvailable());
         m_colorCategories = group.readEntry("colorCategories", true);
         info->setMatugenEnabled(m_matugenDots);
+    }
+
+    const KConfigGroup commandsGroup = m_config->group(QStringLiteral("Commands"));
+    m_themeMode = commandsGroup.readEntry("themeMode", QStringLiteral("dark"));
+    m_customColor = commandsGroup.readEntry("customColor", QString());
+    const QByteArray commandsData = commandsGroup.readEntry("commands", QByteArray());
+    if (!commandsData.isEmpty()) {
+        const QJsonDocument parsed = QJsonDocument::fromJson(commandsData);
+        if (parsed.isArray()) {
+            for (const QJsonValue &value : parsed.array()) {
+                const QJsonObject obj = value.toObject();
+                m_customCommands.append({obj.value("command").toString(),
+                                         obj.value("enabled").toBool(true)});
+            }
+        }
     }
 
     const KConfigGroup transitionsGroup = m_config->group(QStringLiteral("Transitions"));
@@ -660,6 +823,18 @@ void AppController::saveConfig()
     generalGroup.writeEntry("windowHeight", m_defaultWindowHeight);
     generalGroup.writeEntry("transparency", m_enableTransparency);
     generalGroup.writeEntry("transparencyLevel", m_transparencyLevel);
+    KConfigGroup commandsGroup = m_config->group(QStringLiteral("Commands"));
+    commandsGroup.writeEntry("themeMode", m_themeMode);
+    commandsGroup.writeEntry("customColor", m_customColor);
+    QJsonArray commandsArray;
+    for (const CustomCommand &command : m_customCommands) {
+        QJsonObject obj;
+        obj[QStringLiteral("command")] = command.command;
+        obj[QStringLiteral("enabled")] = command.enabled;
+        commandsArray.append(obj);
+    }
+    commandsGroup.writeEntry("commands",
+                             QString::fromUtf8(QJsonDocument(commandsArray).toJson(QJsonDocument::Compact)));
     m_config->sync();
 }
 

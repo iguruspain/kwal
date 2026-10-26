@@ -48,12 +48,13 @@ Kirigami.OverlayDrawer {
     collapsible: false
     collapsed: false
     drawerOpen: false
-    handleVisible: true
+    handleVisible: false
     dragMargin: 0
     closePolicy: Popup.CloseOnEscape
     // qmllint disable unqualified
     preferredSize: applicationWindow() ? Math.round(applicationWindow().width * 0.6) : 400
     // qmllint enable unqualified
+    interactiveResizeEnabled: true
 
     onWallpaperChanged: {
         syncWithInfo()
@@ -740,7 +741,7 @@ Kirigami.OverlayDrawer {
                                             }
                                         }
 
-                                        Button {
+                                        ToolButton {
                                             text: qsTr("Add command")
                                             icon.name: "list-add"
                                             ToolTip.text: qsTr("Placeholders:<br>" +"<b>%path%</b> wallpaper path<br>" +"<b>%image%</b> image (or video frame) path<br>" +"<b>%scolor%</b> selected source color<br>" +"<b>%sc%</b> matugen source color index<br>" +"<b>%mode%</b> dark/light mode<br>" +"<b>%ccolor%</b> custom color.")
@@ -764,7 +765,7 @@ Kirigami.OverlayDrawer {
 
             RowLayout {
                 Layout.fillWidth: true
-                Button {
+                ToolButton {
                     text: qsTr("Set as wallpaper")
                     icon.name: "preferences-desktop-wallpaper"
                     onClicked: drawer.app.applyWallpaper()

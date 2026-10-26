@@ -37,6 +37,7 @@ ItemDelegate {
             }
         }
         ToolButton {
+            icon.name: "edit-clear"
             display: AbstractButton.IconOnly
             Accessible.name: qsTr("Remove Folder")
             hoverEnabled: true
@@ -45,12 +46,12 @@ ItemDelegate {
             onClicked: root.app.removeFolder(root.index)
             // Kirigami.Icon with a semantic color: the Basic style follows the platform palette,
             // which is light by default and would render the icon nearly invisible.
-            contentItem: Kirigami.Icon {
-                source: "edit-delete"
-                color: Kirigami.Theme.textColor
-                width: Kirigami.Units.iconSizes.tiny
-                height: Kirigami.Units.iconSizes.tiny
-            }
+            // contentItem: Kirigami.Icon {
+            //     source: "edit-clear"
+            //     color: Kirigami.Theme.textColor
+            //     width: Kirigami.Units.iconSizes.tiny
+            //     height: Kirigami.Units.iconSizes.tiny
+            // }
         }
     }
 }

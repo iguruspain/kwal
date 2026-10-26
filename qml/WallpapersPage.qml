@@ -235,7 +235,7 @@ Kirigami.Page {
                         Rectangle {
                         id: thumbBorder
                             anchors.fill: parent
-                            anchors.margins: 2
+                            anchors.margins: 4
                             color: "transparent"
                             border.color: Qt.alpha(Kirigami.Theme.textColor, 0.30)
                             border.width: 2

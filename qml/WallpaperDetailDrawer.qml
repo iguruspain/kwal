@@ -199,9 +199,21 @@ Kirigami.OverlayDrawer {
                 Layout.preferredHeight: 200
                 clip: true
 
+                Rectangle {
+                id: mediaBorder
+                    anchors.fill: parent
+                    anchors.margins: 0
+                    color: "transparent"
+                    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.30)
+                    border.width: 2
+                    radius: Kirigami.Units.smallSpacing
+                    z: 10
+                }
+
                 Image {
                     id: mediaImage
                     anchors.fill: parent
+                    anchors.margins: 2
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     smooth: true
@@ -219,6 +231,7 @@ Kirigami.OverlayDrawer {
                 Loader {
                     id: videoLoader
                     anchors.fill: parent
+                    anchors.margins: 2
                     active: drawer.isVideo && drawer.drawerOpen && drawer.mediaArmed
                     onActiveChanged: if (!active) drawer.mediaArmed = false
                     sourceComponent: Component {
@@ -272,7 +285,7 @@ Kirigami.OverlayDrawer {
                                 required property string modelData
                                 required property int index
                                 id: sourceDot
-                                dotSize: Kirigami.Units.gridUnit * 0.8
+                                dotSize: Kirigami.Units.gridUnit * 0.95
                                 color: sourceDot.modelData
                                 selected: drawer.app.selectedSourceColorIndex === sourceDot.index
                                 onClicked: drawer.app.selectedSourceColorIndex = sourceDot.index

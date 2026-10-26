@@ -193,6 +193,7 @@ Kirigami.OverlayDrawer {
             // or its cached first frame (videos). Live playback is layered
             // on top after a short delay, so the user sees the frame
             // immediately instead of a blank area while the decoder starts.
+            // The matugen source colors overlay its bottom-left corner.
             Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 200
@@ -245,6 +246,39 @@ Kirigami.OverlayDrawer {
                     interval: 250
                     running: drawer.isVideo && drawer.drawerOpen && !drawer.mediaArmed
                     onTriggered: drawer.mediaArmed = true
+                }
+                // The matugen source colors, overlaid at the bottom-left
+                // like the grid's selected cell: the selected dot feeds the
+                // %scolor%/%sc% placeholders of the custom commands.
+                Rectangle {
+                    id: sourceDotsContainer
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    anchors.margins: Kirigami.Units.smallSpacing * 2
+                    visible: drawer.app.matugenDotsEnabled
+                        && drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper).length > 0
+                    color: "transparent"
+                    width: sourceDots.implicitWidth + Kirigami.Units.smallSpacing * 2
+                    height: sourceDots.implicitHeight + Kirigami.Units.smallSpacing * 2
+
+                    RowLayout {
+                        id: sourceDots
+                        anchors.centerIn: parent
+                        spacing: 2
+
+                        Repeater {
+                            model: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper)
+                            delegate: ColorDot {
+                                required property string modelData
+                                required property int index
+                                id: sourceDot
+                                dotSize: Kirigami.Units.gridUnit * 0.8
+                                color: sourceDot.modelData
+                                selected: drawer.app.selectedSourceColorIndex === sourceDot.index
+                                onClicked: drawer.app.selectedSourceColorIndex = sourceDot.index
+                            }
+                        }
+                    }
                 }
             }
 
@@ -531,10 +565,11 @@ Kirigami.OverlayDrawer {
                     }
                 }
 
-                // Commands page: the matugen source colors (the selected dot
-                // feeds the %scolor%/%sc% placeholders, first one by default)
-                // and the custom commands list, executed last on every
-                // wallpaper apply.
+                // Commands page: the %mode%/%ccolor% placeholder controls
+                // (dark/light switch and custom color) and the custom
+                // commands list, executed last on every wallpaper apply.
+                // The matugen source colors (the %scolor%/%sc% placeholders,
+                // first dot selected by default) are overlaid on the media.
                 Component {
                     id: commandsPageComponent
 
@@ -547,34 +582,6 @@ Kirigami.OverlayDrawer {
                         ColumnLayout {
                             width: scrollView2.availableWidth
                             spacing: Kirigami.Units.gridUnit
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
-                                visible: app.matugenDotsEnabled
-
-                                Flow {
-                                    Layout.fillWidth: true
-                                    spacing: Kirigami.Units.smallSpacing
-
-                                    Repeater {
-                                        model: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper)
-                                        delegate: ColorDot {
-                                            required property string modelData
-                                            required property int index
-                                            color: modelData
-                                            selected: drawer.app.selectedSourceColorIndex === index
-                                            onClicked: drawer.app.selectedSourceColorIndex = index
-                                        }
-                                    }
-                                }
-
-                                Label {
-                                    visible: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper).length === 0
-                                    text: qsTr("No matugen source colors")
-                                    color: Kirigami.Theme.disabledTextColor
-                                }
-                            }
 
                             RowLayout {
                                 Layout.fillWidth: true
@@ -710,8 +717,9 @@ Kirigami.OverlayDrawer {
                                                             ToolTip.visible: hovered
                                                             ToolTip.delay: Kirigami.Units.toolTipDelay
                                                             onClicked: {
-                                                                commandModel.remove(commandDelegate.index)
-                                                                drawer.app.removeCustomCommand(commandDelegate.index)
+                                                                const i = commandDelegate.index
+                                                                commandModel.remove(i)
+                                                                drawer.app.removeCustomCommand(i)
                                                             }
                                                         }
                                                     }

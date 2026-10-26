@@ -188,6 +188,66 @@ Kirigami.OverlayDrawer {
                 }
             }
 
+
+            // Media area: the base layer is always the wallpaper (images)
+            // or its cached first frame (videos). Live playback is layered
+            // on top after a short delay, so the user sees the frame
+            // immediately instead of a blank area while the decoder starts.
+            Item {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 200
+                clip: true
+
+                Image {
+                    id: mediaImage
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    smooth: true
+                    source: drawer.isVideo
+                        ? (drawer.app.wallpapersInfo.firstFrameFor(drawer.wallpaper) !== ""
+                            ? drawer.app.fileUrl(drawer.app.wallpapersInfo.firstFrameFor(drawer.wallpaper))
+                            : "")
+                        : drawer.app.fileUrl(drawer.wallpaper)
+                }
+
+                // The MediaPlayer lives inside the Loader so closing the
+                // drawer or switching wallpaper destroys it (not just
+                // pauses it), freeing the decoder and letting the grid
+                // cell's own video resume its loop.
+                Loader {
+                    id: videoLoader
+                    anchors.fill: parent
+                    active: drawer.isVideo && drawer.drawerOpen && drawer.mediaArmed
+                    onActiveChanged: if (!active) drawer.mediaArmed = false
+                    sourceComponent: Component {
+                        Item {
+                            VideoOutput {
+                                id: videoSurface
+                                anchors.fill: parent
+                                fillMode: VideoOutput.PreserveAspectCrop
+                            }
+                            MediaPlayer {
+                                source: drawer.app.fileUrl(drawer.wallpaper)
+                                autoPlay: true
+                                loops: MediaPlayer.Infinite
+                                // -1 disables the audio track: wallpapers play muted.
+                                activeAudioTrack: -1
+                                videoOutput: videoSurface
+                            }
+                        }
+                    }
+                }
+
+                // Arms the video 250 ms after the drawer opens.
+                Timer {
+                    id: mediaStartTimer
+                    interval: 250
+                    running: drawer.isVideo && drawer.drawerOpen && !drawer.mediaArmed
+                    onTriggered: drawer.mediaArmed = true
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -210,65 +270,6 @@ Kirigami.OverlayDrawer {
                         anchors.fill: parent
                         spacing: Kirigami.Units.gridUnit
 
-                        // Media area: the base layer is always the wallpaper (images)
-                        // or its cached first frame (videos). Live playback is layered
-                        // on top after a short delay, so the user sees the frame
-                        // immediately instead of a blank area while the decoder starts.
-                        Item {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 200
-                            clip: true
-
-                            Image {
-                                id: mediaImage
-                                anchors.fill: parent
-                                fillMode: Image.PreserveAspectCrop
-                                asynchronous: true
-                                smooth: true
-                                source: drawer.isVideo
-                                    ? (drawer.app.wallpapersInfo.firstFrameFor(drawer.wallpaper) !== ""
-                                        ? drawer.app.fileUrl(drawer.app.wallpapersInfo.firstFrameFor(drawer.wallpaper))
-                                        : "")
-                                    : drawer.app.fileUrl(drawer.wallpaper)
-                            }
-
-                            // The MediaPlayer lives inside the Loader so closing the
-                            // drawer or switching wallpaper destroys it (not just
-                            // pauses it), freeing the decoder and letting the grid
-                            // cell's own video resume its loop.
-                            Loader {
-                                id: videoLoader
-                                anchors.fill: parent
-                                active: drawer.isVideo && drawer.drawerOpen && drawer.mediaArmed
-                                onActiveChanged: if (!active) drawer.mediaArmed = false
-                                sourceComponent: Component {
-                                    Item {
-                                        VideoOutput {
-                                            id: videoSurface
-                                            anchors.fill: parent
-                                            fillMode: VideoOutput.PreserveAspectCrop
-                                        }
-                                        MediaPlayer {
-                                            source: drawer.app.fileUrl(drawer.wallpaper)
-                                            autoPlay: true
-                                            loops: MediaPlayer.Infinite
-                                            // -1 disables the audio track: wallpapers play muted.
-                                            activeAudioTrack: -1
-                                            videoOutput: videoSurface
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Arms the video 250 ms after the drawer opens.
-                            Timer {
-                                id: mediaStartTimer
-                                interval: 250
-                                running: drawer.isVideo && drawer.drawerOpen && !drawer.mediaArmed
-                                onTriggered: drawer.mediaArmed = true
-                            }
-                        }
-
                         // Scrollable section: categories, tags and palette. The content
                         // column is pinned to availableWidth (the width minus the
                         // scrollbar) so it never scrolls horizontally.
@@ -276,7 +277,6 @@ Kirigami.OverlayDrawer {
                             id: scrollView
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            contentWidth: availableWidth
                             clip: true
                             ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -538,203 +538,196 @@ Kirigami.OverlayDrawer {
                 Component {
                     id: commandsPageComponent
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        spacing: Kirigami.Units.gridUnit
+                    ScrollView {
+                        id: scrollView2
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+                        ColumnLayout {
+                            width: scrollView2.availableWidth
+                            spacing: Kirigami.Units.gridUnit
 
-                        CollapsibleSection {
-                            Layout.fillWidth: true
-                            title: qsTr("Source colors")
-                            sectionContent: Component {
-                                ColumnLayout {
-                                    width: parent.width
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+                                visible: app.matugenDotsEnabled
+
+                                Flow {
+                                    Layout.fillWidth: true
                                     spacing: Kirigami.Units.smallSpacing
 
-                                    Flow {
-                                        Layout.fillWidth: true
-                                        spacing: Kirigami.Units.smallSpacing
-
-                                        Repeater {
-                                            model: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper)
-                                            delegate: ColorDot {
-                                                required property string modelData
-                                                required property int index
-                                                color: modelData
-                                                selected: drawer.app.selectedSourceColorIndex === index
-                                                onClicked: drawer.app.selectedSourceColorIndex = index
-                                            }
+                                    Repeater {
+                                        model: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper)
+                                        delegate: ColorDot {
+                                            required property string modelData
+                                            required property int index
+                                            color: modelData
+                                            selected: drawer.app.selectedSourceColorIndex === index
+                                            onClicked: drawer.app.selectedSourceColorIndex = index
                                         }
-                                    }
-
-                                    Label {
-                                        visible: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper).length === 0
-                                        text: qsTr("No matugen source colors for this wallpaper")
-                                        color: Kirigami.Theme.disabledTextColor
                                     }
                                 }
+
+                                Label {
+                                    visible: drawer.app.wallpapersInfo.sourceColorsFor(drawer.wallpaper).length === 0
+                                    text: qsTr("No matugen source colors")
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
                             }
-                        }
 
-                        CollapsibleSection {
-                            Layout.fillWidth: true
-                            title: qsTr("Custom commands")
-                            sectionContent: Component {
-                                ColumnLayout {
-                                    width: parent.width
-                                    spacing: Kirigami.Units.smallSpacing
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
 
-                                    // Mirrors app.customCommands (the source of truth):
-                                    // each edit below updates both this local model and
-                                    // the app's slots; on (re)load the model is rebuilt
-                                    // from the app.
-                                    ListModel { id: commandModel }
+                                Kirigami.Icon {
+                                    source: "lighttable-symbolic"
+                                    Layout.preferredWidth: Kirigami.Units.gridUnit
+                                    Layout.preferredHeight: Kirigami.Units.gridUnit
+                                    color: Kirigami.Theme.highlightColor
+                                }
 
-                                    Component.onCompleted: {
-                                        commandModel.clear()
-                                        for (const c of drawer.app.customCommands) {
-                                            commandModel.append({ command: c.command,
-                                                                    isEnabled: c.enabled })
-                                        }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
+                                Switch {
+                                    Layout.fillHeight: true
+                                    checked: drawer.app.themeMode === "dark"
+                                    Accessible.name: qsTr("Dark mode")
+                                    ToolTip.text: qsTr("%mode% placeholder: dark or light")
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                                    onToggled: drawer.app.themeMode = checked ? "dark" : "light"
+                                }
+
+                                Label {
+                                    text: drawer.app.themeMode === "dark" ? qsTr("Dark") : qsTr("Light")
+                                    color: Kirigami.Theme.disabledTextColor
+                                    font: Kirigami.Theme.smallFont
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                Label {
+                                    text: qsTr("Custom color:")
+                                    color: Kirigami.Theme.disabledTextColor
+                                    font: Kirigami.Theme.smallFont
+                                }
+
+                                ColorDot {
+                                    Layout.alignment: Qt.AlignVCenter
+                                    //dotSize: Kirigami.Units.gridUnit
+                                    color: drawer.app.customColor
+                                    enablePicker: true
+                                    onAccepted: (hex) => drawer.app.customColor = hex
+                                }
+                            }
+
+                            CollapsibleSection {
+                                Layout.fillWidth: true
+                                title: qsTr("Custom commands")
+                                sectionContent: Component {
+                                    ColumnLayout {
+                                        width: parent.width
                                         spacing: Kirigami.Units.smallSpacing
 
-                                        Kirigami.Icon {
-                                            source: "lighttable-symbolic"
-                                            Layout.preferredWidth: Kirigami.Units.gridUnit
-                                            Layout.preferredHeight: Kirigami.Units.gridUnit
-                                            color: Kirigami.Theme.highlightColor
-                                        }
+                                        ListModel { id: commandModel }
 
-                                        Switch {
-                                            Layout.fillHeight: true
-                                            checked: drawer.app.themeMode === "dark"
-                                            Accessible.name: qsTr("Dark mode")
-                                            ToolTip.text: qsTr("%mode% placeholder: dark or light")
-                                            ToolTip.visible: hovered
-                                            ToolTip.delay: Kirigami.Units.toolTipDelay
-                                            onToggled: drawer.app.themeMode = checked ? "dark" : "light"
-                                        }
-
-                                        Label {
-                                            text: drawer.app.themeMode === "dark" ? qsTr("Dark") : qsTr("Light")
-                                            color: Kirigami.Theme.disabledTextColor
-                                            font: Kirigami.Theme.smallFont
-                                        }
-
-                                        Item { Layout.fillWidth: true }
-
-                                        Label {
-                                            text: qsTr("Custom color:")
-                                            color: Kirigami.Theme.disabledTextColor
-                                            font: Kirigami.Theme.smallFont
-                                        }
-
-                                        ColorDot {
-                                            Layout.alignment: Qt.AlignVCenter
-                                            dotSize: Kirigami.Units.gridUnit
-                                            color: drawer.app.customColor
-                                            enablePicker: true
-                                            onAccepted: (hex) => drawer.app.customColor = hex
-                                        }
-                                    }
-                                    Label {
-                                        Layout.fillWidth: true
-                                        wrapMode: Text.WordWrap
-                                        textFormat: Text.RichText
-                                        text: qsTr("Run after the wallpaper is set. Placeholders: <b>%path%</b> wallpaper path, <b>%image%</b> image (or video frame) path, <b>%scolor%</b> selected source color, <b>%sc%</b> its index, <b>%mode%</b> dark/light mode, <b>%ccolor%</b> custom color.")
-                                    }
-
-                                    Button {
-                                        text: qsTr("Add command")
-                                        icon.name: "list-add"
-                                        onClicked: {
-                                            commandModel.append({ command: "", isEnabled: true })
-                                            drawer.app.addCustomCommand()
-                                        }
-                                    }
-
-                                    // Reorderable by drag: the handle repositions the
-                                    // delegate while dragging and move() applies the
-                                    // model change; the list is as tall as its content.
-                                    ListView {
-                                        id: commandList
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: contentHeight
-                                        interactive: false
-                                        spacing: Kirigami.Units.smallSpacing
-                                        model: commandModel
-                                        moveDisplaced: Transition {
-                                            YAnimator {
-                                                duration: Kirigami.Units.longDuration
-                                                easing.type: Easing.InOutQuad
+                                        Component.onCompleted: {
+                                            commandModel.clear()
+                                            for (const c of drawer.app.customCommands) {
+                                                commandModel.append({ command: c.command,
+                                                                        isEnabled: c.enabled })
                                             }
                                         }
 
-                                        delegate: Item {
-                                            id: commandDelegate
-                                            required property int index
-                                            required property string command
-                                            required property bool isEnabled
+                                        ListView {
+                                            id: commandList
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: contentHeight
+                                            interactive: false
+                                            spacing: Kirigami.Units.smallSpacing
+                                            model: commandModel
+                                            moveDisplaced: Transition {
+                                                YAnimator {
+                                                    duration: Kirigami.Units.longDuration
+                                                    easing.type: Easing.InOutQuad
+                                                }
+                                            }
 
-                                            width: commandList.width
-                                            height: commandRow.implicitHeight
+                                            delegate: Item {
+                                                id: commandDelegate
+                                                required property int index
+                                                required property string command
+                                                required property bool isEnabled
 
-                                            ItemDelegate {
-                                                id: commandRow
-                                                width: parent.width
-                                                contentItem: RowLayout {
-                                                    spacing: Kirigami.Units.smallSpacing
+                                                width: commandList.width
+                                                height: commandRow.implicitHeight
 
-                                                    Kirigami.ListItemDragHandle {
-                                                        Layout.alignment: Qt.AlignVCenter
-                                                        enabled: commandList.model.count > 1
-                                                        opacity: enabled ? 1 : 0.3
-                                                        listItem: commandRow
-                                                        listView: commandList
-                                                        onMoveRequested: (oldIndex, newIndex) => {
-                                                            commandModel.move(oldIndex, newIndex, 1)
-                                                            drawer.app.moveCustomCommand(oldIndex, newIndex)
+                                                ItemDelegate {
+                                                    id: commandRow
+                                                    width: parent.width
+                                                    contentItem: RowLayout {
+                                                        spacing: Kirigami.Units.smallSpacing
+
+                                                        Kirigami.ListItemDragHandle {
+                                                            Layout.alignment: Qt.AlignVCenter
+                                                            enabled: commandList.model.count > 1
+                                                            opacity: enabled ? 1 : 0.3
+                                                            listItem: commandRow
+                                                            listView: commandList
+                                                            onMoveRequested: (oldIndex, newIndex) => {
+                                                                commandModel.move(oldIndex, newIndex, 1)
+                                                                drawer.app.moveCustomCommand(oldIndex, newIndex)
+                                                            }
                                                         }
-                                                    }
 
-                                                    Label {
-                                                        Layout.fillHeight: true
-                                                        text: String(commandDelegate.index + 1)
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                        font.bold: true
-                                                        color: commandDelegate.isEnabled ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
-                                                    }
+                                                        Label {
+                                                            Layout.fillHeight: true
+                                                            text: String(commandDelegate.index + 1)
+                                                            horizontalAlignment: Text.AlignHCenter
+                                                            verticalAlignment: Text.AlignVCenter
+                                                            font.bold: true
+                                                            color: commandDelegate.isEnabled ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+                                                        }
 
-                                                    Switch {
-                                                        Layout.fillHeight: true
-                                                        checked: commandDelegate.isEnabled
-                                                        Accessible.name: checked ? qsTr("Enabled") : qsTr("Disabled")
-                                                        onToggled: drawer.app.setCustomCommandEnabled(commandDelegate.index, checked)
-                                                    }
+                                                        Switch {
+                                                            Layout.fillHeight: true
+                                                            checked: commandDelegate.isEnabled
+                                                            Accessible.name: checked ? qsTr("Enabled") : qsTr("Disabled")
+                                                            onToggled: drawer.app.setCustomCommandEnabled(commandDelegate.index, checked)
+                                                        }
 
-                                                    TextField {
-                                                        id: commandField
-                                                        Layout.fillWidth: true
-                                                        text: commandDelegate.command
-                                                        placeholderText: qsTr("e.g.: notify-send 'Wallpaper changed to %path%'")
-                                                        onEditingFinished: drawer.app.updateCustomCommand(commandDelegate.index, commandField.text)
-                                                    }
+                                                        TextField {
+                                                            id: commandField
+                                                            Layout.fillWidth: true
+                                                            text: commandDelegate.command
+                                                            placeholderText: qsTr("e.g.: notify-send 'Wallpaper changed to %path%'")
+                                                            onEditingFinished: drawer.app.updateCustomCommand(commandDelegate.index, commandField.text)
+                                                        }
 
-                                                    ToolButton {
-                                                        icon.name: "edit-clear"
-                                                        Accessible.name: qsTr("Remove command")
-                                                        ToolTip.text: qsTr("Remove command")
-                                                        ToolTip.visible: hovered
-                                                        ToolTip.delay: Kirigami.Units.toolTipDelay
-                                                        onClicked: {
-                                                            commandModel.remove(commandDelegate.index)
-                                                            drawer.app.removeCustomCommand(commandDelegate.index)
+                                                        ToolButton {
+                                                            icon.name: "edit-clear"
+                                                            Accessible.name: qsTr("Remove command")
+                                                            ToolTip.text: qsTr("Remove command")
+                                                            ToolTip.visible: hovered
+                                                            ToolTip.delay: Kirigami.Units.toolTipDelay
+                                                            onClicked: {
+                                                                commandModel.remove(commandDelegate.index)
+                                                                drawer.app.removeCustomCommand(commandDelegate.index)
+                                                            }
                                                         }
                                                     }
                                                 }
+                                            }
+                                        }
+
+                                        Button {
+                                            text: qsTr("Add command")
+                                            icon.name: "list-add"
+                                            ToolTip.text: qsTr("Placeholders:<br>" +"<b>%path%</b> wallpaper path<br>" +"<b>%image%</b> image (or video frame) path<br>" +"<b>%scolor%</b> selected source color<br>" +"<b>%sc%</b> matugen source color index<br>" +"<b>%mode%</b> dark/light mode<br>" +"<b>%ccolor%</b> custom color.")
+                                            ToolTip.visible: hovered
+                                            ToolTip.delay: Kirigami.Units.toolTipDelay
+                                            onClicked: {
+                                                commandModel.append({ command: "", isEnabled: true })
+                                                drawer.app.addCustomCommand()
                                             }
                                         }
                                     }

@@ -24,6 +24,7 @@ Kirigami.OverlayDrawer {
     property var tags: []
     // Whether the tag input field is shown; toggled by the "+" button.
     property bool tagInputVisible: false
+    property bool commandsOpen: false
 
     property string paletteBackend: "materialyou"
     property bool paletteDark: true
@@ -77,6 +78,10 @@ Kirigami.OverlayDrawer {
     function fileNameOf(path) {
         const parts = path.split("/")
         return parts[parts.length - 1]
+    }
+
+    function toggleCommands() {
+        commandsOpen = !commandsOpen
     }
 
     // Keeps the drawer in sync when the entry is modified elsewhere
@@ -486,11 +491,15 @@ Kirigami.OverlayDrawer {
                 ToolButton {
                     icon.name: "preferences-system-symbolic"
                     Accessible.name: qsTr("Custom commands")
+                    checkable: true
+                    checked: drawer.commandsOpen
                     ToolTip.text: qsTr("Custom commands")
                     ToolTip.visible: hovered
                     ToolTip.delay: Kirigami.Units.toolTipDelay
                     onClicked: {
-                        console.log("Custom commands")
+                        toggleCommands()
+                        //will be replaced to custom command
+                        console.log("Custom commands",commandsOpen)
                     }
                 }
             }

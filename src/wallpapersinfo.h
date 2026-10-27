@@ -60,8 +60,11 @@ public:
     bool resizing() const;
     int resizeTotal() const;
     int resizeCompleted() const;
-    // frames), plus any orphan frame PNGs in the cache. Call after a folder
-    // scan; emits entryChanged for every removed path.
+    // Removes entries whose file no longer exists on disk (and their
+    // frames), plus any orphan PNGs in video_frames/ and copies in
+    // video_resizes/ that no entry references. Called at startup and after
+    // every folder scan; emits entryChanged for every removed path and
+    // purged() when anything was removed.
     Q_INVOKABLE void sweep();
     Q_INVOKABLE QString firstFrameFor(const QString &path) const;
     Q_INVOKABLE QStringList sourceColorsFor(const QString &path) const;
@@ -95,6 +98,8 @@ public:
 signals:
     // Emitted after a file's entry was updated.
     void entryChanged(const QString &path);
+    // Emitted after a sweep removed entries or cache files.
+    void purged();
     // Emitted after all refreshFile jobs queued so far have finished.
     void scanFinished();
     // Emitted as a "Generate resizes" batch progresses.

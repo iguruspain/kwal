@@ -4,6 +4,7 @@
 #include <QString>
 #include <QObject>
 #include <QStringList>
+#include <QVector>
 
 #include <optional>
 #include <utility>
@@ -72,6 +73,9 @@ public:
 
     QStringList desktopIds() const;
 
+    // The section parts of every section that contains <key>, in file order.
+    QVector<QStringList> sectionsWithKey(const QString &key) const;
+
 private:
     // [section parts] -> {header line, next section line or size}.
     std::optional<std::pair<int, int>> findSection(const QStringList &parts) const;
@@ -104,6 +108,15 @@ public:
     // too. Emits result() when the operation finishes.
     Q_INVOKABLE void applyWallpaper(const QString &type, const QString &path,
                                     bool includeLockscreen);
+
+    // Pure: drops the entries of a VideoUrls playlist JSON whose filename
+    // is a file:// URL of a local file that no longer exists on disk; every
+    // other entry is kept. Returns the pruned JSON, or the input unchanged
+    // when nothing was removed (or the input is not a JSON array).
+    QString pruneVideoUrls(const QString &existingJson) const;
+    // Removes dead file:// URLs from the VideoUrls sections of the desktop
+    // appletsrc; writes the file only when something changed.
+    Q_INVOKABLE void pruneDeadVideoUrls();
 
     // Mirrors the applied wallpaper into kscreenlockerrc as the greeter
     // background (one wallpaper for all screens). <plugin> is the Plasma

@@ -567,6 +567,7 @@ void WallpapersInfo::sweep()
 {
     QVector<QString> removedPaths;
     QSet<QString> framesToRemove;
+    QSet<QString> resizesToRemove;
     {
         QMutexLocker locker(&m_mutex);
         for (auto it = m_entries.begin(); it != m_entries.end();) {
@@ -594,12 +595,29 @@ void WallpapersInfo::sweep()
                 framesToRemove.insert(frame);
             }
         }
+        const QDir resizes(resizesDir());
+        for (const QString &fileName : resizes.entryList(QDir::Files)) {
+            const QString resize = resizes.filePath(fileName);
+            bool referenced = false;
+            for (const Entry &entry : std::as_const(m_entries)) {
+                if (entry.resized == resize) {
+                    referenced = true;
+                    break;
+                }
+            }
+            if (!referenced) {
+                resizesToRemove.insert(resize);
+            }
+        }
     }
-    if (removedPaths.isEmpty() && framesToRemove.isEmpty()) {
+    if (removedPaths.isEmpty() && framesToRemove.isEmpty() && resizesToRemove.isEmpty()) {
         return;
     }
     for (const QString &frame : framesToRemove) {
         QFile::remove(frame);
+    }
+    for (const QString &resize : resizesToRemove) {
+        QFile::remove(resize);
     }
     if (!removedPaths.isEmpty()) {
         QMutexLocker locker(&m_mutex);
@@ -614,6 +632,7 @@ void WallpapersInfo::sweep()
                                       Qt::QueuedConnection);
         }
     }
+    emit purged();
 }
 
 void WallpapersInfo::jobFinished()

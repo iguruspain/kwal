@@ -385,43 +385,89 @@ void tst_WallpapersInfo::testCategoryFilter()
 
 void tst_WallpapersInfo::testSweep()
 {
-    WallpapersInfo *info = WallpapersInfo::instance();
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     const QString keptPath = dir.path() + QStringLiteral("/kept.png");
-    const QString removedPath = dir.path() + QStringLiteral("/removed.png");
+    const QString videoPath = dir.path() + QStringLiteral("/live.mp4");
+    const QString deadPath = dir.path() + QStringLiteral("/gone.mp4");
     writeFile(keptPath, QByteArray(100, 'k'));
-    writeFile(removedPath, QByteArray(100, 'r'));
+    writeFile(videoPath, QByteArray(100, 'v'));
 
-    info->refreshFile(keptPath, QStringLiteral("image"));
-    info->refreshFile(removedPath, QStringLiteral("image"));
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(keptPath).lastModified > 0, 30000);
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(removedPath).lastModified > 0, 30000);
-
-    // Orphaned frame left in the cache frames dir.
+    // Fixture index: a live image, a live video referencing its cached
+    // frame and resize copy, and a dead video. Stray frame and resize
+    // files sit in the cache dirs alongside the referenced ones.
+    const QString liveFrame = cacheRoot() + QStringLiteral("/video_frames/live.png");
     const QString orphanFrame = cacheRoot() + QStringLiteral("/video_frames/orphan.png");
+    const QString deadFrame = cacheRoot() + QStringLiteral("/video_frames/dead.png");
+    const QString resizesDir = cacheRoot() + QStringLiteral("/video_resizes");
+    QVERIFY(QDir().mkpath(resizesDir));
+    const QString liveResize = resizesDir + QStringLiteral("/live.mp4");
+    const QString orphanResize = resizesDir + QStringLiteral("/orphan.mp4");
+    writeFile(liveFrame, QByteArray("frame"));
     writeFile(orphanFrame, QByteArray("orphan"));
+    writeFile(deadFrame, QByteArray("deadframe"));
+    writeFile(liveResize, QByteArray("resize"));
+    writeFile(orphanResize, QByteArray("orphanresize"));
 
-    QFile::remove(removedPath);
+    const QJsonObject kept = {
+        {QStringLiteral("file"), keptPath},
+        {QStringLiteral("type"), QStringLiteral("image")},
+        {QStringLiteral("last_modified"), 1.0},
+    };
+    const QJsonObject video = {
+        {QStringLiteral("file"), videoPath},
+        {QStringLiteral("type"), QStringLiteral("video")},
+        {QStringLiteral("first_frame"), liveFrame},
+        {QStringLiteral("resized"), liveResize},
+        {QStringLiteral("last_modified"), 1.0},
+    };
+    const QJsonObject dead = {
+        {QStringLiteral("file"), deadPath},
+        {QStringLiteral("type"), QStringLiteral("video")},
+        {QStringLiteral("first_frame"), deadFrame},
+        {QStringLiteral("last_modified"), 1.0},
+    };
+    QJsonObject root;
+    root[QStringLiteral("version")] = 2;
+    root[QStringLiteral("files")] = QJsonArray{kept, video, dead};
+    writeFile(cacheRoot() + QStringLiteral("/wallpapers_info.json"), QJsonDocument(root).toJson());
+
+    WallpapersInfo::initialize(QCoreApplication::instance());
+    WallpapersInfo *info = WallpapersInfo::instance();
+
+    QSignalSpy purged(info, &WallpapersInfo::purged);
     info->sweep();
+    QCOMPARE(purged.count(), 1);
 
-    // The deleted file's entry is gone from the index; the survivor stays.
-    QCOMPARE(info->entryFor(removedPath).lastModified, 0.0);
+    // The dead entry is gone from the index; the live entries survive with
+    // their cache references intact.
+    QCOMPARE(info->entryFor(deadPath).lastModified, 0.0);
     QVERIFY(info->entryFor(keptPath).lastModified > 0);
-    // The orphan frame is deleted and the JSON no longer lists the file.
+    const WallpapersInfo::Entry live = info->entryFor(videoPath);
+    QCOMPARE(live.firstFrame, liveFrame);
+    QCOMPARE(live.resized, liveResize);
+    // The orphan frame and resize copy are deleted, as is the frame of the
+    // dead entry; the referenced frame and resize stay.
     QVERIFY(!QFileInfo(orphanFrame).exists());
+    QVERIFY(!QFileInfo(deadFrame).exists());
+    QVERIFY(QFileInfo(liveFrame).exists());
+    QVERIFY(!QFileInfo(orphanResize).exists());
+    QVERIFY(QFileInfo(liveResize).exists());
+    // The JSON no longer lists the dead file.
     const QString json = cacheRoot() + QStringLiteral("/wallpapers_info.json");
     QFile file(json);
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
     for (const QJsonValue &value : doc.object().value(QStringLiteral("files")).toArray()) {
-        QVERIFY(value.toObject().value(QStringLiteral("file")).toString() != removedPath);
+        QVERIFY(value.toObject().value(QStringLiteral("file")).toString() != deadPath);
     }
 
     // A sweep with nothing to clean up is a no-op.
     QSignalSpy changed(info, &WallpapersInfo::entryChanged);
+    QSignalSpy purged2(info, &WallpapersInfo::purged);
     info->sweep();
     QCOMPARE(changed.count(), 0);
+    QCOMPARE(purged2.count(), 0);
 }
 
 void tst_WallpapersInfo::testRecalculateCategories()

@@ -13,6 +13,7 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QThread>
+#include <QUrl>
 #include <QVariantMap>
 
 #include <optional>
@@ -39,6 +40,17 @@ QStringList pluginSection(int desktopId, const QString &plugin)
 {
     return {QStringLiteral("Containments"), QString::number(desktopId),
             QStringLiteral("Wallpaper"), plugin, QStringLiteral("General")};
+}
+
+// True when <url> is not a local file:// URL, or the referenced file
+// still exists on disk.
+bool fileUrlAlive(const QString &url)
+{
+    if (!url.startsWith(QLatin1String("file://"))) {
+        return true; // a foreign scheme is not our concern
+    }
+    const QString path = QUrl::fromPercentEncoding(url.mid(7).toUtf8());
+    return QFileInfo(path).isFile();
 }
 
 } // namespace
@@ -236,6 +248,22 @@ QStringList Ini::desktopIds() const
     return ids;
 }
 
+QVector<QStringList> Ini::sectionsWithKey(const QString &key) const
+{
+    QVector<QStringList> sections;
+    QStringList current;
+    for (const QString &line : m_lines) {
+        if (const auto parts = sectionParts(line)) {
+            current = *parts;
+            continue;
+        }
+        if (!current.isEmpty() && keyOf(line).value_or(QString()) == key) {
+            sections.append(current);
+        }
+    }
+    return sections;
+}
+
 std::optional<std::pair<int, int>> Ini::findSection(const QStringList &parts) const
 {
     const QString header = makeHeader(parts);
@@ -287,10 +315,10 @@ std::optional<QString> Ini::keyOf(const QString &line) const
 using plasmaapply::configPath;
 using plasmaapply::computeVideoUrls;
 using plasmaapply::fileUrl;
+using plasmaapply::fileUrlAlive;
 using plasmaapply::kDesktopIdsScript;
 using plasmaapply::kImagePluginId;
 using plasmaapply::kRebornPluginId;
-using plasmaapply::kScreenGeomsScript;
 using plasmaapply::pluginSection;
 using plasmaapply::rawVideoUrl;
 using plasmaapply::Ini;
@@ -438,6 +466,59 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
     qWarning("perf: %lld apply: done", perfMs());
 
     emit result(true, QStringLiteral("Wallpaper set."));
+}
+
+QString PlasmaApply::pruneVideoUrls(const QString &existingJson) const
+{
+    if (existingJson.isEmpty()) {
+        return existingJson;
+    }
+    const QJsonDocument doc = QJsonDocument::fromJson(existingJson.toUtf8());
+    if (!doc.isArray()) {
+        return existingJson;
+    }
+    // Same compact per-entry serialization as computeVideoUrls: QJsonObject
+    // keeps the parsed key order, so the surviving entries round-trip
+    // byte-identically through the plugin page's JSON.stringify.
+    const auto json = [](const QJsonValue &value) {
+        QJsonArray wrapper;
+        wrapper.append(value);
+        const QByteArray compact = QJsonDocument(wrapper).toJson(QJsonDocument::Compact);
+        return QString::fromUtf8(compact.constData() + 1, compact.size() - 2);
+    };
+    QStringList rendered;
+    bool removedAny = false;
+    for (const QJsonValue &value : doc.array()) {
+        const QJsonObject entry = value.toObject();
+        const QString filename = entry.value(QStringLiteral("filename")).toString();
+        if (!fileUrlAlive(filename)) {
+            removedAny = true;
+            continue;
+        }
+        rendered.append(json(entry));
+    }
+    if (!removedAny) {
+        return existingJson;
+    }
+    return QStringLiteral("[") + rendered.join(QStringLiteral(",")) + QStringLiteral("]");
+}
+
+void PlasmaApply::pruneDeadVideoUrls()
+{
+    const QString path = configPath(QStringLiteral("plasma-org.kde.plasma.desktop-appletsrc"));
+    Ini appletsrc = Ini::fromFile(path);
+    bool changed = false;
+    for (const QStringList &section : appletsrc.sectionsWithKey(QStringLiteral("VideoUrls"))) {
+        const QString existing = appletsrc.get(section, QStringLiteral("VideoUrls"));
+        const QString pruned = pruneVideoUrls(existing);
+        if (pruned != existing) {
+            appletsrc.set(section, QStringLiteral("VideoUrls"), pruned);
+            changed = true;
+        }
+    }
+    if (changed && !appletsrc.save(path)) {
+        qWarning("Could not write %s", path.toUtf8().constData());
+    }
 }
 
 bool PlasmaApply::mirrorLockscreen(const QString &plugin, const QString &imageUrl,

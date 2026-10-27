@@ -186,6 +186,15 @@ AppController::AppController(QObject *parent)
             info->refreshFile(path, WallpaperModel::isVideo(path) ? QStringLiteral("video") : QStringLiteral("image"));
         }
     });
+    // P7: purge orphaned entries and cache files at startup (the index was
+    // already loaded in WallpapersInfo::initialize) and after every folder
+    // scan; every purge prunes the dead playlist URLs from the desktop
+    // appletsrc.
+    if (WallpapersInfo *info = WallpapersInfo::instance()) {
+        connect(info, &WallpapersInfo::scanFinished, info, &WallpapersInfo::sweep);
+        connect(info, &WallpapersInfo::purged, m_plasmaApply, &PlasmaApply::pruneDeadVideoUrls);
+        info->sweep();
+    }
     applyCurrentFolder();
     tools::installTemplates();
 }

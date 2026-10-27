@@ -20,6 +20,7 @@ private slots:
     void testIniEditor();
     void testIniPreservation();
     void testDesktopIds();
+    void testPruneVideoUrls();
 
 private:
     static void writeFile(const QString &path, const QByteArray &content)
@@ -196,6 +197,44 @@ void tst_PlasmaApply::testDesktopIds()
     plasmaapply::Ini ini(QString::fromUtf8(content));
     // Only the numeric containment with formfactor 0 (a desktop) counts.
     QCOMPARE(ini.desktopIds(), QStringList{QStringLiteral("1")});
+}
+
+void tst_PlasmaApply::testPruneVideoUrls()
+{
+    PlasmaApply apply;
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString alive = dir.path() + QStringLiteral("/alive.mp4");
+    const QString spaced = dir.path() + QStringLiteral("/my clip.mp4");
+    writeFile(alive, QByteArray("video"));
+    writeFile(spaced, QByteArray("video"));
+
+    const QString aliveUrl = plasmaapply::fileUrl(alive);
+    const QString spacedUrl = plasmaapply::fileUrl(spaced);
+    const QString deadUrl = plasmaapply::fileUrl(dir.path() + QStringLiteral("/dead.mp4"));
+
+    // A dead file:// URL is dropped; the live one and the non-file://
+    // entry are kept, in order.
+    const QString playlist = QStringLiteral(
+        "[{\"filename\":\"%1\",\"enabled\":true,\"duration\":0},"
+        "{\"filename\":\"%2\",\"enabled\":false,\"duration\":0},"
+        "{\"filename\":\"http://remote/clip.mp4\",\"enabled\":false}]")
+        .arg(deadUrl, spacedUrl);
+    const QJsonArray pruned = QJsonDocument::fromJson(apply.pruneVideoUrls(playlist).toUtf8()).array();
+    QCOMPARE(pruned.size(), 2);
+    QCOMPARE(pruned.at(0).toObject().value(QStringLiteral("filename")).toString(), spacedUrl);
+    QCOMPARE(pruned.at(0).toObject().value(QStringLiteral("enabled")).toBool(), false);
+    QCOMPARE(pruned.at(1).toObject().value(QStringLiteral("filename")).toString(),
+             QStringLiteral("http://remote/clip.mp4"));
+
+    const QString spacedOnly = QStringLiteral("[{\"filename\":\"%1\",\"enabled\":true}]").arg(spacedUrl);
+    QCOMPARE(apply.pruneVideoUrls(spacedOnly), spacedOnly);
+
+    // Nothing dead: the string comes back byte-identical; empty or
+    const QString aliveOnly = QStringLiteral("[{\"filename\":\"%1\",\"enabled\":true}]").arg(aliveUrl);
+    QCOMPARE(apply.pruneVideoUrls(aliveOnly), aliveOnly);
+    QCOMPARE(apply.pruneVideoUrls(QString()), QString());
+    QCOMPARE(apply.pruneVideoUrls(QStringLiteral("{ not json")), QStringLiteral("{ not json"));
 }
 
 int main(int argc, char *argv[])

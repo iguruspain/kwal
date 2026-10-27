@@ -3,6 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
+pragma ComponentBehavior: Bound
+
 Kirigami.ScrollablePage {
     id: page
 
@@ -71,6 +73,8 @@ Kirigami.ScrollablePage {
 
             delegate: RowLayout {
                 id: row
+                required property int index
+                required property var modelData
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
                 property int rowId: index
@@ -86,7 +90,7 @@ Kirigami.ScrollablePage {
 
                 CheckBox {
                     id: selectedCheck
-                    checked: modelData.selected
+                    checked: row.modelData.selected
                     ToolTip.text: qsTr("Selected row")
                     ToolTip.visible: hovered
                     onToggled: row.submit()
@@ -95,7 +99,7 @@ Kirigami.ScrollablePage {
                 TextField {
                     id: iconField
                     Layout.preferredWidth: Kirigami.Units.gridUnit * 8
-                    text: modelData.icon
+                    text: row.modelData.icon
                     placeholderText: qsTr("Icon")
                     onTextChanged: row.submit()
                 }
@@ -104,7 +108,7 @@ Kirigami.ScrollablePage {
                     id: nameField
                     Layout.fillWidth: true
                     Layout.maximumWidth: Kirigami.Units.gridUnit * 12
-                    text: modelData.name
+                    text: row.modelData.name
                     placeholderText: qsTr("Name")
                     onTextChanged: row.submit()
                 }
@@ -112,7 +116,7 @@ Kirigami.ScrollablePage {
                 TextField {
                     id: shortcutField
                     Layout.preferredWidth: Kirigami.Units.gridUnit * 6
-                    text: modelData.shortcut
+                    text: row.modelData.shortcut
                     placeholderText: qsTr("Shortcut")
                     onTextChanged: row.submit()
                 }

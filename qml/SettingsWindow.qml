@@ -103,6 +103,13 @@ Kirigami.ApplicationWindow {
                 visible: settingsWindow.app.ulauncherAvailable && settingsWindow.sectionMatches(drawerSearch.text, 4)
                 checked: settingsWindow.pageStack.currentIndex === 4
                 onTriggered: settingsWindow.pageStack.currentIndex = 4
+            },
+            Kirigami.Action {
+                text: qsTr("About")
+                icon.name: "help-about"
+                visible: settingsWindow.sectionMatches(drawerSearch.text, 5)
+                checked: settingsWindow.pageStack.currentIndex === 5
+                onTriggered: settingsWindow.pageStack.currentIndex = 5
             }
         ]
     }
@@ -125,12 +132,22 @@ Kirigami.ApplicationWindow {
             background: Rectangle { color: settingsWindow.pageBackground }
         }
     }
+    Component {
+        id: aboutPage
+        Kirigami.AboutPage {
+            aboutData: AboutInfo.aboutData()
+            background: Rectangle {
+                color: settingsWindow.pageBackground
+            }
+        }
+    }
 
     Component.onCompleted: {
         settingsWindow.pageStack.push(wallpapersSettingsPage.createObject(settingsWindow))
         settingsWindow.pageStack.push(fastfetchSettingsPage.createObject(settingsWindow))
         settingsWindow.pageStack.push(starshipSettingsPage.createObject(settingsWindow))
         settingsWindow.pageStack.push(ulauncherSettingsPage.createObject(settingsWindow))
+        settingsWindow.pageStack.push(aboutPage.createObject(settingsWindow))
         settingsWindow.pageStack.currentIndex = 0
     }
 }

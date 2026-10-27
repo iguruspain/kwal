@@ -220,6 +220,8 @@ qt_standard_project_setup(REQUIRES 6.8)
 enable_testing()
 
 qt_add_executable(kwal
+ src/aboutinfo.cpp
+ src/aboutinfo.h
  src/appcontroller.cpp
  src/colorcategory.cpp
  src/colorcategory.h
@@ -282,8 +284,6 @@ qt_add_qml_module(kwal
     qml/WallpapersSettingsPage.qml
     qml/ColorDot.qml
     qml/ColorRow.qml
- RESOURCES
- resources/resources.qrc
 )
 
 target_link_libraries(kwal
@@ -379,6 +379,7 @@ add_library(kwal_resources OBJECT)
 qt_add_resources(KWAL_RESOURCES_RCC resources/resources.qrc)
 target_sources(kwal_resources PRIVATE ${KWAL_RESOURCES_RCC})
 target_link_libraries(kwal_resources PRIVATE Qt6::Core)
+target_sources(kwal PRIVATE $<TARGET_OBJECTS:kwal_resources>)
 target_include_directories(tst_appcontroller PRIVATE src)
 target_sources(tst_appcontroller PRIVATE $<TARGET_OBJECTS:kwal_resources>)
 target_link_libraries(tst_appcontroller
@@ -541,7 +542,22 @@ target_link_libraries(tst_ulauncher
  Qt6::Test
  KF6::ConfigCore
 )
+
+qt_add_executable(tst_aboutinfo
+ tests/tst_aboutinfo.cpp
+ src/aboutinfo.cpp
+ src/aboutinfo.h
+)
+target_include_directories(tst_aboutinfo PRIVATE src)
+target_sources(tst_aboutinfo PRIVATE $<TARGET_OBJECTS:kwal_resources>)
+target_link_libraries(tst_aboutinfo
+ PRIVATE
+ Qt6::Core
+ Qt6::Qml
+ Qt6::Test
+)
 add_test(NAME tst_ulauncher COMMAND tst_ulauncher)
+add_test(NAME tst_aboutinfo COMMAND tst_aboutinfo)
 
 install(FILES org.kde.kwal.desktop
  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications

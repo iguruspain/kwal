@@ -5,6 +5,7 @@ extern "C" {
 #include <libavutil/avutil.h>
 } // extern "C": the ffmpeg headers ship without C++ guards
 #include <QtWebEngineQuick>
+#include "aboutinfo.h"
 #include "fdothumbnailprovider.h"
 #include "wallpapersinfo.h"
 #include <QQmlApplicationEngine>
@@ -56,10 +57,14 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("kwal"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
     WallpapersInfo::initialize(&app);
+    AboutInfo::initialize(&app);
     QQmlApplicationEngine engine;
     engine.setExternalSingletonInstance(QStringLiteral("org.kde.kwal"),
                                         QStringLiteral("WallpapersInfo"),
                                         WallpapersInfo::instance());
+    engine.setExternalSingletonInstance(QStringLiteral("org.kde.kwal"),
+                                        QStringLiteral("AboutInfo"),
+                                        AboutInfo::instance());
     engine.addImageProvider(QStringLiteral("fdo_thumbnail"), new FdoThumbnailProvider());
     engine.loadFromModule(QStringLiteral("org.kde.kwal"), QStringLiteral("Main"));
 

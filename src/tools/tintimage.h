@@ -9,9 +9,11 @@
 // directly rather than re-implemented.
 namespace tools
 {
-
-// Runs `magick src -colorspace gray <tmp>` then
-// `magick <tmp> -fill <tint> -tint <pct> dst`, where pct is strength*100.
+// Runs, for a GIF source with a GIF destination: `magick src -coalesce
+// -colorspace gray <tmp.gif>` (every frame, delays and loop count preserved);
+// for any other combination: `magick src -colorspace gray <tmp.png>` (a GIF
+// source uses its first frame, `src[0]`). Then `magick <tmp> -fill <tint>
+// -tint <pct> dst`, where pct is strength*100.
 // When previewMaxDim > 0 the image is first resized to fit within that square
 // (shrink only), for a small, fast preview. Returns false when ImageMagick is
 // missing, the source is unreadable, or either step fails.

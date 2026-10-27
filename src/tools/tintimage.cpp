@@ -59,18 +59,36 @@ bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &t
 
     const int pct = qBound(0, int(qRound(strength * 100.0)), 100);
     const QFileInfo dstInfo(dstPath);
-    const QString tmp = dstInfo.absolutePath()
-        + QStringLiteral("/.") + dstInfo.fileName() + QStringLiteral(".gray-tmp.png");
+    const bool gifSource = QFileInfo(srcPath)
+        .suffix().compare(QStringLiteral("gif"), Qt::CaseInsensitive) == 0;
+    const bool gifDst = dstInfo.suffix().compare(QStringLiteral("gif"), Qt::CaseInsensitive) == 0;
 
     // 1. Grayscale (optionally resized for a preview).
+    QString tmp;
     QStringList grayArgs;
-    if (previewMaxDim > 0)
+    if (gifSource && gifDst) {
+        // Animated GIF in, animated GIF out: keep every frame, its delay and
+        // the loop count through a GIF intermediate. Writing a multi-frame
+        // image to a single-frame format (PNG) is dropped silently by this
+        // ImageMagick and would flatten the animation anyway.
+        tmp = dstInfo.absolutePath()
+            + QStringLiteral("/.") + dstInfo.fileName() + QStringLiteral(".gray-tmp.gif");
         grayArgs << srcPath
-                 << QStringLiteral("-resize")
-                 << QStringLiteral("%1x%2>").arg(previewMaxDim).arg(previewMaxDim);
-    else
-        grayArgs << srcPath;
-    grayArgs << QStringLiteral("-colorspace") << QStringLiteral("gray") << tmp;
+                 << QStringLiteral("-coalesce")
+                 << QStringLiteral("-colorspace") << QStringLiteral("gray")
+                 << tmp;
+    } else {
+        tmp = dstInfo.absolutePath()
+            + QStringLiteral("/.") + dstInfo.fileName() + QStringLiteral(".gray-tmp.png");
+        if (gifSource)
+            grayArgs << srcPath + QStringLiteral("[0]"); // still output: first frame only
+        else
+            grayArgs << srcPath;
+        if (previewMaxDim > 0)
+            grayArgs << QStringLiteral("-resize")
+                     << QStringLiteral("%1x%2>").arg(previewMaxDim).arg(previewMaxDim);
+        grayArgs << QStringLiteral("-colorspace") << QStringLiteral("gray") << tmp;
+    }
     if (!runMagick(im, grayArgs)) {
         QFile::remove(tmp);
         return false;

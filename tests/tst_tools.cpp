@@ -8,6 +8,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
+#include <QProcess>
 #include <QStandardPaths>
 #include <QtTest>
 
@@ -20,6 +22,7 @@ private slots:
     void testAtomicWrite();
     void testBackupRestore();
     void testTintImageTo();
+    void testTintAnimatedGif();
     void testTintedImagePath();
     void testFastfetchSetSource();
     void testFastfetchDetectImage();
@@ -137,6 +140,68 @@ void tst_Tools::testTintImageTo()
     QFile::remove(small);
 }
 
+void tst_Tools::testTintAnimatedGif()
+{
+    // The pipeline shells out to ImageMagick; skip when it is not installed.
+    const bool hasMagick = !QStandardPaths::findExecutable(QStringLiteral("magick")).isEmpty()
+        || !QStandardPaths::findExecutable(QStringLiteral("convert")).isEmpty();
+    if (!hasMagick)
+        QSKIP("ImageMagick is not installed");
+    const QString magickPath = QStandardPaths::findExecutable(QStringLiteral("magick"));
+    const QString im = magickPath.isEmpty()
+        ? QStandardPaths::findExecutable(QStringLiteral("convert"))
+        : magickPath;
+
+    const QString src = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-src.gif");
+    const QString dst = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-dst.gif");
+    const QString small = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-small.png");
+    QFile::remove(src);
+    QFile::remove(dst);
+    QFile::remove(small);
+
+    // Two solid frames (red, blue): the multi-frame case the pipeline used to
+    // fail on. No shell involved, so the parentheses are literal arguments.
+    QProcess gen;
+    gen.start(im, {QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                   QStringLiteral("xc:red"), QStringLiteral(")"),
+                   QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                   QStringLiteral("xc:blue"), QStringLiteral(")"), src});
+    QVERIFY(gen.waitForFinished(10000));
+    {
+        QImageReader check(src);
+        if (!check.canRead() || check.imageCount() != 2)
+            QSKIP("could not generate the test GIF fixture");
+    }
+
+    // Full-resolution apply: the output stays a 2-frame animated GIF.
+    QVERIFY(tools::tintImageTo(src, dst, QColor(0, 0, 255)));
+    QVERIFY(QFile::exists(dst));
+    QImageReader out(dst);
+    QVERIFY(out.canRead());
+    QCOMPARE(out.imageCount(), 2);
+
+    // Frame 0 was solid red: after gray + 80% blue tint, blue dominates.
+    // Repeated read() calls return successive frames.
+    const QImage frame0 = out.read();
+    QVERIFY(!frame0.isNull());
+    const QRgb p0 = frame0.pixel(8, 8);
+    QVERIFY(qBlue(p0) > qRed(p0));
+    QVERIFY(qBlue(p0) > qGreen(p0));
+
+    // The second frame is still present and readable.
+    QVERIFY(!out.read().isNull());
+
+    // Preview mode on a GIF: a still single-frame PNG of the first frame.
+    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10), 0.8, 8));
+    const QImage smallImage(small);
+    QVERIFY(!smallImage.isNull());
+    QVERIFY(smallImage.width() <= 8 && smallImage.height() <= 8);
+
+    QFile::remove(src);
+    QFile::remove(dst);
+    QFile::remove(small);
+}
+
 void tst_Tools::testTintedImagePath()
 {
     QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/wall.png")),
@@ -145,6 +210,8 @@ void tst_Tools::testTintedImagePath()
         QStringLiteral("/home/u/pics/My Wall-tinted.jpg"));
     QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/wall.webp")),
         QStringLiteral("/home/u/pics/wall-tinted.webp"));
+    QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/wall.gif")),
+        QStringLiteral("/home/u/pics/wall-tinted.gif"));
 }
 
 void tst_Tools::testFastfetchSetSource()

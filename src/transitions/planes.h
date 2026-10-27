@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 KDE
+// SPDX-FileCopyrightText: 2023-2026 LGFae (awww, https://codeberg.org/LGFae/awww)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // The outgoing/incoming wallpaper planes read from the appletsrc snapshot,
 // and the plane compositor (port of the plane half of the Rust reference).
 #pragma once

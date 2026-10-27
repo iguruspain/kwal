@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 KDE
+// SPDX-FileCopyrightText: 2023-2026 LGFae (awww, https://codeberg.org/LGFae/awww)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Transition option types, parsers and resolution (the awww option set).
 // Port of the config half of the Rust reference (transitions.rs).
 #pragma once

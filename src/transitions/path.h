@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 KDE
+// SPDX-FileCopyrightText: 2023-2026 LGFae (awww, https://codeberg.org/LGFae/awww)
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // Path helpers shared by the transition plane readers (port of the lib.rs
 // helpers of the Rust reference).
 #pragma once

@@ -294,5 +294,15 @@ Kirigami.Page {
         drawer.drawerOpen = true
     }
 
-    Component.onCompleted: gridView.forceActiveFocus()
+    Component.onCompleted: {
+        // Reopen the grid positioned at the wallpaper applied last
+        // ([Wallpapers] currentWallpaper in kwalrc), when it is in this
+        // folder; setting currentIndex also selects it.
+        const index = page.app.wallpaperModel.filePaths().indexOf(page.app.currentWallpaper)
+        if (index >= 0) {
+            gridView.currentIndex = index
+            gridView.positionViewAtIndex(index, GridView.Center)
+        }
+        gridView.forceActiveFocus()
+    }
 }

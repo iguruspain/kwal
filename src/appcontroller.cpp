@@ -258,6 +258,13 @@ void AppController::setSelectedSourceColorIndex(int index)
         return;
     }
     m_selectedSourceColorIndex = index;
+    // The selection is per wallpaper, restored on the next startup and on
+    // reselection; until selectWallpaper has run there is no wallpaper to
+    // key it on.
+    if (!m_selectedWallpaper.isEmpty()) {
+        m_sourceColorSelections.insert(m_selectedWallpaper, index);
+        saveConfig();
+    }
     emit selectedSourceColorIndexChanged();
 }
 
@@ -490,8 +497,11 @@ void AppController::selectWallpaper(const QString &filePath)
         }
     }
     m_selectedWallpaperSize = source.isEmpty() ? QString() : imageResolution(source);
-    if (m_selectedSourceColorIndex != 0) {
-        m_selectedSourceColorIndex = 0;
+    // The dot selection is per wallpaper: restore this wallpaper's stored
+    // index (the first dot when it has none).
+    const int stored = m_sourceColorSelections.value(filePath, 0);
+    if (m_selectedSourceColorIndex != stored) {
+        m_selectedSourceColorIndex = stored;
         emit selectedSourceColorIndexChanged();
     }
     emit selectedWallpaperChanged();
@@ -745,6 +755,19 @@ void AppController::loadConfig()
                             group.readEntry("resizeHeight", kResizeHeightDefault),
                             kResizeHeightMax);
     m_resizeFps = qBound(0, group.readEntry("resizeFps", 0), kResizeFpsMax);
+    const QByteArray sourceColorData = group.readEntry("sourceColorSelections", QByteArray());
+    if (!sourceColorData.isEmpty()) {
+        const QJsonDocument parsed = QJsonDocument::fromJson(sourceColorData);
+        if (parsed.isObject()) {
+            const QJsonObject obj = parsed.object();
+            for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
+                const int index = it.value().toInt(-1);
+                if (index >= 0) {
+                    m_sourceColorSelections.insert(it.key(), index);
+                }
+            }
+        }
+    }
 
     // Both color features are on by default when matugen is installed; the
     // keys are absent on first run. Extraction runs while either is on.
@@ -813,6 +836,12 @@ void AppController::saveConfig()
     group.writeEntry("resizeEnabled", m_resizeEnabled);
     group.writeEntry("resizeHeight", m_resizeHeight);
     group.writeEntry("resizeFps", m_resizeFps);
+    QJsonObject sourceColorObj;
+    for (auto it = m_sourceColorSelections.constBegin(); it != m_sourceColorSelections.constEnd(); ++it) {
+        sourceColorObj.insert(it.key(), it.value());
+    }
+    group.writeEntry("sourceColorSelections",
+                     QString::fromUtf8(QJsonDocument(sourceColorObj).toJson(QJsonDocument::Compact)));
     KConfigGroup transitionsGroup = m_config->group(QStringLiteral("Transitions"));
     transitionsGroup.writeEntry("transitionEnabled", m_transitionEnabled);
     transitionsGroup.writeEntry("transitionLayer", m_transitionLayer);

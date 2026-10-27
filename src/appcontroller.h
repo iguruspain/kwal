@@ -9,6 +9,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include <KConfig>
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -261,9 +262,13 @@ private:
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
     // Index of the selected matugen source color dot of the current
-    // wallpaper; the first dot is selected by default. Reset on every
-    // wallpaper change.
+    // wallpaper; the first dot is selected by default. Per-wallpaper:
+    // restored from m_sourceColorSelections on every wallpaper change.
     int m_selectedSourceColorIndex = 0;
+    // Wallpaper path -> selected matugen source color dot index, so the
+    // dot selection survives a restart; persisted as a compact JSON
+    // object in [Wallpapers] "sourceColorSelections" of kwalrc.
+    QMap<QString, int> m_sourceColorSelections;
     // Custom commands, in execution order; persisted as a compact JSON
     // array in [Commands] "commands" of kwalrc.
     QList<CustomCommand> m_customCommands;

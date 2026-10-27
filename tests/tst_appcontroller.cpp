@@ -25,6 +25,7 @@ private slots:
     void testToolDetection();
     void testCustomCommands();
     void testCustomCommandExpansion();
+    void testSourceColorIndexPersistence();
 
 private:
     static void saveImage(const QString &path, Qt::GlobalColor color)
@@ -349,6 +350,33 @@ void tst_AppController::testCustomCommandExpansion()
     QCOMPARE(QString::fromUtf8(file.readLine()).trimmed(),
              wallpaper);
     QVERIFY(!QFile::exists(second));
+}
+
+void tst_AppController::testSourceColorIndexPersistence()
+{
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    const QString a = pictures + QStringLiteral("/A");
+    const QString alpha = a + QStringLiteral("/alpha.png");
+    const QString beta = a + QStringLiteral("/beta.png");
+
+    AppController app;
+    app.selectWallpaper(alpha);
+    app.setSelectedSourceColorIndex(3);
+
+    // A different wallpaper starts at the first dot, but reselecting a
+    // wallpaper restores its own stored dot.
+    app.selectWallpaper(beta);
+    QCOMPARE(app.selectedSourceColorIndex(), 0);
+    app.selectWallpaper(alpha);
+    QCOMPARE(app.selectedSourceColorIndex(), 3);
+
+    // Persists to the same [Wallpapers] group as the grid position and is
+    // visible to a fresh controller.
+    AppController app2;
+    app2.selectWallpaper(alpha);
+    QCOMPARE(app2.selectedSourceColorIndex(), 3);
+    app2.selectWallpaper(beta);
+    QCOMPARE(app2.selectedSourceColorIndex(), 0);
 }
 
 int main(int argc, char *argv[])

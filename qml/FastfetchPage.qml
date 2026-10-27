@@ -172,21 +172,33 @@ Kirigami.Page {
                         ToolTip.text: qsTr("Apply the selected image directly (no tint)")
                         ToolTip.visible: hovered
                         enabled: page.controller.selectedFile !== ""
+                            && !page.controller.busy
                         onClicked: page.controller.applyOriginalImage()
                     }
                     ToolButton {
-                        icon.name: "dialog-ok-apply"
-                        ToolTip.text: qsTr("Apply the tinted image")
+                        icon.name: page.controller.busy ? "" : "dialog-ok-apply"
+                        ToolTip.text: page.controller.busy
+                            ? qsTr("Tinting the image…")
+                            : qsTr("Apply the tinted image")
                         ToolTip.visible: hovered
                         enabled: page.controller.selectedFile !== ""
                             && page.controller.draftColor !== "transparent"
+                            && !page.controller.busy
                         onClicked: page.controller.applyTintedImage()
+                        BusyIndicator {
+                            anchors.centerIn: parent
+                            width: 24
+                            height: 24
+                            running: page.controller.busy
+                            visible: page.controller.busy
+                        }
                     }
                     ToolButton {
                         icon.name: "document-revert"
                         ToolTip.text: qsTr("Restore the fastfetch config from the last backup")
                         ToolTip.visible: hovered
                         enabled: page.controller.hasBackup
+                            && !page.controller.busy
                         onClicked: page.controller.restoreBackup()
                     }
                 }

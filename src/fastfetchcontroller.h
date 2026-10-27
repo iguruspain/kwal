@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QThreadPool>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
@@ -20,6 +21,10 @@ class FastfetchController : public QObject
     // True only after the user picked an image; false for the auto-adopted
     // config image. Drives the selected/tinted preview visibility.
     Q_PROPERTY(bool manuallySelected READ manuallySelected NOTIFY manuallySelectedChanged)
+    // True while the full-resolution tint of applyTintedImage is running
+    // on the thread pool; the QML buttons show a spinner and stay disabled.
+    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+
 
 public:
     explicit FastfetchController(QObject *parent = nullptr);
@@ -35,6 +40,8 @@ public:
     QString tintedPreviewUrl() const;
     bool hasBackup() const;
     bool manuallySelected() const;
+    // True while the full-resolution apply-tint job is running.
+    bool busy() const;
     // file:// URL (percent-encoded) for a local path; for QML Image sources.
     Q_INVOKABLE QString fileUrl(const QString &path) const;
     // Path the applied tinted copy of srcPath will be written to.
@@ -60,9 +67,16 @@ signals:
     void tintedPreviewChanged();
     void hasBackupChanged();
     void manuallySelectedChanged();
+    void busyChanged();
     void operationResult(bool success, const QString &message);
 
 private:
+    // Pools the ImageMagick passes off the UI thread; the result is posted
+    // back to the owning thread, where the state is updated.
+    class TintJob;
+    void setBusy(bool value);
+    void finishPreviewTint(bool ok, const QString &src, const QString &dst);
+    void finishApplyTint(bool ok, const QString &src, const QString &dst);
     void setConfigImage(const QString &path);
     void setSelectedFile(const QString &path);
     void setTintedPreviewPath(const QString &path);
@@ -81,4 +95,12 @@ private:
     QString m_tintedPreviewPath;
     int m_tintedPreviewRevision = 0;
     bool m_hasBackup = false;
+    // Tint jobs (main thread only; the pool threads touch nothing else).
+    QThreadPool m_pool;
+    QString m_previewPath;
+    bool m_previewRunning = false;
+    // A color change arrived while a preview job ran: re-run with the
+    // latest color once the running job finishes.
+    bool m_previewPending = false;
+    bool m_applyRunning = false;
 };

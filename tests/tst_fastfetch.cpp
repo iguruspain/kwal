@@ -161,8 +161,10 @@ void tst_Fastfetch::testTintedPreviewUrlBumpsCacheBuster()
     saveImage(img, Qt::red);
 
     FastfetchController controller;
+    QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
     controller.selectFile(img);
     controller.setDraftColor(QStringLiteral("#ff0000"));
+    QVERIFY(previewSpy.wait(10000));
     QVERIFY(!controller.tintedPreviewPath().isEmpty());
     const QString first = controller.tintedPreviewUrl();
     QVERIFY(first.startsWith(QUrl::fromLocalFile(controller.tintedPreviewPath()).toString()));
@@ -171,6 +173,7 @@ void tst_Fastfetch::testTintedPreviewUrlBumpsCacheBuster()
     // Same cache path, new color: the URL must change so the QML Image
     // source changes and reloads.
     controller.setDraftColor(QStringLiteral("#00ff00"));
+    QVERIFY(previewSpy.wait(10000));
     QCOMPARE(controller.tintedPreviewUrl() != first, true);
 
     // Without a preview the URL is empty.
@@ -219,16 +222,19 @@ void tst_Fastfetch::testSetDraftColorRegeneratesPreview()
     saveImage(img2, Qt::black);
 
     FastfetchController controller;
+    QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
     controller.selectFile(img);
     QCOMPARE(controller.tintedPreviewPath().isEmpty(), true); // no tint yet
 
     controller.setDraftColor(QStringLiteral("#336699"));
+    QVERIFY(previewSpy.wait(10000));
     QVERIFY(!controller.tintedPreviewPath().isEmpty());
 
     // Selecting another image re-generates the preview automatically:
     // same cache file, so the cache-buster must change.
     const QString url1 = controller.tintedPreviewUrl();
     controller.selectFile(img2);
+    QVERIFY(previewSpy.wait(10000));
     QVERIFY(!controller.tintedPreviewPath().isEmpty());
     QCOMPARE(controller.tintedPreviewUrl() != url1, true);
 

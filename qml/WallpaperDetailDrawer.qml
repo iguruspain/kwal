@@ -635,7 +635,7 @@ Kirigami.OverlayDrawer {
                                 ColorDot {
                                     Layout.alignment: Qt.AlignVCenter
                                     //dotSize: Kirigami.Units.gridUnit
-                                    color: drawer.app.customColor
+                                    color: drawer.app.customColor ? drawer.app.customColor : Kirigami.Theme.highlightColor
                                     enablePicker: true
                                     onAccepted: (hex) => drawer.app.customColor = hex
                                 }

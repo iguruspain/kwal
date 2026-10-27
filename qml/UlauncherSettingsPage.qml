@@ -84,6 +84,14 @@ Kirigami.ScrollablePage {
                     })
                 }
 
+                CheckBox {
+                    id: selectedCheck
+                    checked: modelData.selected
+                    ToolTip.text: qsTr("Selected row")
+                    ToolTip.visible: hovered
+                    onToggled: row.submit()
+                }
+
                 TextField {
                     id: iconField
                     Layout.preferredWidth: Kirigami.Units.gridUnit * 8
@@ -95,6 +103,7 @@ Kirigami.ScrollablePage {
                 TextField {
                     id: nameField
                     Layout.fillWidth: true
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
                     text: modelData.name
                     placeholderText: qsTr("Name")
                     onTextChanged: row.submit()
@@ -102,26 +111,19 @@ Kirigami.ScrollablePage {
 
                 TextField {
                     id: shortcutField
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 7
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 6
                     text: modelData.shortcut
                     placeholderText: qsTr("Shortcut")
                     onTextChanged: row.submit()
                 }
 
-                CheckBox {
-                    id: selectedCheck
-                    checked: modelData.selected
-                    ToolTip.text: qsTr("Selected row")
-                    ToolTip.visible: hovered
-                    onToggled: row.submit()
-                }
-
                 ToolButton {
-                    icon.name: "edit-delete"
+                    icon.name: "edit-clear"
                     ToolTip.text: qsTr("Remove row")
                     ToolTip.visible: hovered
                     onClicked: page.controller.removeSampleRow(row.rowId)
                 }
+                Item { Layout.fillWidth: true }
             }
         }
 

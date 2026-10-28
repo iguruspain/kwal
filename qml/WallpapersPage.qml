@@ -15,6 +15,11 @@ Kirigami.Page {
     // True while this page is the current tab; drives video playback gating.
     property bool pageActive: true
     property bool searchOpen: false
+    // True while the detail panel (right of the grid) is open.
+    property bool detailOpen: false
+    // Fraction of the content width the detail panel takes while open —
+    // not decided yet, tune to taste.
+    property real detailPanelFraction: 0.4
 
     // The 15 matugen color categories (name/hex/label from the original
     // app's categoryColorModel); the chips filter the grid (AND semantics).
@@ -63,6 +68,13 @@ Kirigami.Page {
         onActivated: page.toggleSearch()
     }
 
+    // Closes the detail panel (the old overlay drawer closed on Escape too).
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.ApplicationShortcut
+        enabled: page.detailOpen
+        onActivated: page.detailOpen = false
+    }
 
     header:ToolBar {
         background: Rectangle {
@@ -171,6 +183,7 @@ Kirigami.Page {
     }
 
     contentItem: RowLayout {
+        id: contentRow
         spacing: Kirigami.Units.largeSpacing
 
         FolderSidebar {
@@ -207,8 +220,10 @@ Kirigami.Page {
                     // Reserve space for the scrollbar to prevent visual overlap
                     anchors.rightMargin: Kirigami.Units.smallSpacing + Kirigami.Units.largeSpacing
 
-                    // Responsive cells, matching the old app: at least two ~250px-wide columns in a 16:9 grid.
-                    readonly property int columnCount: Math.max(2, Math.floor(width / 250))
+                    // Responsive cells: one ~250px-wide 16:9 column per
+                    // 250 px of width, down to a single full-width column
+                    // when squeezed (e.g. by the detail panel).
+                    readonly property int columnCount: Math.max(1, Math.floor(width / 250))
                     cellWidth: Math.floor(width / columnCount)
                     cellHeight: Math.floor(cellWidth * 0.5625)
                     model: page.app.wallpaperModel
@@ -223,9 +238,7 @@ Kirigami.Page {
                         app: page.app
                         grid: gridView
                         pageVisible: page.pageActive
-                        detailOpen: detailDrawerLoader.active
-                            ? (detailDrawerLoader.item as WallpaperDetailDrawer).drawerOpen
-                            : false
+                        detailOpen: page.detailOpen
                         sourceColors: model.sourceColors
                         onOpenDetail: (path, video) => page.openDetail(path, video)
                         // GridView does not resize delegates; fill the cell like the old app.
@@ -260,38 +273,39 @@ Kirigami.Page {
                 explanation: searchField.text === "" ? qsTr("Pick a folder with images to get started.") : qsTr("Try a different search term.")
             }
         }
-    }
 
-    // Detail drawer opened by double-clicking a cell. Created lazily on
-    // first open: Kirigami 6.31's DrawerHandle template declares
-    // `parent: overlay?.parent ?? null` and its `x` binding reads
-    // `parent.width` without a null guard, so a handle created before the
-    // window's overlay exists logs
-    // "TypeError: Cannot read property 'width' of null" at startup.
-    // Creating the drawer on first double-click (window fully up by then)
-    // makes that state unreachable.
-    Component {
-        id: detailDrawerComponent
+        // Detail panel (no overlay): sits right of the grid and pushes it
+        // aside, taking detailPanelFraction of the content area while open
+        // (the grid falls back to a single full-width column). Same
+        // width/opacity animation as the Folders sidebar; the width is the
+        // animated property that also drives visibility.
         WallpaperDetailDrawer {
+            id: detailPanel
             app: page.app
-            parent: page
             wallpaper: ""
             isVideo: false
             categorySwatches: page.categorySwatches
+            open: page.detailOpen
+            Layout.fillHeight: true
+            Layout.preferredWidth: page.detailOpen ? contentRow.width * page.detailPanelFraction : 0
+            visible: detailPanel.Layout.preferredWidth > 0
+            opacity: page.detailOpen ? 1 : 0
+            clip: true
+            Behavior on Layout.preferredWidth {
+                NumberAnimation { duration: Kirigami.Units.shortDuration; easing.type: Easing.InOutQuad }
+            }
+            Behavior on opacity {
+                OpacityAnimator { duration: Kirigami.Units.shortDuration }
+            }
+            onCloseRequested: page.detailOpen = false
         }
     }
-    Loader {
-        id: detailDrawerLoader
-        active: false
-        sourceComponent: detailDrawerComponent
-    }
 
+    // Opens the detail panel (right of the grid) for a wallpaper.
     function openDetail(path, video) {
-        detailDrawerLoader.active = true
-        const drawer = detailDrawerLoader.item as WallpaperDetailDrawer
-        drawer.wallpaper = path
-        drawer.isVideo = video
-        drawer.drawerOpen = true
+        detailPanel.wallpaper = path
+        detailPanel.isVideo = video
+        page.detailOpen = true
     }
 
     Component.onCompleted: {

@@ -61,7 +61,6 @@ ItemDelegate {
         onTriggered: root.videoArmed = true
     }
 
-    activeFocusOnTab: false
     hoverEnabled: true
 
     contentItem: Item {

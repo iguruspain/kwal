@@ -14,7 +14,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Multimedia Qml Quick QuickControls2 Test Widgets WebEngineQuick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Multimedia Network Qml Quick QuickControls2 Test Widgets WebEngineQuick)
 find_package(KF6 REQUIRED COMPONENTS Config Kirigami KirigamiPlatform)
 # libavutil: already a runtime dependency of Qt Multimedia's FFmpeg backend;
 # linked only to set the ffmpeg log level in main.cpp.
@@ -222,6 +222,8 @@ enable_testing()
 qt_add_executable(kwal
  src/aboutinfo.cpp
  src/aboutinfo.h
+ src/aitagger.cpp
+ src/aitagger.h
  src/appcontroller.cpp
  src/colorcategory.cpp
  src/colorcategory.h
@@ -292,6 +294,7 @@ target_link_libraries(kwal
  Qt6::DBus
  Qt6::Gui
  Qt6::Multimedia
+ Qt6::Network
  Qt6::Widgets
 Qt6::WebEngineQuick
  KF6::ConfigCore
@@ -352,6 +355,8 @@ add_test(NAME tst_transitions COMMAND tst_transitions)
 target_include_directories(kwal PRIVATE src)
 qt_add_executable(tst_appcontroller
  tests/tst_appcontroller.cpp
+ src/aitagger.cpp
+ src/aitagger.h
  src/appcontroller.cpp
  src/colorcategory.cpp
  src/colorcategory.h
@@ -388,12 +393,36 @@ target_link_libraries(tst_appcontroller
  Qt6::Gui
  Qt6::Qml
  Qt6::DBus
+ Qt6::Network
  Qt6::Test
  mcu_lib
  KF6::ConfigCore
  kwal_transitions
 )
 add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
+qt_add_executable(tst_aitagger
+ tests/tst_aitagger.cpp
+ src/aitagger.cpp
+ src/aitagger.h
+ src/wallpapermodel.cpp
+ src/wallpapermodel.h
+ src/wallpapersinfo.cpp
+ src/wallpapersinfo.h
+ src/colorcategory.cpp
+ src/colorcategory.h
+)
+target_include_directories(tst_aitagger PRIVATE src)
+target_link_libraries(tst_aitagger
+ PRIVATE
+ Qt6::Core
+ Qt6::Gui
+ Qt6::Qml
+ Qt6::Network
+ Qt6::Test
+ KF6::ConfigCore
+ mcu_lib
+)
+add_test(NAME tst_aitagger COMMAND tst_aitagger)
 qt_add_executable(tst_wallpapersinfo
  tests/tst_wallpapersinfo.cpp
  src/wallpapersinfo.cpp

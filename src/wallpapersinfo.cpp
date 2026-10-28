@@ -810,6 +810,33 @@ void WallpapersInfo::setTags(const QString &path, const QStringList &tags)
     emit entryChanged(path);
 }
 
+void WallpapersInfo::mergeTags(const QString &path, const QStringList &additions)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        auto it = m_entries.find(path);
+        if (it == m_entries.end()) {
+            Entry entry;
+            entry.file = path;
+            it = m_entries.insert(entry.file, entry);
+        }
+        QSet<QString> seen;
+        for (const QString &tag : it->tags) {
+            seen.insert(tag.toLower());
+        }
+        for (const QString &tag : additions) {
+            const QString key = tag.toLower();
+            if (!seen.contains(key)) {
+                seen.insert(key);
+                it->tags.append(tag);
+            }
+        }
+        it->tagsManual = true;
+        saveLocked();
+    }
+    emit entryChanged(path);
+}
+
 void WallpapersInfo::recalculateCategories(const QString &path)
 {
     QString image;

@@ -89,6 +89,31 @@ Kirigami.OverlayDrawer {
         return Kirigami.Theme.highlightColor
     }
 
+    // AI tag results for the wallpaper the drawer shows; the tag chips
+    // themselves resync through entryChanged.
+    function notify(message) {
+        // qmllint disable unqualified
+        const win = applicationWindow()
+        // qmllint enable unqualified
+        if (win) {
+            win.showPassiveNotification(message, "long")
+        }
+    }
+
+    Connections {
+        target: drawer.app.aiTagger
+        function onWallpaperTagged(path, ok, message, tags) {
+            if (path === drawer.wallpaper) {
+                drawer.notify(ok
+                    ? qsTr("Tags updated (%1)").arg(tags.length)
+                    : qsTr("AI tagging failed: %1").arg(message))
+            }
+        }
+        function onError(message) {
+            drawer.notify(message)
+        }
+    }
+
     // QML split() returns a plain JS array (no last()), so index the end.
     function fileNameOf(path) {
         const parts = path.split("/")
@@ -442,6 +467,24 @@ Kirigami.OverlayDrawer {
                                                     ToolTip.visible: hovered
                                                     ToolTip.delay: Kirigami.Units.toolTipDelay
                                                     onClicked: drawer.tagInputVisible = checked
+                                                }
+
+                                                // Replaces the tags with AI suggestions from the configured
+                                                // OpenAI-compatible endpoint (Settings → Wallpapers).
+                                                ToolButton {
+                                                    icon.name: "tag-new"
+                                                    enabled: !drawer.app.aiTagger.tagging
+                                                    Accessible.name: qsTr("Generate tags with AI")
+                                                    ToolTip.text: qsTr("Add AI-suggested tags to the existing ones")
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                                                    onClicked: {
+                                                        if (drawer.app.aiTagger.endpoint === "" || drawer.app.aiTagger.model === "") {
+                                                            drawer.notify(qsTr("Set the AI endpoint and model in Settings → Wallpapers first."))
+                                                        } else {
+                                                            drawer.app.aiTagger.tagWallpaper(drawer.wallpaper)
+                                                        }
+                                                    }
                                                 }
                                             }
 

@@ -33,8 +33,41 @@ Kirigami.ScrollablePage {
         qsTr("Wave height"),
         qsTr("Position"),
         qsTr("Invert Y"),
-        qsTr("Easing curve")
+        qsTr("Easing curve"),
+        qsTr("API endpoint"),
+        qsTr("Model"),
+        qsTr("System prompt"),
+        qsTr("Tag wallpapers")
     ]
+
+    // The page is hosted by the settings window; notify there so the
+    // message lands on top of it.
+    function notify(message) {
+        // qmllint disable missing-property
+        const win = page.parent
+        if (win && win.showPassiveNotification) {
+            win.showPassiveNotification(message, "long")
+        }
+        // qmllint enable missing-property
+    }
+
+    Connections {
+        target: page.app.aiTagger
+        function onTaggingFinished(succeeded, failed) {
+            let message
+            if (failed > 0) {
+                message = qsTr("Tagging finished: %1 succeeded, %2 failed").arg(succeeded).arg(failed)
+            } else if (succeeded === 1) {
+                message = qsTr("Tagging finished: 1 wallpaper tagged")
+            } else {
+                message = qsTr("Tagging finished: %1 wallpapers tagged").arg(succeeded)
+            }
+            page.notify(message)
+        }
+        function onError(message) {
+            page.notify(message)
+        }
+    }
 
     // Direct child of the ScrollablePage (no contentItem override): the page
     // anchors left/right to its scroll area; the top anchor keeps the content
@@ -73,6 +106,7 @@ Kirigami.ScrollablePage {
 
         Kirigami.Heading {
             Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.largeSpacing
             text: qsTr("Application")
             level: 3
         }
@@ -87,6 +121,7 @@ Kirigami.ScrollablePage {
 
         Kirigami.Heading {
             Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.largeSpacing
             text: qsTr("Transitions")
             level: 3
         }
@@ -219,6 +254,7 @@ Kirigami.ScrollablePage {
 
         Kirigami.Heading {
             Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.largeSpacing
             text: qsTr("Video resize")
             level: 3
         }
@@ -283,6 +319,116 @@ Kirigami.ScrollablePage {
             to: Math.max(1, page.app.wallpapersInfo.resizeTotal)
             value: page.app.wallpapersInfo.resizeCompleted
             visible: page.app.wallpapersInfo.resizing
+        }
+
+        Kirigami.Heading {
+            Layout.fillWidth: true
+            Layout.topMargin: Kirigami.Units.largeSpacing
+            text: qsTr("AI tagging")
+            level: 3
+        }
+
+        Kirigami.FormLayout {
+            Layout.fillWidth: true
+
+            TextField {
+                Kirigami.FormData.label: qsTr("API endpoint")
+                text: page.app.aiTagger.endpoint
+                placeholderText: "http://localhost:18080"
+                onEditingFinished: {
+                    page.app.aiTagger.endpoint = text
+                    if (text !== "" && page.app.aiTagger.models.length === 0) {
+                        page.app.aiTagger.fetchModels()
+                    }
+                }
+            }
+
+            RowLayout {
+                Kirigami.FormData.label: qsTr("Model")
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                ComboBox {
+                    id: modelCombo
+                    Layout.fillWidth: true
+                    model: page.app.aiTagger.models
+                    displayText: page.app.aiTagger.model
+                    enabled: page.app.aiTagger.endpoint !== ""
+                    ToolTip.text: page.app.aiTagger.modelsError
+                    ToolTip.visible: hovered && page.app.aiTagger.modelsError !== ""
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    onActivated: (index) => page.app.aiTagger.model = modelCombo.textAt(index)
+                }
+
+                ToolButton {
+                    icon.name: page.app.aiTagger.modelsLoading ? "hourglass" : "view-refresh"
+                    enabled: page.app.aiTagger.endpoint !== "" && !page.app.aiTagger.modelsLoading
+                    Accessible.name: qsTr("Fetch models")
+                    ToolTip.text: qsTr("Fetch the available models from the API")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    onClicked: page.app.aiTagger.fetchModels()
+                }
+            }
+
+            ScrollView {
+                id: promptView
+                Kirigami.FormData.label: qsTr("System prompt")
+                Layout.fillWidth: true
+                // Pin the row height: the TextEdit's content-based implicit
+                // height would overflow onto the next row; longer prompts
+                // scroll inside the view.
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 16
+                implicitHeight: Kirigami.Units.gridUnit * 16
+                ScrollBar.vertical: ScrollBar {}
+
+                TextArea {
+                    id: promptArea
+                    width: promptView.width
+                    text: page.app.aiTagger.systemPrompt !== ""
+                        ? page.app.aiTagger.systemPrompt
+                        : page.app.aiTagger.defaultSystemPrompt
+                    wrapMode: TextArea.Wrap
+                    onEditingFinished: page.app.aiTagger.systemPrompt = text
+                }
+            }
+
+            RowLayout {
+                Kirigami.FormData.label: qsTr("Folder")
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                ComboBox {
+                    id: aiFolderCombo
+                    Layout.fillWidth: true
+                    model: page.app.folders
+                    currentIndex: page.app.folders.indexOf(page.app.aiTagger.folder)
+                    enabled: page.app.folders.length > 0
+                    onActivated: (index) => page.app.aiTagger.folder = aiFolderCombo.textAt(index)
+                }
+
+                ToolButton {
+                    icon.name: page.app.aiTagger.tagging ? "hourglass" : "tag-new"
+                    display: AbstractButton.IconOnly
+                    Accessible.name: qsTr("Tag wallpapers")
+                    ToolTip.text: qsTr("Tag every wallpaper in the folder with AI")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    enabled: !page.app.aiTagger.tagging
+                        && page.app.aiTagger.endpoint !== ""
+                        && page.app.aiTagger.model !== ""
+                        && page.app.folders.length > 0
+                    onClicked: page.app.aiTagger.tagFolder(page.app.aiTagger.folder)
+                }
+            }
+        }
+
+        ProgressBar {
+            Layout.fillWidth: true
+            from: 0
+            to: Math.max(1, page.app.aiTagger.tagTotal)
+            value: page.app.aiTagger.tagCompleted
+            visible: page.app.aiTagger.tagging
         }
     }
 }

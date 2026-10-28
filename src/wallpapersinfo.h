@@ -73,6 +73,9 @@ public:
     // Manual overrides from the UI; preserved across folder rescans.
     Q_INVOKABLE void setCategories(const QString &path, const QStringList &categories);
     Q_INVOKABLE void setTags(const QString &path, const QStringList &tags);
+    // Adds the given tags to the entry when not already present (case
+    // insensitive), keeping the existing order; preserved across rescans.
+    Q_INVOKABLE void mergeTags(const QString &path, const QStringList &additions);
     // Replaces the entry's categories with the automatic ones (computed from
     // the image or first frame) and clears the manual flag.
     Q_INVOKABLE void recalculateCategories(const QString &path);

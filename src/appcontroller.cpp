@@ -169,6 +169,7 @@ AppController::AppController(QObject *parent)
     , m_paletteExtractor(new PaletteExtractor(this))
 {
     m_ulauncher = new UlauncherController(m_config->group(QStringLiteral("Ulauncher")), this);
+    m_aitagger = new AiTagger(m_config->group(QStringLiteral("Wallpapers")), this);
     loadConfig();
     connect(m_plasmaApply, &PlasmaApply::result, this, [this](bool allOk, const QString &message) {
         wallpaperFinished(allOk, message);
@@ -357,6 +358,11 @@ bool AppController::ulauncherAvailable() const
 UlauncherController *AppController::ulauncher() const
 {
     return m_ulauncher;
+}
+
+AiTagger *AppController::aiTagger() const
+{
+    return m_aitagger;
 }
 
 WallpapersInfo *AppController::wallpapersInfo() const

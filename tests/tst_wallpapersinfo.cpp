@@ -37,6 +37,7 @@ private slots:
     void testSweep();
     void testRecalculateCategories();
     void testAutoCategoryCap();
+    void testMergeTags();
 
 private:
     static QString cacheRoot()
@@ -538,6 +539,32 @@ void tst_WallpapersInfo::testAutoCategoryCap()
     info->setCategories(path, colorcategory::categoryList());
     QCOMPARE(info->colorCategoriesFor(path).size(), 15);
     QCOMPARE(info->entryFor(path).categoriesManual, true);
+}
+
+void tst_WallpapersInfo::testMergeTags()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.path() + QStringLiteral("/sunflower.jpg");
+
+    // Merge into an entry with no tags creates them; the manual flag keeps
+    // them across rescans.
+    info->mergeTags(path, {QStringLiteral("landscape")});
+    QCOMPARE(info->tagsFor(path), QStringList{QStringLiteral("landscape")});
+    QCOMPARE(info->entryFor(path).tagsManual, true);
+
+    // Existing tags survive; duplicates are dropped case-insensitively and
+    // the existing order is kept.
+    info->mergeTags(path, {QStringLiteral("LANDSCAPE"), QStringLiteral("sunflower"), QStringLiteral("photo")});
+    QCOMPARE(info->tagsFor(path),
+             (QStringList{QStringLiteral("landscape"), QStringLiteral("sunflower"), QStringLiteral("photo")}));
+
+    // A second merge adds only what is new.
+    info->mergeTags(path, {QStringLiteral("sunflower"), QStringLiteral("clouds")});
+    QCOMPARE(info->tagsFor(path),
+             (QStringList{QStringLiteral("landscape"), QStringLiteral("sunflower"),
+                          QStringLiteral("photo"), QStringLiteral("clouds")}));
 }
 
 int main(int argc, char *argv[])

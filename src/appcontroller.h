@@ -1,5 +1,6 @@
 #pragma once
 
+#include "aitagger.h"
 #include "paletteextractor.h"
 #include "plasmaapply.h"
 #include "ulaunchercontroller.h"
@@ -64,6 +65,9 @@ class AppController : public QObject
     Q_PROPERTY(UlauncherController *ulauncher READ ulauncher CONSTANT)
     Q_PROPERTY(WallpapersInfo *wallpapersInfo READ wallpapersInfo CONSTANT)
     Q_PROPERTY(PaletteExtractor *paletteExtractor READ paletteExtractor CONSTANT)
+    // AI tag generation against an OpenAI-compatible chat API; settings
+    // persist in [Wallpapers] of kwalrc.
+    Q_PROPERTY(AiTagger *aiTagger READ aiTagger CONSTANT)
     // [Transitions]: layer-shell overlay animation applied on wallpaper
     // switches.
     Q_PROPERTY(bool transitionEnabled READ transitionEnabled WRITE setTransitionEnabled NOTIFY transitionEnabledChanged)
@@ -124,6 +128,7 @@ public:
     UlauncherController *ulauncher() const;
     WallpapersInfo *wallpapersInfo() const;
     PaletteExtractor *paletteExtractor() const;
+    AiTagger *aiTagger() const;
     bool matugenDotsEnabled() const;
     void setMatugenDotsEnabled(bool enabled);
     bool colorCategoriesEnabled() const;
@@ -245,6 +250,8 @@ private:
     UlauncherController *m_ulauncher = nullptr;
     // Owned by this object; runs palette extraction on a thread pool.
     PaletteExtractor *m_paletteExtractor = nullptr;
+    // Owned by this object; AI tag generation, settings in [Wallpapers].
+    AiTagger *m_aitagger = nullptr;
     std::unique_ptr<KConfig> m_config;
     QStringList m_folders;
     QStringList m_videoFolders;

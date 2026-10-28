@@ -44,6 +44,9 @@ public:
 
     // True if the file has one of the supported video extensions.
     static bool isVideo(const QString &filePath);
+    // Instance form exposed to QML (QML cannot call static invokables);
+    // used by the detail panel's isVideo binding.
+    Q_INVOKABLE bool isVideoFile(const QString &filePath) const;
     // True if the file has one of the supported image extensions.
     static bool isImage(const QString &filePath);
     // Name filters (e.g. "*.mp4") for the supported video extensions; the

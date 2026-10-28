@@ -26,13 +26,26 @@ Rectangle {
 
     signal closeRequested()
 
-    // Local copies of the wallpaper's categories/tags. They are reassigned
-    // (never mutated in place) so bindings re-evaluate, and each change is
-    // written back through WallpapersInfo.
+    // Local copies of the wallpaper's categories/tags/source colors.
+    // They are reassigned (never mutated in place) so bindings
+    // re-evaluate; the editable ones are written back through
+    // WallpapersInfo.
     property var categories: []
     property var tags: []
+    // Mirrored so the matugen dots appear as soon as the extraction job
+    // finishes (entryChanged), not only when the panel happens to open
+    // after it — the common case for videos (first-frame extraction).
+    property var sourceColors: []
     // Whether the tag input field is shown; toggled by the "+" button.
     property bool tagInputVisible: false
+
+    // Animated GIF: QQuickImage only shows the first frame, so the media
+    // area uses AnimatedImage (QMovie-based) for them.
+    readonly property bool isGif: {
+        const dot = root.wallpaper.lastIndexOf(".")
+        return dot > 0
+            && root.wallpaper.substring(dot + 1).toLowerCase() === "gif"
+    }
 
     property string paletteBackend: "materialyou"
     property bool paletteDark: true
@@ -67,6 +80,7 @@ Rectangle {
     function syncWithInfo() {
         categories = app.wallpapersInfo.colorCategoriesFor(root.wallpaper)
         tags = app.wallpapersInfo.tagsFor(root.wallpaper)
+        sourceColors = app.wallpapersInfo.sourceColorsFor(root.wallpaper)
         paletteSwatches = []
         paletteSelected = -1
         // A completion that is about to be discarded must not leave the
@@ -242,11 +256,32 @@ Rectangle {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
+                visible: !root.isGif
                 source: root.isVideo
                     ? (root.app.wallpapersInfo.firstFrameFor(root.wallpaper) !== ""
                         ? root.app.fileUrl(root.app.wallpapersInfo.firstFrameFor(root.wallpaper))
                         : "")
                     : root.app.fileUrl(root.wallpaper)
+            }
+
+            // Plays the GIF frames in place while the panel is open
+            // (QQuickImage above only shows the first frame).
+            AnimatedImage {
+                id: mediaGif
+                anchors.fill: parent
+                anchors.margins: 2
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                smooth: true
+                // AnimatedImage caches every frame in memory; cap the
+                // stored frame width at 1280 so a big GIF does not exhaust
+                // memory. The zero height lets Qt compute it from the GIF's
+                // natural size, keeping the aspect ratio (a fixed square
+                // would stretch the frames).
+                sourceSize: Qt.size(1280, 0)
+                source: root.isGif ? root.app.fileUrl(root.wallpaper) : ""
+                visible: root.isGif
+                playing: root.isGif && root.open
             }
 
             // The MediaPlayer lives inside the Loader so closing the
@@ -295,7 +330,7 @@ Rectangle {
                 anchors.bottom: parent.bottom
                 anchors.margins: Kirigami.Units.smallSpacing * 2
                 visible: root.app.matugenDotsEnabled
-                    && root.app.wallpapersInfo.sourceColorsFor(root.wallpaper).length > 0
+                    && root.sourceColors.length > 0
                 color: "transparent"
                 width: sourceDots.implicitWidth + Kirigami.Units.smallSpacing * 2
                 height: sourceDots.implicitHeight + Kirigami.Units.smallSpacing * 2
@@ -306,7 +341,7 @@ Rectangle {
                     spacing: 2
 
                     Repeater {
-                        model: root.app.wallpapersInfo.sourceColorsFor(root.wallpaper)
+                        model: root.sourceColors
                         delegate: ColorDot {
                             required property string modelData
                             required property int index

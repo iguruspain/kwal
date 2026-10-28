@@ -45,13 +45,17 @@ ItemDelegate {
     // right away.
     readonly property bool videoActive:
         root.isVideo && root.isSelected && root.pageVisible && !root.detailOpen
+    // Animated GIF: QQuickImage only shows the first frame, so GIFs use
+    // AnimatedImage (QMovie-based, plays the frames in place).
+    readonly property bool isGif: root.extension.toLowerCase() === "gif"
     // Armed after the start delay; the Loader (whose active defaults to
     // true) is only loaded once armed, and it disarms itself immediately
     // whenever it stops.
     property bool videoArmed: false
 
-    // Double-click on a cell: the page opens the detail drawer for it.
-    signal openDetail(string path, bool isVideo)
+    // Double-click on a cell: the page opens the detail drawer, which
+    // shows the grid selection (this cell, since the click selected it).
+    signal openDetail()
 
     // Covers the highlight transition (GridView default ~250ms).
     Timer {
@@ -71,7 +75,7 @@ ItemDelegate {
             id: cellMouse
             anchors.fill: parent
             onClicked: root.grid.currentIndex = root.index
-            onDoubleClicked: root.openDetail(root.path, root.isVideo)
+            onDoubleClicked: root.openDetail()
         }
         // Rounded clipped container like the old app: keeps the hover/selection zoom inside the cell.
         Rectangle {
@@ -101,7 +105,39 @@ ItemDelegate {
                 // VideoOutput is transparent before the first frame.
                 opacity: status === Image.Ready ? 1.0 : 0.0
                 Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
+                visible: !root.isGif
             }
+            // AnimatedImage cannot use QQuickImageProvider, so it loads the
+            // real file URL instead of the thumbnail.
+            AnimatedImage {
+                id: gifImage
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectCrop
+                asynchronous: true
+                smooth: true
+                // AnimatedImage caches every frame in memory; cap the
+                // stored frame width at 1280 so a big GIF does not exhaust
+                // memory. The zero height lets Qt compute it from the GIF's
+                // natural size, keeping the aspect ratio (a fixed square
+                // would stretch the frames).
+                sourceSize: Qt.size(1280, 0)
+                source: root.isGif ? root.app.fileUrl(root.path) : ""
+                visible: root.isGif
+                // Like the video player, the animation pauses while the
+                // detail panel shows the same file.
+                playing: !root.detailOpen
+                scale: root.hovered ? 1.14 : (root.isSelected ? 1.07 : 1.0)
+                Behavior on scale {
+                    SpringAnimation {
+                        spring: 8.0
+                        damping: 0.55
+                        mass: 1.0
+                    }
+                }
+                opacity: status === Image.Ready ? 1.0 : 0.0
+                Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration } }
+            }
+
             Loader {
                 id: videoLoader
                 anchors.fill: parent
@@ -132,7 +168,10 @@ ItemDelegate {
             anchors.centerIn: parent
             source: "image-x-generic"
             color: Kirigami.Theme.disabledTextColor
-            visible: !videoLoader.active && (root.thumbnail.toString() === "" || thumbnailImage.status === Image.Error)
+            visible: !videoLoader.active
+                && (root.thumbnail.toString() === ""
+                    || thumbnailImage.status === Image.Error
+                    || (root.isGif && gifImage.status === Image.Error))
         }
         ToolButton {
             anchors.right: parent.right

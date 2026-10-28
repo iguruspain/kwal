@@ -240,7 +240,7 @@ Kirigami.Page {
                         pageVisible: page.pageActive
                         detailOpen: page.detailOpen
                         sourceColors: model.sourceColors
-                        onOpenDetail: (path, video) => page.openDetail(path, video)
+                        onOpenDetail: page.openDetail()
                         // GridView does not resize delegates; fill the cell like the old app.
                         width: gridView.cellWidth
                         height: gridView.cellHeight
@@ -282,8 +282,10 @@ Kirigami.Page {
         WallpaperDetailDrawer {
             id: detailPanel
             app: page.app
-            wallpaper: ""
-            isVideo: false
+            // Follows the grid selection, so moving the highlight (click
+            // or arrow keys) while the panel is open switches its content.
+            wallpaper: page.app.selectedWallpaper
+            isVideo: page.app.wallpaperModel.isVideoFile(page.app.selectedWallpaper)
             categorySwatches: page.categorySwatches
             open: page.detailOpen
             Layout.fillHeight: true
@@ -301,11 +303,19 @@ Kirigami.Page {
         }
     }
 
-    // Opens the detail panel (right of the grid) for a wallpaper.
-    function openDetail(path, video) {
-        detailPanel.wallpaper = path
-        detailPanel.isVideo = video
+    // Opens the detail panel (right of the grid); it shows the current
+    // grid selection. A cleared selection (folder switch, or a search
+    // filter matching nothing) closes it again.
+    function openDetail() {
         page.detailOpen = true
+    }
+
+    Connections {
+        target: page.app
+        function onSelectedWallpaperChanged(path) {
+            if (path === "")
+                page.detailOpen = false
+        }
     }
 
     Component.onCompleted: {

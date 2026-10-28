@@ -121,6 +121,11 @@ bool WallpaperModel::isVideo(const QString &filePath)
     return videoExtensions().contains(QFileInfo(filePath).suffix(), Qt::CaseInsensitive);
 }
 
+bool WallpaperModel::isVideoFile(const QString &filePath) const
+{
+    return isVideo(filePath);
+}
+
 bool WallpaperModel::isImage(const QString &filePath)
 {
     return imageExtensions().contains(QFileInfo(filePath).suffix(), Qt::CaseInsensitive);

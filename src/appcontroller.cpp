@@ -259,12 +259,13 @@ void AppController::setSelectedSourceColorIndex(int index)
         return;
     }
     m_selectedSourceColorIndex = index;
-    // The selection is per wallpaper, restored on the next startup and on
-    // reselection; until selectWallpaper has run there is no wallpaper to
-    // key it on.
+    // The dot selection is per wallpaper in-session; only the applied
+    // wallpaper's is persisted (saveConfig writes that entry alone).
     if (!m_selectedWallpaper.isEmpty()) {
         m_sourceColorSelections.insert(m_selectedWallpaper, index);
-        saveConfig();
+        if (m_selectedWallpaper == m_currentWallpaper) {
+            saveConfig();
+        }
     }
     emit selectedSourceColorIndexChanged();
 }
@@ -620,6 +621,9 @@ void AppController::wallpaperFinished(bool allOk, const QString &message)
 void AppController::setCurrentWallpaper(const QString &filePath)
 {
     m_currentWallpaper = filePath;
+    // The persisted selection is always the applied wallpaper's; the
+    // selection active at apply time is the one the custom commands used.
+    m_sourceColorSelections.insert(filePath, m_selectedSourceColorIndex);
     saveConfig();
     emit currentWallpaperChanged();
 }
@@ -761,16 +765,16 @@ void AppController::loadConfig()
                             group.readEntry("resizeHeight", kResizeHeightDefault),
                             kResizeHeightMax);
     m_resizeFps = qBound(0, group.readEntry("resizeFps", 0), kResizeFpsMax);
+    // The persisted selection only covers the applied wallpaper; entries
+    // of previously applied ones (older versions stored one per touched
+    // wallpaper) are dropped.
     const QByteArray sourceColorData = group.readEntry("sourceColorSelections", QByteArray());
-    if (!sourceColorData.isEmpty()) {
+    if (!sourceColorData.isEmpty() && !m_currentWallpaper.isEmpty()) {
         const QJsonDocument parsed = QJsonDocument::fromJson(sourceColorData);
         if (parsed.isObject()) {
-            const QJsonObject obj = parsed.object();
-            for (auto it = obj.constBegin(); it != obj.constEnd(); ++it) {
-                const int index = it.value().toInt(-1);
-                if (index >= 0) {
-                    m_sourceColorSelections.insert(it.key(), index);
-                }
+            const int index = parsed.object().value(m_currentWallpaper).toInt(-1);
+            if (index >= 0) {
+                m_sourceColorSelections.insert(m_currentWallpaper, index);
             }
         }
     }
@@ -842,9 +846,11 @@ void AppController::saveConfig()
     group.writeEntry("resizeEnabled", m_resizeEnabled);
     group.writeEntry("resizeHeight", m_resizeHeight);
     group.writeEntry("resizeFps", m_resizeFps);
+    // Only the applied wallpaper's dot selection is persisted; the rest of
+    // the map is a session-local cache.
     QJsonObject sourceColorObj;
-    for (auto it = m_sourceColorSelections.constBegin(); it != m_sourceColorSelections.constEnd(); ++it) {
-        sourceColorObj.insert(it.key(), it.value());
+    if (!m_currentWallpaper.isEmpty() && m_sourceColorSelections.contains(m_currentWallpaper)) {
+        sourceColorObj.insert(m_currentWallpaper, m_sourceColorSelections.value(m_currentWallpaper));
     }
     group.writeEntry("sourceColorSelections",
                      QString::fromUtf8(QJsonDocument(sourceColorObj).toJson(QJsonDocument::Compact)));

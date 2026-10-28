@@ -360,23 +360,41 @@ void tst_AppController::testSourceColorIndexPersistence()
     const QString beta = a + QStringLiteral("/beta.png");
 
     AppController app;
+    QCOMPARE(app.currentWallpaper().isEmpty(), true); // no wallpaper applied yet
+
+    // In-session the selection is per wallpaper: a dot choice follows the
+    // navigation and survives going back.
     app.selectWallpaper(alpha);
     app.setSelectedSourceColorIndex(3);
-
-    // A different wallpaper starts at the first dot, but reselecting a
-    // wallpaper restores its own stored dot.
     app.selectWallpaper(beta);
     QCOMPARE(app.selectedSourceColorIndex(), 0);
     app.selectWallpaper(alpha);
     QCOMPARE(app.selectedSourceColorIndex(), 3);
 
-    // Persists to the same [Wallpapers] group as the grid position and is
-    // visible to a fresh controller.
+    // Nothing is persisted while no wallpaper has been applied.
     AppController app2;
     app2.selectWallpaper(alpha);
-    QCOMPARE(app2.selectedSourceColorIndex(), 3);
-    app2.selectWallpaper(beta);
     QCOMPARE(app2.selectedSourceColorIndex(), 0);
+
+    // Applying the selected wallpaper persists its active dot selection
+    // as the single stored entry.
+    app.setCurrentWallpaper(alpha);
+    AppController app3;
+    app3.selectWallpaper(alpha);
+    QCOMPARE(app3.selectedSourceColorIndex(), 3);
+    app3.selectWallpaper(beta);
+    QCOMPARE(app3.selectedSourceColorIndex(), 0);
+
+    // A dot choice on a non-applied wallpaper is session-local; applying
+    // that wallpaper stores the selection active at apply time and keeps
+    // the config single-entry.
+    app3.setSelectedSourceColorIndex(5); // on beta, not applied yet
+    app3.setCurrentWallpaper(beta);
+    AppController app4;
+    app4.selectWallpaper(beta);
+    QCOMPARE(app4.selectedSourceColorIndex(), 5);
+    app4.selectWallpaper(alpha);
+    QCOMPARE(app4.selectedSourceColorIndex(), 0);
 }
 
 int main(int argc, char *argv[])

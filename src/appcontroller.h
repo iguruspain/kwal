@@ -269,12 +269,14 @@ private:
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
     // Index of the selected matugen source color dot of the current
-    // wallpaper; the first dot is selected by default. Per-wallpaper:
-    // restored from m_sourceColorSelections on every wallpaper change.
+    // wallpaper; the first dot is selected by default. Restored from
+    // m_sourceColorSelections on every wallpaper change (only the applied
+    // wallpaper has a stored entry).
     int m_selectedSourceColorIndex = 0;
-    // Wallpaper path -> selected matugen source color dot index, so the
-    // dot selection survives a restart; persisted as a compact JSON
-    // object in [Wallpapers] "sourceColorSelections" of kwalrc.
+    // Session cache of wallpaper path -> selected matugen source color
+    // dot index (per-wallpaper restore while navigating); only the
+    // applied wallpaper's entry is persisted, as a single-entry compact
+    // JSON object in [Wallpapers] "sourceColorSelections" of kwalrc.
     QMap<QString, int> m_sourceColorSelections;
     // Custom commands, in execution order; persisted as a compact JSON
     // array in [Commands] "commands" of kwalrc.

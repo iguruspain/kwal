@@ -87,7 +87,7 @@ bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &t
 QString tintedImagePath(const QString &srcPath)
 {
     QFileInfo info(srcPath);
-    return info.absolutePath() + QStringLiteral("/") + info.completeBaseName()
+    return info.absolutePath() + QStringLiteral("/tinted/") + info.completeBaseName()
         + QStringLiteral("-tinted.") + info.suffix();
 }
 

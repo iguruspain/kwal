@@ -309,6 +309,7 @@ void FastfetchController::applyTintedImage()
 
     setBusy(true);
     const QString tintedPath = tools::tintedImagePath(m_selectedFile);
+    QDir(QFileInfo(tintedPath).absolutePath()).mkpath(QStringLiteral("."));
     // Full resolution on the pool: this file becomes the actual fastfetch
     // logo, and the pass takes minutes for large animated GIFs.
     m_pool.start(new TintJob(QPointer<FastfetchController>{this}, m_selectedFile, tintedPath, tint, false));

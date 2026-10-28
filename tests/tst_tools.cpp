@@ -205,13 +205,13 @@ void tst_Tools::testTintAnimatedGif()
 void tst_Tools::testTintedImagePath()
 {
     QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/wall.png")),
-        QStringLiteral("/home/u/pics/wall-tinted.png"));
+        QStringLiteral("/home/u/pics/tinted/wall-tinted.png"));
     QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/My Wall.jpg")),
-        QStringLiteral("/home/u/pics/My Wall-tinted.jpg"));
+        QStringLiteral("/home/u/pics/tinted/My Wall-tinted.jpg"));
     QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/wall.webp")),
-        QStringLiteral("/home/u/pics/wall-tinted.webp"));
+        QStringLiteral("/home/u/pics/tinted/wall-tinted.webp"));
     QCOMPARE(tools::tintedImagePath(QStringLiteral("/home/u/pics/wall.gif")),
-        QStringLiteral("/home/u/pics/wall-tinted.gif"));
+        QStringLiteral("/home/u/pics/tinted/wall-tinted.gif"));
 }
 
 void tst_Tools::testFastfetchSetSource()

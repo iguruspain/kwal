@@ -18,8 +18,8 @@ namespace tools
 bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &tint,
                  qreal strength = 0.8, int previewMaxDim = 0);
 
-// Path of the tinted copy written next to the original image
-// (<stem>-tinted.<ext>, same directory).
+// Path of the tinted copy written in a "tinted" subfolder next to the
+// original image (<dir>/tinted/<stem>-tinted.<ext>).
 QString tintedImagePath(const QString &srcPath);
 
 }

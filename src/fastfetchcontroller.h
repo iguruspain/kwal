@@ -56,7 +56,8 @@ public slots:
     void generateTintedPreview();
     // Points the fastfetch config at the selected image, without tinting.
     void applyOriginalImage();
-    // Tints the selected image next to the original and points the config at it.
+    // Tints the selected image into a "tinted" subfolder next to the original
+    // and points the config at the result.
     void applyTintedImage();
     void restoreBackup();
 

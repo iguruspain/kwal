@@ -247,9 +247,9 @@ void tst_Fastfetch::testTintedImagePathFor()
 {
     FastfetchController controller;
     QCOMPARE(controller.tintedImagePathFor(QStringLiteral("/home/u/pics/wall.png")),
-        QStringLiteral("/home/u/pics/wall-tinted.png"));
+        QStringLiteral("/home/u/pics/tinted/wall-tinted.png"));
     QCOMPARE(controller.tintedImagePathFor(QStringLiteral("/home/u/pics/wall.jpg")),
-        QStringLiteral("/home/u/pics/wall-tinted.jpg"));
+        QStringLiteral("/home/u/pics/tinted/wall-tinted.jpg"));
 }
 
 void tst_Fastfetch::testManuallySelectedTracksUserPick()

@@ -303,6 +303,16 @@ void tst_Ulauncher::testPreviewEmptyUsesDefaults()
     const QString html = tools::ulauncherPreviewHtml(QString(), {}, 0.75, 0, QString(), QString());
     QVERIFY(html.contains(QStringLiteral("<!DOCTYPE html>")));
     QVERIFY(html.contains(QStringLiteral("#2b2b2b"))); // default window background
+    // The built-in sample: firefox/filelight rows and the "fir" query, with
+    // the matched characters wrapped in highlight spans.
+    QVERIFY(html.contains(QStringLiteral(
+        "<span class=\"hl-s\">F</span><span class=\"hl-s\">i</span>"
+        "<span class=\"hl-s\">r</span>efox")));
+    QVERIFY(html.contains(QStringLiteral(
+        "<span class=\"hl-n\">F</span><span class=\"hl-n\">i</span>lelight")));
+    QVERIFY(html.contains(QStringLiteral(">fir<span class=\"caret\">")));
+    QVERIFY(html.contains(QStringLiteral(">Alt+1<")));
+    QVERIFY(html.contains(QStringLiteral(">Alt+2<")));
 }
 
 void tst_Ulauncher::testApplyThemeWritesAndBacksUp()
@@ -523,7 +533,7 @@ void tst_Ulauncher::testControllerPreviewSettings()
 
     // Fresh config: the preview settings fall back to the built-in defaults.
     QCOMPARE(controller.previewWindowWidth(), 900);
-    QCOMPARE(controller.previewQuery(), QStringLiteral("sptf"));
+    QCOMPARE(controller.previewQuery(), QStringLiteral("fir"));
     QCOMPARE(controller.sampleRows().size(), 2);
 
     controller.setPreviewWindowWidth(1050);

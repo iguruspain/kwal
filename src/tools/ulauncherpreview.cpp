@@ -356,20 +356,22 @@ QString resolveIcon(const QString &name)
 }
 } // namespace
 
-// Sample items and typed query shown when no row list is given.
+// Sample items and typed query shown when no row list is given. Firefox and
+// Filelight: both ship with a KDE/Plasma desktop, so the example works for
+// everyone without extra installs.
 QList<UlauncherRow> sampleRows()
 {
     return {
-        UlauncherRow(QStringLiteral("spotify"), QStringLiteral("Spotify"),
+        UlauncherRow(QStringLiteral("firefox"), QStringLiteral("Firefox"),
                      QStringLiteral("Alt+1"), true),
-        UlauncherRow(QStringLiteral("spectacle"), QStringLiteral("Spectacle"),
+        UlauncherRow(QStringLiteral("filelight"), QStringLiteral("Filelight"),
                      QStringLiteral("Alt+2"), false),
     };
 }
 
 QString sampleQuery()
 {
-    return QStringLiteral("sptf");
+    return QStringLiteral("fir");
 }
 
 QString ulauncherPreviewHtml(const QString &themePath,

@@ -43,8 +43,8 @@ Kirigami.OverlayDrawer {
     // collapsed = false;
 
     edge: Qt.RightEdge
-    modal: true
-    // modal: false
+    // modal: true
+    modal: false
     collapsible: false
     collapsed: false
     drawerOpen: false
@@ -392,17 +392,6 @@ Kirigami.OverlayDrawer {
                                                     }
                                                 }
 
-                                                // Recalculates the automatic categories from the
-                                                // wallpaper image and clears the manual override.
-                                                ToolButton {
-                                                    icon.name: "view-refresh"
-                                                    Accessible.name: qsTr("Recalculate categories")
-                                                    ToolTip.text: qsTr("Replace with the automatic categories")
-                                                    ToolTip.visible: hovered
-                                                    ToolTip.delay: Kirigami.Units.toolTipDelay
-                                                    onClicked: drawer.app.wallpapersInfo.recalculateCategories(drawer.wallpaper)
-                                                }
-
                                                 ToolButton {
                                                     icon.name: "list-add"
                                                     Accessible.name: qsTr("Add category")
@@ -436,6 +425,18 @@ Kirigami.OverlayDrawer {
                                                         onObjectRemoved: (index, object) => addMenu.removeItem(object)
                                                     }
                                                 }
+
+                                                // Recalculates the automatic categories from the
+                                                // wallpaper image and clears the manual override.
+                                                ToolButton {
+                                                    icon.name: "view-refresh"
+                                                    Accessible.name: qsTr("Recalculate categories")
+                                                    ToolTip.text: qsTr("Replace with the automatic categories")
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                                                    onClicked: drawer.app.wallpapersInfo.recalculateCategories(drawer.wallpaper)
+                                                }
+
                                             }
 
                                             Flow {

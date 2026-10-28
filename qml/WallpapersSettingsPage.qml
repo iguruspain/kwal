@@ -375,19 +375,18 @@ Kirigami.ScrollablePage {
                 id: promptView
                 Kirigami.FormData.label: qsTr("System prompt")
                 Layout.fillWidth: true
-                // Pin the row height: the TextEdit's content-based implicit
-                // height would overflow onto the next row; longer prompts
-                // scroll inside the view.
-                Layout.preferredHeight: Kirigami.Units.gridUnit * 16
-                implicitHeight: Kirigami.Units.gridUnit * 16
-                ScrollBar.vertical: ScrollBar {}
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 6
+                implicitHeight: Kirigami.Units.gridUnit * 6
 
                 TextArea {
                     id: promptArea
+                    Layout.fillWidth: true
                     width: promptView.width
+                    
                     text: page.app.aiTagger.systemPrompt !== ""
                         ? page.app.aiTagger.systemPrompt
                         : page.app.aiTagger.defaultSystemPrompt
+                    
                     wrapMode: TextArea.Wrap
                     onEditingFinished: page.app.aiTagger.systemPrompt = text
                 }

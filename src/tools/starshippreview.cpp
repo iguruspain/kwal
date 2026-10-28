@@ -615,6 +615,8 @@ private:
                 .arg(classifyContentClass(el.content),
                      css.join(QStringLiteral("; ")), escaped);
         }
+        // The terminal cursor blinks at the very end of the prompt.
+        inner += QStringLiteral("<span class=\"caret\"></span>");
         return buildHtmlWrapper(inner, m_scale, m_width);
     }
 
@@ -683,6 +685,11 @@ QString buildPreviewCss(double scale, int width)
         "height: 32px; line-height: 32px;"
         "}"
         "span { display: inline-flex; align-items: center; justify-content: center; height: 100%; }"
+        ".caret {"
+        "display: inline-block; width: 2px; height: 18px; margin-left: 2px;"
+        "background: #d0d0d0; animation: caret-blink 1.1s step-end infinite;"
+        "}"
+        "@keyframes caret-blink { 50% { opacity: 0; } }"
         ".text-node {"
         "padding: 0 4px; font-size: 14px;"
         "white-space: pre; line-height: 1;"

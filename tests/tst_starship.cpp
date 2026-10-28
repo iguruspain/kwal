@@ -130,16 +130,35 @@ void tst_Starship::testRestoreStarshipBackup()
 
 void tst_Starship::testPreviewHtml()
 {
+    // `format` must stay in the root table (before any [table] header).
     const toml::table doc = toml::parse(
         "palette=\"Test\"\n"
+        "format=\"$directory\"\n"
         "[palettes.Test]\n"
         "bg=\"#1a2b3c\"\n"
-        "fg=\"#ffffff\"\n"
-        "format=\"$directory\"\n");
+        "fg=\"#ffffff\"\n");
     const QString html = tools::starshipPreviewHtml(doc, 0, 1.0, 800);
     QVERIFY(html.contains(QStringLiteral("<html")));
     QVERIFY(html.contains(QStringLiteral("terminal")));
     QVERIFY(html.contains(QStringLiteral("rgba(24,24,24,0.6)")));
+    // The blinking terminal cursor is part of the preview.
+    QCOMPARE(html.count(QStringLiteral("<span class=\"caret\"></span>")), 1);
+    QVERIFY(html.contains(QStringLiteral("caret-blink")));
+
+    // With a line break the caret stays on the prompt line, before the
+    // line that splits it from the rest.
+    const toml::table doc2 = toml::parse(
+        "palette=\"Test\"\n"
+        "format=\"$username $line_break $directory\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#1a2b3c\"\n"
+        "fg=\"#ffffff\"\n");
+    const QString html2 = tools::starshipPreviewHtml(doc2, 0, 1.0, 800);
+    // With a line break the caret still sits at the very end of the format,
+    // i.e. after the line break.
+    QCOMPARE(html2.count(QStringLiteral("<span class=\"caret\"></span>")), 1);
+    QVERIFY(html2.indexOf(QStringLiteral("<span class=\"caret\">"))
+                > html2.indexOf(QStringLiteral("</div><div class=\"prompt-line\">")));
 }
 
 void tst_Starship::testControllerLoadsAndApplies()

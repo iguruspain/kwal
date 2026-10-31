@@ -715,6 +715,7 @@ Rectangle {
                             ColorDot {
                                 Layout.alignment: Qt.AlignVCenter
                                 color: root.app.customColor ? root.app.customColor : Kirigami.Theme.highlightColor
+                                dotSize: Kirigami.Units.gridUnit * 0.95
                                 enablePicker: true
                                 onAccepted: (hex) => root.app.customColor = hex
                             }

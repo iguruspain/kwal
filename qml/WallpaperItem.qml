@@ -177,7 +177,7 @@ ItemDelegate {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: Kirigami.Units.smallSpacing
-            icon.name: "dialog-ok-apply"
+            icon.name: "preferences-desktop-wallpaper"//"dialog-ok-apply"
             display: AbstractButton.IconOnly
             visible: root.isSelected
             Accessible.name: qsTr("Set as Wallpaper")

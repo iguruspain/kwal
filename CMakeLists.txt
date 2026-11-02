@@ -592,6 +592,27 @@ install(FILES org.kde.kwal.desktop
  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
  RENAME kwal.desktop
 )
-install(FILES icons/scalable/apps/org.kde.kwal.svg
+install(FILES
+ icons/hicolor/8x8/apps/kwal.svg
+ DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/8x8/apps
+)
+install(FILES
+ icons/hicolor/16x16/apps/kwal.svg
+ DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/16x16/apps
+)
+install(FILES
+ icons/hicolor/22x22/apps/kwal.svg
+ DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/22x22/apps
+)
+install(FILES
+ icons/hicolor/32x32/apps/kwal.svg
+ DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/32x32/apps
+)
+install(FILES
+ icons/hicolor/128x128/apps/kwal.svg
+ DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/128x128/apps
+)
+install(FILES
+ icons/hicolor/scalable/apps/kwal.svg
  DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
 )

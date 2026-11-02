@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 9 108 108" width="22" height="22">
+  <title>Kwal</title>
+  <defs>
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text { color:#232629; }
+    </style>
+    <mask id="shine" maskUnits="userSpaceOnUse" x="10" y="9" width="108" height="108">
+      <rect x="10" y="9" width="108" height="108" fill="#fff"/>
+      <path d="M40 46 C43 37 50 31 58 29" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <g class="ColorScheme-Text" fill="currentColor" stroke="currentColor">
+    <g fill="none" stroke-width="5.5" stroke-linecap="round">
+      <path d="M46 68 q-6 9 0 18 t0 18"/>
+      <path d="M58 68 q6 11 0 22 t0 22"/>
+      <path d="M70 68 q-6 11 0 22 t0 22"/>
+      <path d="M82 68 q6 9 0 18 t0 18"/>
+    </g>
+    <path stroke="none" mask="url(#shine)" d="M28 62 C28 38 44 22 64 22 C84 22 100 38 100 62 Q91 67 82 62 Q73 67 64 62 Q55 67 46 62 Q37 67 28 62 Z"/>
+  </g>
+</svg>

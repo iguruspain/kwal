@@ -2,7 +2,7 @@
     <qresource prefix="/">
         <file alias="aboutdata.json">../aboutdata.json</file>
         <file alias="LICENSE.txt">../LICENSE.txt</file>
-        <file alias="kwal.svg">../icons/scalable/apps/org.kde.kwal.svg</file>
+        <file alias="kwal.svg">../icons/hicolor/scalable/apps/kwal.svg</file>
     </qresource>
     <qresource prefix="/templates/starship">
         <file alias="catpuccin.toml">templates/starship/catpuccin.toml</file>

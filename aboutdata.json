@@ -7,7 +7,7 @@
     "DescriptionComments": "Manage your Plasma wallpaper and tint your favorite tools with palettes extracted from it.",
     "Homepage": "https://github.com/iguruspain/kwal",
     "Id": "org.kde.kwal",
-    "Icon": "org.kde.kwal",
+    "Icon": "kwal",
     "Version": "0.1.0",
     "License": "GPL-3.0-or-later",
     "Copyright": "© 2026 iguruspain",

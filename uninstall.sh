@@ -15,6 +15,12 @@ remove_installed() {
         "$HOME/.local/bin/kwal" \
         "$HOME/.local/bin/kwal-transition" \
         "$HOME/.local/share/applications/org.kde.kwal.desktop" \
+        "$HOME/.local/share/icons/hicolor/8x8/apps/kwal.svg" \
+        "$HOME/.local/share/icons/hicolor/16x16/apps/kwal.svg" \
+        "$HOME/.local/share/icons/hicolor/22x22/apps/kwal.svg" \
+        "$HOME/.local/share/icons/hicolor/32x32/apps/kwal.svg" \
+        "$HOME/.local/share/icons/hicolor/128x128/apps/kwal.svg" \
+        "$HOME/.local/share/icons/hicolor/scalable/apps/kwal.svg" \
         "$HOME/.local/share/icons/hicolor/scalable/apps/org.kde.kwal.svg"
     do
         if [ -e "$path" ]; then

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 15 100 100" width="8" height="8">
+  <title>Kwal</title>
+  <defs>
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text { color:#232629; }
+    </style>
+  </defs>
+  <g class="ColorScheme-Text" fill="currentColor" stroke="currentColor">
+    <g fill="none" stroke-width="9" stroke-linecap="round">
+      <path d="M46 68 q-6 9 0 18 t0 18"/>
+      <path d="M58 68 q6 11 0 22 t0 22"/>
+      <path d="M70 68 q-6 11 0 22 t0 22"/>
+      <path d="M84 66 C86 76 106 78 105 60 C104 50 97 41 91.4 35.2"/>
+    </g>
+    <path stroke="none" d="M28 62 C28 38 44 22 64 22 C84 22 100 38 100 62 Q91 67 82 62 Q73 67 64 62 Q55 67 46 62 Q37 67 28 62 Z"/>
+  </g>
+</svg>

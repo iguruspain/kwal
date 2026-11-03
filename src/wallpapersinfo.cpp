@@ -291,7 +291,13 @@ bool computeResizePlan(int srcHeight, double srcFps, int targetHeight, int targe
 bool encodeResized(const QString &ffmpegBinary, const QString &video, const QString &output,
                    int targetHeight, int fps, bool scale)
 {
-    const QString tmp = output + QStringLiteral(".tmp");
+    // Unique per encode: a batch job and an on-demand apply-time resize of
+    // the same video can overlap; a shared tmp name would interleave the
+    // two writers in one file.
+    static std::atomic<quint64> tmpSeq{0};
+    const QString tmp = output + QStringLiteral(".%1-%2.tmp")
+                            .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()))
+                            .arg(tmpSeq.fetch_add(1));
     QProcess process;
     QStringList args;
     args << QStringLiteral("-v")
@@ -970,6 +976,32 @@ void WallpapersInfo::processResize(const QString &path)
     }
     upsert(entry);
     resizeJobFinished();
+}
+
+QString WallpapersInfo::ensureResizedCopy(const QString &path)
+{
+    if (path.isEmpty()) {
+        return QString();
+    }
+    emit resizeCopyStarted(path);
+    const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
+    Entry entry = entryFor(path);
+    if (entry.file.isEmpty()) {
+        // Defensive: an untracked video; keep a minimal entry so the copy
+        // survives sweeps.
+        entry.file = path;
+        entry.type = QStringLiteral("video");
+    }
+    // Mirror the batch job: only a completed plan (encoded, reused, or
+    // "not needed by the settings") writes the result to the entry; a
+    // probe/encode failure clears it and the original is applied.
+    entry.resized = result.planned ? result.output : QString();
+    upsert(entry);
+    if (result.noFfmpeg) {
+        warnFfmpegOnce();
+    }
+    emit resizeCopyFinished(path, result.planned);
+    return result.output;
 }
 
 void WallpapersInfo::warnFfmpegOnce()

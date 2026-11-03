@@ -85,7 +85,7 @@ public:
     bool matugenEnabled() const;
     void setMatugenEnabled(bool enabled);
     // Sets the resize target read by pool jobs; called just before a
-    // "Generate resizes" batch starts.
+    // "Generate resizes" batch starts or a pre-apply resize runs.
     void setResizeParameters(int height, int fps);
 
     Entry entryFor(const QString &path) const;
@@ -97,6 +97,14 @@ public:
     void applyCalculatedCategories(const QString &path, const QStringList &categories, bool ok);
     // Runs one P5 resize pass for <path>; called from the thread pool.
     void processResize(const QString &path);
+    // Blocking probe + encode ensuring the resized cache copy for <path>
+    // exists (reusing a non-empty copy). Must run off the UI thread (the
+    // apply job generates the copy on demand, before applying). Returns
+    // the cache copy's path, or "" when the settings call for no resize
+    // or the copy could not be produced (the original is applied then).
+    // Emits resizeCopyStarted/resizeCopyFinished; only <path> is touched,
+    // never the rest of a folder.
+    QString ensureResizedCopy(const QString &path);
 
 signals:
     // Emitted after a file's entry was updated.
@@ -107,6 +115,11 @@ signals:
     void scanFinished();
     // Emitted as a "Generate resizes" batch progresses.
     void resizeProgressChanged();
+    // Emitted (from the apply job's thread) when the on-demand resize of
+    // <path> starts and when it ends; ok is false when the copy could
+    // not be produced (the original is applied instead).
+    void resizeCopyStarted(const QString &path);
+    void resizeCopyFinished(const QString &path, bool ok);
     // Emitted when the matugen color-extraction toggle changed.
     void matugenEnabledChanged();
 

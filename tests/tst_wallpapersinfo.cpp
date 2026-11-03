@@ -29,6 +29,7 @@ private slots:
     void testCorruptJson();
     void testFirstFrame();
     void testVideoResize();
+    void testEnsureResizedCopy();
     void testColorCategory();
     void testMatugenEnabled();
     void testMatugenColors();
@@ -221,6 +222,67 @@ void tst_WallpapersInfo::testVideoResize()
     info->planResize(video);
     QTRY_VERIFY_WITH_TIMEOUT(!info->resizing(), 60000);
     QVERIFY(info->entryFor(video).resized.endsWith(QStringLiteral("_360p15.mp4")));
+}
+
+void tst_WallpapersInfo::testEnsureResizedCopy()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    if (!info->ffmpegAvailable()) {
+        QSKIP("ffmpeg not available");
+    }
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString video = dir.path() + QStringLiteral("/ensure.mp4");
+    // Synthesize a short 640x360@30 clip.
+    QProcess process;
+    process.start(QStringLiteral("ffmpeg"),
+                  {QStringLiteral("-v"),
+                   QStringLiteral("error"),
+                   QStringLiteral("-y"),
+                   QStringLiteral("-f"),
+                   QStringLiteral("lavfi"),
+                   QStringLiteral("-i"),
+                   QStringLiteral("color=c=green:s=640x360:d=0.5:r=30"),
+                   QStringLiteral("-c:v"),
+                   QStringLiteral("libx264"),
+                   QStringLiteral("-pix_fmt"),
+                   QStringLiteral("yuv420p"),
+                   video});
+    QVERIFY(process.waitForFinished(60000));
+    QCOMPARE(process.exitCode(), 0);
+
+    QSignalSpy started(info, &WallpapersInfo::resizeCopyStarted);
+    QSignalSpy finished(info, &WallpapersInfo::resizeCopyFinished);
+
+    // No cached copy yet: the copy is generated, returned, and stored in
+    // the entry (blocking call, no batch involved).
+    info->setResizeParameters(240, 0);
+    const QString copy = info->ensureResizedCopy(video);
+    QCOMPARE(QFileInfo(copy).fileName(), contentMd5(video) + QStringLiteral("_240p30.mp4"));
+    QVERIFY(QFileInfo(copy).size() > 0);
+    QCOMPARE(info->entryFor(video).resized, copy);
+    QCOMPARE(started.count(), 1);
+    QCOMPARE(started.at(0).at(0).toString(), video);
+    QCOMPARE(finished.count(), 1);
+    QCOMPARE(finished.at(0).at(0).toString(), video);
+    QCOMPARE(finished.at(0).at(1).toBool(), true);
+
+    // A second call reuses the existing copy without re-encoding.
+    const QString copy2 = info->ensureResizedCopy(video);
+    QCOMPARE(copy2, copy);
+    QCOMPARE(info->entryFor(video).resized, copy);
+    QCOMPARE(started.count(), 2);
+    QCOMPARE(finished.count(), 2);
+    QCOMPARE(finished.at(1).at(1).toBool(), true);
+
+    // Settings that call for no filter return "" and clear the stored
+    // copy (the original is applied as-is), like the batch job.
+    info->setResizeParameters(1080, 0);
+    const QString none = info->ensureResizedCopy(video);
+    QVERIFY(none.isEmpty());
+    QVERIFY(info->entryFor(video).resized.isEmpty());
+    QCOMPARE(finished.count(), 3);
+    QCOMPARE(finished.at(2).at(1).toBool(), true);
 }
 
 void tst_WallpapersInfo::testColorCategory()

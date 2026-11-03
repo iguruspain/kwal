@@ -48,7 +48,7 @@ class WallpaperApplyJob : public QRunnable
 public:
     WallpaperApplyJob(PlasmaApply *apply, QString type, QString path, bool lockscreen,
                       const QString &binaryPath, QString framePath,
-                      transitions::TransitionConfig cfg,
+                      transitions::TransitionConfig cfg, bool generateResize,
                       std::function<void(bool, const QString &)> finish)
         : m_apply(apply)
         , m_type(std::move(type))
@@ -57,12 +57,25 @@ public:
         , m_binaryPath(binaryPath)
         , m_framePath(std::move(framePath))
         , m_cfg(std::move(cfg))
+        , m_generateResize(generateResize)
         , m_finish(std::move(finish))
     {
     }
 
     void run() override
     {
+        // P5 on-demand: no cached copy exists for this video and resize is
+        // on — generate it now (blocking; this runs on a pool thread) and
+        // apply the copy instead of the original. Only this video is
+        // resized; a folder-wide batch stays a Settings action.
+        if (m_generateResize) {
+            if (WallpapersInfo *info = WallpapersInfo::instance()) {
+                const QString copy = info->ensureResizedCopy(m_path);
+                if (!copy.isEmpty() && QFileInfo::exists(copy)) {
+                    m_path = copy;
+                }
+            }
+        }
         if (!m_cfg.enabled || m_binaryPath.isEmpty()) {
             m_apply->applyWallpaper(m_type, m_path, m_lockscreen);
             return;
@@ -153,6 +166,7 @@ private:
     QString m_binaryPath;
     QString m_framePath;
     transitions::TransitionConfig m_cfg;
+    bool m_generateResize = false;
     std::function<void(bool, const QString &)> m_finish;
 };
 
@@ -543,12 +557,17 @@ void AppController::setWallpaper(const QString &filePath)
     }
     const bool video = WallpaperModel::isVideo(filePath);
     QString target = filePath;
-    // P5: while the setting is on, prefer the resized cache copy.
+    bool generateResize = false;
+    // P5: while the setting is on, prefer the resized cache copy; without
+    // a usable copy the job generates it for this video before the switch.
     if (video && m_resizeEnabled) {
         if (WallpapersInfo *info = WallpapersInfo::instance()) {
+            info->setResizeParameters(m_resizeHeight, m_resizeFps);
             const WallpapersInfo::Entry entry = info->entryFor(filePath);
             if (!entry.resized.isEmpty() && QFileInfo::exists(entry.resized)) {
                 target = entry.resized;
+            } else {
+                generateResize = true;
             }
         }
     }
@@ -598,6 +617,7 @@ void AppController::setWallpaper(const QString &filePath)
                               binaryPath,
                               framePath,
                               cfg,
+                              generateResize,
                               [this](bool allOk, const QString &message) {
                                   wallpaperFinished(allOk, message);
                               }));

@@ -354,9 +354,12 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
     if (type == QLatin1String("video")) {
         if (rebornAvailable()) {
             plugin = QString::fromLatin1(kRebornPluginId);
-            // The playlist entry is percent-encoded, the LastVideo key is
-            // kept raw, as the plugin UI writes them (D9).
-            videoEntryUrl = fileUrl(path);
+            // Both the playlist entry and the LastVideo key keep the raw
+            // path, as the plugin UI writes them (QUrl::toString with
+            // PreferredEncoding leaves UTF-8 and spaces unencoded); the
+            // plugin matches LastVideo against playlist filenames by exact
+            // string, so both must use that same form (D9).
+            videoEntryUrl = rawVideoUrl(path);
             videoLastUrl = rawVideoUrl(path);
         } else {
             // Without the reborn plugin the cached first frame stands in

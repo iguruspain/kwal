@@ -37,8 +37,9 @@ constexpr char kScreenGeomsScript[] = "var r = []; "
 // encoding the Rust reference and Plasma write into config values).
 QString fileUrl(const QString &path);
 
-// "file://" + path, unencoded: the value the video plugin stores in its
-// LastVideo key.
+// "file://" + path, unencoded (raw UTF-8 and spaces): the form the video
+// plugin's own config page stores in its playlist entries and LastVideo
+// key (QUrl::toString with PreferredEncoding).
 QString rawVideoUrl(const QString &path);
 
 // Computes the video plugin's VideoUrls JSON (compact, no whitespace):

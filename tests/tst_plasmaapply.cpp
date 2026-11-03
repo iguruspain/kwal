@@ -54,6 +54,10 @@ void tst_PlasmaApply::testFileUrl()
              QStringLiteral("file:///home/user/%C3%A1.mp4"));
     QCOMPARE(plasmaapply::rawVideoUrl(QStringLiteral("/home/user/clip.mp4")),
              QStringLiteral("file:///home/user/clip.mp4"));
+    // Accents and spaces stay raw: the exact form the video plugin's own
+    // config page stores (QUrl::toString with PreferredEncoding).
+    QCOMPARE(plasmaapply::rawVideoUrl(QStringLiteral("/home/user/Vídeos/Ayanami Rei.mp4")),
+             QStringLiteral("file:///home/user/Vídeos/Ayanami Rei.mp4"));
 }
 
 void tst_PlasmaApply::testComputeVideoUrls()

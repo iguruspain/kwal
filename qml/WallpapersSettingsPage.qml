@@ -175,17 +175,11 @@ Kirigami.ScrollablePage {
                 onValueModified: page.app.transitionDuration = value
             }
 
-            SpinBox {
+            FpsComboBox {
                 Kirigami.FormData.label: qsTr("Frame rate")
-                from: 0
-                to: 240
-                stepSize: 5
-                textFromValue: function(value) {
-                    return value === 0 ? qsTr("Original") : value
-                }
-                value: page.app.transitionFps
+                fps: page.app.transitionFps
                 visible: transitionForm.advancedOn && transitionForm.tType !== "simple"
-                onValueModified: page.app.transitionFps = value
+                onFpsChanged: page.app.transitionFps = fps
             }
 
             SpinBox {
@@ -268,25 +262,68 @@ Kirigami.ScrollablePage {
         }
 
         Kirigami.FormLayout {
-            SpinBox {
+            ComboBox {
+                id: resizeHeightCombo
                 Kirigami.FormData.label: qsTr("Target height")
-                from: 480
-                to: 4320
-                stepSize: 120
-                value: page.app.resizeHeight
-                onValueModified: page.app.resizeHeight = value
+                editable: true
+                model: ["720p", "1080p", "1440p", "2160p"]
+
+                // The typed text lives in editText; a dropdown selection
+                // leaves the field empty and currentText holds the item.
+                function fieldText() {
+                    return resizeHeightCombo.editText === ""
+                        ? resizeHeightCombo.currentText
+                        : resizeHeightCombo.editText
+                }
+
+                function parseText(t) {
+                    const n = parseInt(t.trim().replace(/p$/i, ""), 10)
+                    return isNaN(n) ? -1 : n
+                }
+
+                // The preset list is a convenience, not a limit: a stored
+                // height outside it shows up as free text and the C++
+                // setter clamps typed values.
+                function sync() {
+                    const v = page.app.resizeHeight
+                    const i = model.indexOf(v + "p")
+                    if (i >= 0) {
+                        resizeHeightCombo.currentIndex = i
+                    } else {
+                        resizeHeightCombo.currentIndex = -1
+                        resizeHeightCombo.editText = v + "p"
+                    }
+                }
+
+                Component.onCompleted: sync()
+                Connections {
+                    target: page.app
+                    function onResizeHeightChanged() { resizeHeightCombo.sync() }
+                }
+
+                onActivated: {
+                    const v = parseText(fieldText())
+                    if (v > 0) {
+                        page.app.resizeHeight = v
+                    } else {
+                        sync()
+                    }
+                }
+
+                onAccepted: {
+                    const v = parseText(fieldText())
+                    if (v > 0) {
+                        page.app.resizeHeight = v
+                    } else {
+                        sync()
+                    }
+                }
             }
 
-            SpinBox {
+            FpsComboBox {
                 Kirigami.FormData.label: qsTr("Frame rate")
-                from: 0
-                to: 240
-                stepSize: 5
-                textFromValue: function(value) {
-                    return value === 0 ? qsTr("Original") : value
-                }
-                value: page.app.resizeFps
-                onValueModified: page.app.resizeFps = value
+                fps: page.app.resizeFps
+                onFpsChanged: page.app.resizeFps = fps
             }
         }
 

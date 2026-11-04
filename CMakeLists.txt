@@ -286,6 +286,7 @@ qt_add_qml_module(kwal
     qml/WallpapersSettingsPage.qml
     qml/ColorDot.qml
     qml/ColorRow.qml
+    qml/FpsComboBox.qml
 )
 
 target_link_libraries(kwal

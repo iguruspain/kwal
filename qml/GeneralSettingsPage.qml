@@ -65,7 +65,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Default width")
                 from: 700
                 to: 3840
-                stepSize: 10
+                stepSize: 5
                 value: page.app.defaultWindowWidth
                 onValueModified: page.app.defaultWindowWidth = value
             }
@@ -74,7 +74,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Default height")
                 from: 400
                 to: 2160
-                stepSize: 10
+                stepSize: 5
                 value: page.app.defaultWindowHeight
                 onValueModified: page.app.defaultWindowHeight = value
             }

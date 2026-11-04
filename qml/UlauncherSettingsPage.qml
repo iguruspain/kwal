@@ -43,7 +43,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Ulauncher width")
                 from: 400
                 to: 1200
-                stepSize: 10
+                stepSize: 5
                 value: page.controller.previewWindowWidth
                 onValueModified: page.controller.setPreviewWindowWidth(Math.round(value))
             }

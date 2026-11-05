@@ -56,6 +56,10 @@ int main(int argc, char *argv[])
     app.setOrganizationDomain(QStringLiteral("kde.org"));
     app.setApplicationName(QStringLiteral("kwal"));
     app.setApplicationVersion(QStringLiteral("0.1.0"));
+    // Match the running window to the installed desktop entry (app id
+    // org.kde.kwal) so Plasma shows the right icon/name and StartupNotify
+    // works. Must be the installed org.kde.kwal.desktop base name.
+    app.setDesktopFileName(QStringLiteral("org.kde.kwal"));
     WallpapersInfo::initialize(&app);
     AboutInfo::initialize(&app);
     QQmlApplicationEngine engine;

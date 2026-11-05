@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    # Rolling Arch image: KDE Frameworks / Kirigami track 6.x, satisfying the
+    # project's `find_package(ECM 6.31.0)` floor and Qt >= 6.8 requirement
+    # (the pinned versions developers build against).
+    container:
+      image: archlinux:latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh mirrors and install dependencies
+        run: |
+          set -euxo pipefail
+          # Refresh the keyring first: the pinned image's signing keys can lag
+          # behind rotated Arch master keys and break the full upgrade below.
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm --needed \
+            base-devel git cmake ninja pkgconf \
+            qt6-base qt6-declarative qt6-multimedia qt6-webengine qt6-shadertools \
+            extra-cmake-modules kirigami kconfig \
+            wayland \
+            ffmpeg imagemagick
+      - name: Configure
+        run: cmake --preset default
+
+      - name: Build
+        run: cmake --build --preset default
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

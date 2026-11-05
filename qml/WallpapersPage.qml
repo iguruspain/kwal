@@ -226,6 +226,13 @@ Kirigami.Page {
                     readonly property int columnCount: Math.max(1, Math.floor(width / 250))
                     cellWidth: Math.floor(width / columnCount)
                     cellHeight: Math.floor(cellWidth * 0.5625)
+                    // Reuse delegates and pre-render a row or two: WallpaperItem
+                    // is stateless per cell (everything is bound to the model
+                    // row + index), so a bounded delegate pool keeps memory
+                    // flat over a large folder while cacheBuffer smooths the
+                    // pop-in while scrolling.
+                    reuseItems: true
+                    cacheBuffer: 700
                     model: page.app.wallpaperModel
                     focus: true
                     highlight: Rectangle {

@@ -4,6 +4,8 @@
 #include <QQuickImageResponse>
 #include <QQuickTextureFactory>
 
+#include <atomic>
+
 class QImage;
 
 // FreeDesktop-standard wallpaper thumbnails (mirrors the legacy app's provider):
@@ -39,5 +41,7 @@ private:
     QString m_id;
     QQuickTextureFactory *m_textureFactory = nullptr;
     QString m_error;
-    volatile bool m_canceled = false;
+    // cancel() runs on the GUI thread, loadAndFinish() reads it on the pool:
+    // a plain (even volatile) bool is a data race.
+    std::atomic<bool> m_canceled{false};
 };

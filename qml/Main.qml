@@ -24,11 +24,16 @@ Kirigami.ApplicationWindow {
         return tabs.filter(function (t) { return t.available !== false; });
     })()
 
-    // Index of the tab backing a pageStack page; the model skips pages of
-    // tools that are not installed.
-    function tabBarIndex(pageIndex) {
+    // The tab bar index backing the page that is currently shown. Pages are
+    // created lazily, so a page's position in the stack is not its tab id;
+    // the only reliable mapping is object identity against currentItem.
+    function currentTabIndex() {
+        const current = window.pageStack.currentItem;
         for (let i = 0; i < window.tabs.length; i++) {
-            if (window.tabs[i].page === pageIndex)
+            const page = window.tabs[i].page === 0
+                ? window.pages[0]
+                : window.pages[window.tabs[i].page];
+            if (page !== undefined && page === current)
                 return i;
         }
         return 0;
@@ -97,15 +102,17 @@ Kirigami.ApplicationWindow {
                 Item { Layout.fillWidth: true }
                 TabBar {
                     id: tabBar
-                    currentIndex: window.tabBarIndex(window.pageStack.currentIndex)
+                    currentIndex: window.currentTabIndex()
 
                     Repeater {
                         model: window.tabs
                         delegate: TabButton {
+                            required property int index
+                            required property var modelData
                             text: modelData.title
                             icon.name: modelData.icon
-                            checked: window.pageStack.currentIndex === modelData.page
-                            onClicked: window.pageStack.currentIndex = modelData.page
+                            checked: window.currentTabIndex() === index
+                            onClicked: window.activateTab(modelData.page)
                         }
                     }
                 }
@@ -165,6 +172,35 @@ Kirigami.ApplicationWindow {
     Component { id: starshipPage; StarshipPage { app: window.app } }
     Component { id: ulauncherPage; UlauncherPage { app: window.app; controller: window.app.ulauncher } }
 
+    // Created tool pages, keyed by the tab's `page` id. Only the Wallpapers
+    // page (index 0) exists at startup; the Fastfetch/Starship/Ulauncher
+    // pages — and the WebEngineViews inside the Starship and Ulauncher
+    // previews — are built on first tab activation.
+    property var pages: ({})
+    // Tab ids in page-stack order. The Wallpapers page is the initialPage
+    // (stack index 0); every lazily-created tool page is appended, so this
+    // array's index is the page's stack position. Kirigami.PageStack has no
+    // get(Item) (it is ColumnView-backed: get(index) returns the item), so we
+    // track the order ourselves and jump with currentIndex.
+    property var stackIds: [0]
+
+    function activateTab(id) {
+        let page = window.pages[id];
+        if (page === undefined) {
+            switch (id) {
+            case 1: page = fastfetchPage.createObject(window); break;
+            case 2: page = starshipPage.createObject(window); break;
+            case 3: page = ulauncherPage.createObject(window); break;
+            }
+            if (page === null)
+                return;
+            window.pages[id] = page;
+            window.stackIds.push(id);
+            window.pageStack.push(page);
+        } else {
+            window.pageStack.currentIndex = window.stackIds.indexOf(id);
+        }
+    }
 
     Connections {
         target: window.app
@@ -173,9 +209,9 @@ Kirigami.ApplicationWindow {
         }
     }
     Component.onCompleted: {
-        window.pageStack.push(fastfetchPage.createObject(window))
-        window.pageStack.push(starshipPage.createObject(window))
-        window.pageStack.push(ulauncherPage.createObject(window))
-        window.pageStack.currentIndex = 0
+        // The Wallpapers page is the initialPage (index 0); register it so
+        // the tab mapping can find it. Tool pages load lazily via activateTab.
+        window.pages[0] = wallpapersPage;
+        window.pageStack.currentIndex = 0;
     }
 }

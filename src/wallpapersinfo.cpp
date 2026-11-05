@@ -1,5 +1,6 @@
 #include "wallpapersinfo.h"
 #include "colorcategory.h"
+#include "tools/fileutil.h"
 #include <QByteArray>
 #include <QImageReader>
 #include <QCryptographicHash>
@@ -81,7 +82,13 @@ bool extractFirstFrame(const QString &video, const QString &target)
     if (binary.isEmpty()) {
         return false;
     }
-    const QString tmp = target + QStringLiteral(".tmp");
+    // Unique per extraction: two refresh passes of the same video can
+    // overlap in the pool; a shared tmp name would interleave the two
+    // ffmpeg writers in one file (same pattern as encodeResized).
+    static std::atomic<quint64> tmpSeq{0};
+    const QString tmp = target + QStringLiteral(".%1-%2.tmp")
+                            .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()))
+                            .arg(tmpSeq.fetch_add(1));
     QProcess process;
     process.start(binary,
                   {QStringLiteral("-v"),
@@ -112,11 +119,8 @@ bool extractFirstFrame(const QString &video, const QString &target)
         QFile::remove(tmp);
         return false;
     }
-    // Qt's QFile::rename does not replace an existing target, so drop it first.
-    if (QFile::exists(target)) {
-        QFile::remove(target);
-    }
-    return QFile::rename(tmp, target);
+    // Single atomic replace (rename(2)); no remove window.
+    return tools::renameAtomic(tmp, target);
 }
 
 // MD5 of the file content, read in 1 MiB chunks.
@@ -358,8 +362,8 @@ bool encodeResized(const QString &ffmpegBinary, const QString &video, const QStr
         QFile::remove(tmp);
         return false;
     }
-    QFile::remove(output); // QFile::rename does not replace an existing target.
-    if (!QFile::rename(tmp, output)) {
+    // Single atomic replace (rename(2)); no remove window on the cache copy.
+    if (!tools::renameAtomic(tmp, output)) {
         QFile::remove(tmp);
         return false;
     }
@@ -742,11 +746,8 @@ void WallpapersInfo::saveLocked()
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         file.write(QJsonDocument(root).toJson());
         file.close();
-        // Qt's QFile::rename does not replace an existing target, so drop it first.
-        if (QFile::exists(path)) {
-            QFile::remove(path);
-        }
-        if (!QFile::rename(tmp, path)) {
+        // Single atomic replace (rename(2)); no remove window on the cache.
+        if (!tools::renameAtomic(tmp, path)) {
             QFile::remove(tmp);
         }
     }

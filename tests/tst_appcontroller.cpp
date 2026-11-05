@@ -25,6 +25,7 @@ private slots:
     void testToolDetection();
     void testCustomCommands();
     void testCustomCommandExpansion();
+    void testCustomCommandQuoting();
     void testSourceColorIndexPersistence();
 
 private:
@@ -33,6 +34,16 @@ private:
         QImage image(8, 8, QImage::Format_RGB32);
         image.fill(color);
         image.save(path);
+    }
+
+    // Custom commands persist in the sandboxed kvalrc across the whole test
+    // run; command-driven tests start from a known-empty list so add/update
+    // hit the rows they create, not a leftover (possibly disabled) one.
+    static void clearCommands(AppController &app)
+    {
+        while (app.customCommands().size() > 0) {
+            app.removeCustomCommand(0);
+        }
     }
 };
 
@@ -303,6 +314,7 @@ void tst_AppController::testCustomCommands()
 void tst_AppController::testCustomCommandExpansion()
 {
     AppController app;
+    clearCommands(app);
     QTemporaryDir dir;
     const QString wallpaper = dir.path() + QStringLiteral("/wall.png");
     const QString out = dir.path() + QStringLiteral("/expanded.txt");
@@ -318,24 +330,33 @@ void tst_AppController::testCustomCommandExpansion()
     app.setThemeMode(QStringLiteral("light"));
     app.setCustomColor(QStringLiteral("#123456"));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%mode%")), QStringLiteral("light"));
-    QCOMPARE(app.expandPlaceholders(QStringLiteral("%ccolor%")), QStringLiteral("#123456"));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%ccolor%")), QStringLiteral("'#123456'"));
     AppController modeApp;
     QCOMPARE(modeApp.themeMode(), QStringLiteral("light"));
     QCOMPARE(modeApp.customColor(), QStringLiteral("#123456"));
 
-    // No source colors for the selection: %path% and %image% expand quoted,
-    // %sc% to the index, %scolor% to an empty string.
+    // No source colors for the selection: %path% and %image% expand as
+    // POSIX single-quoted words, %sc% to the index, %scolor% to an empty
+    // quoted word.
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%path%")),
-             QStringLiteral("\"%1\"").arg(wallpaper));
+             QStringLiteral("'%1'").arg(wallpaper));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%image%")),
-             QStringLiteral("\"%1\"").arg(wallpaper));
+             QStringLiteral("'%1'").arg(wallpaper));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%sc%")), QStringLiteral("2"));
-    QCOMPARE(app.expandPlaceholders(QStringLiteral("%scolor%")), QString());
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%scolor%")), QStringLiteral("''"));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("a %path% %sc% b")),
-             QStringLiteral("a \"%1\" 2 b").arg(wallpaper));
+             QStringLiteral("a '%1' 2 b").arg(wallpaper));
+    // Embedded single quotes are closed and re-escaped ('\'' ), never left open.
+    const QString tricky = dir.path() + QStringLiteral("/it's a $(touch bad) `bad` \"bad\".png");
+    app.selectWallpaper(tricky);
+    QString escapedTricky = tricky;
+    escapedTricky.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%path%")),
+             QStringLiteral("'%1'").arg(escapedTricky));
 
     // The enabled commands run as one detached shell chain; disabled and
     // empty commands are skipped.
+    app.selectWallpaper(wallpaper);
     app.addCustomCommand();
     app.updateCustomCommand(0, QStringLiteral("echo %path% > %1").arg(out));
     app.addCustomCommand();
@@ -350,6 +371,47 @@ void tst_AppController::testCustomCommandExpansion()
     QCOMPARE(QString::fromUtf8(file.readLine()).trimmed(),
              wallpaper);
     QVERIFY(!QFile::exists(second));
+}
+
+void tst_AppController::testCustomCommandQuoting()
+{
+    // A wallpaper whose name is a crafted shell payload: with double-quoted
+    // expansion the $( ) and backtick command substitutions would run when
+    // the commands fire through sh -c. Single-quoted expansion keeps every
+    // one of them literal.
+    QTemporaryDir dir;
+    const QString subMarker = dir.path() + QStringLiteral("/pwn_sub");
+    const QString btMarker = dir.path() + QStringLiteral("/pwn_bt");
+    const QString ccMarker = dir.path() + QStringLiteral("/pwn_cc");
+    const QString name = QStringLiteral("a $(touch '%1') b `touch '%2'` it's.png").arg(subMarker, btMarker);
+    const QString wallpaper = dir.path() + QLatin1Char('/') + name;
+    const QString out = dir.path() + QStringLiteral("/out.txt");
+    const QString ccOut = dir.path() + QStringLiteral("/cc.txt");
+
+    AppController app;
+    clearCommands(app);
+    app.selectWallpaper(wallpaper);
+    app.setCustomColor(QStringLiteral("#fff; touch '%1'").arg(ccMarker));
+
+    app.addCustomCommand();
+    app.updateCustomCommand(0, QStringLiteral("echo %path% > '%1'").arg(out));
+    app.addCustomCommand();
+    app.updateCustomCommand(1, QStringLiteral("echo %ccolor% > '%1'").arg(ccOut));
+    app.runCustomCommands();
+
+    // Both files land with the literal payload as content; no marker is created.
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(out), 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(ccOut), 5000);
+    QFile file(out);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(file.readAll()).trimmed(), wallpaper);
+    QFile ccFile(ccOut);
+    QVERIFY(ccFile.open(QIODevice::ReadOnly));
+    QCOMPARE(QString::fromUtf8(ccFile.readAll()).trimmed(),
+             QStringLiteral("#fff; touch '%1'").arg(ccMarker));
+    QVERIFY2(!QFile::exists(subMarker), "substitution in path executed");
+    QVERIFY2(!QFile::exists(btMarker), "backtick in path executed");
+    QVERIFY2(!QFile::exists(ccMarker), "command break-out via ccolor executed");
 }
 
 void tst_AppController::testSourceColorIndexPersistence()

@@ -7,19 +7,10 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-Kirigami.Page {
+ToolPage {
     id: page
     title: qsTr("Fastfetch")
-
-    readonly property color pageBackground: app.enableTransparency
-        ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
-        : Kirigami.Theme.backgroundColor
-
-    background: Rectangle {
-        color: page.pageBackground
-    }
-
-    property AppController app
+    resultTitle: qsTr("Fastfetch")
 
     readonly property FastfetchController controller: FastfetchController {}
 
@@ -28,19 +19,6 @@ Kirigami.Page {
         if (parts.length <= 2)
             return String(path)
         return "…" + "/" + parts[parts.length - 2] + "/" + parts[parts.length - 1]
-    }
-
-    Dialog {
-        id: resultDialog
-        title: qsTr("Fastfetch")
-        modal: true
-        visible: false
-        standardButtons: Dialog.Ok
-        property string message: ""
-        contentItem: Label {
-            text: resultDialog.message
-            wrapMode: Text.WordWrap
-        }
     }
 
     FileDialog {
@@ -56,8 +34,7 @@ Kirigami.Page {
     Connections {
         target: page.controller
         function onOperationResult(success, message) {
-            resultDialog.message = message
-            resultDialog.visible = true
+            page.showResult(message)
         }
     }
 
@@ -65,10 +42,6 @@ Kirigami.Page {
         if (visible)
             page.controller.refreshConfigImage()
     }
-
-    // Hide the page-level navigation header (back/forward + title) so the
-    // window tab bar is the only chrome, matching WallpapersPage.
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
 
     RowLayout {
         anchors.fill: parent

@@ -5,18 +5,10 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-Kirigami.Page {
+ToolPage {
     id: page
     title: qsTr("Ulauncher")
-
-    readonly property color pageBackground: app.enableTransparency
-        ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
-        : Kirigami.Theme.backgroundColor
-
-    background: Rectangle {
-        color: page.pageBackground
-    }
-    property AppController app
+    resultTitle: qsTr("Ulauncher")
 
     required property UlauncherController controller
 
@@ -36,19 +28,6 @@ Kirigami.Page {
             if (sections[i].colors.length > 0)
                 return false
         return true
-    }
-
-    Dialog {
-        id: resultDialog
-        title: qsTr("Ulauncher")
-        modal: true
-        visible: false
-        standardButtons: Dialog.Ok
-        property string message: ""
-        contentItem: Label {
-            text: resultDialog.message
-            wrapMode: Text.WordWrap
-        }
     }
 
     Dialog {
@@ -82,8 +61,7 @@ Kirigami.Page {
     Connections {
         target: page.controller
         function onOperationResult(success, message) {
-            resultDialog.message = message
-            resultDialog.visible = true
+            page.showResult(message)
         }
     }
 
@@ -91,9 +69,6 @@ Kirigami.Page {
         if (visible)
             page.controller.refresh()
     }
-
-    // Hide the page-level header so the window tab bar is the only chrome.
-    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
 
     RowLayout {
         anchors.fill: parent

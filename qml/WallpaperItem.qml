@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import QtMultimedia
 
@@ -177,7 +176,7 @@ ItemDelegate {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: Kirigami.Units.smallSpacing
-            icon.name: "preferences-desktop-wallpaper"//"dialog-ok-apply"
+            icon.name: "preferences-desktop-wallpaper"
             display: AbstractButton.IconOnly
             visible: root.isSelected
             Accessible.name: qsTr("Set as Wallpaper")
@@ -207,42 +206,18 @@ ItemDelegate {
                 bottomPadding: Kirigami.Units.gridUnit / 4
             }
         }
-        // The matugen source colors of the selected wallpaper, like the old
-        // app's colorDotsContainer: bottom-left, above the extension badge row.
-        Rectangle {
-            id: colorDotsContainer
+        // The matugen source colors of the selected wallpaper, at the
+        // bottom-left above the extension badge row.
+        SourceColorDots {
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             anchors.margins: Kirigami.Units.smallSpacing * 2
-            radius: Kirigami.Units.smallSpacing
             visible: root.isSelected
                 && root.app.matugenDotsEnabled
                 && root.sourceColors.length > 0
-            color: "transparent"
-            // color: Kirigami.Theme.alternateBackgroundColor
-            // border.color: Kirigami.Theme.highlightColor
-            // border.width: 0.5
-            width: colorDots.implicitWidth + Kirigami.Units.smallSpacing * 2
-            height: colorDots.implicitHeight + Kirigami.Units.smallSpacing * 2
-
-            RowLayout {
-                id: colorDots
-                anchors.centerIn: parent
-                spacing: 2
-
-                Repeater {
-                    model: root.sourceColors
-                    delegate: ColorDot {
-                        required property string modelData
-                        required property int index
-                        id: sourceDot
-                        dotSize: Kirigami.Units.gridUnit * 0.8
-                        color: sourceDot.modelData
-                        selected: root.app.selectedSourceColorIndex === sourceDot.index
-                        onClicked: root.app.selectedSourceColorIndex = sourceDot.index
-                    }
-                }
-            }
+            app: root.app
+            colors: root.sourceColors
+            dotSize: Kirigami.Units.gridUnit * 0.8
         }
     }
 }

@@ -256,6 +256,11 @@ Rectangle {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
+                // Cap the decode: the panel shows the wallpaper at a few
+                // hundred px, but the source is the full-resolution original
+                // (or the cached first frame); decoding it at native size
+                // (e.g. 4K) wastes memory the panel never displays.
+                sourceSize: Qt.size(1280, 0)
                 visible: !root.isGif
                 source: root.isVideo
                     ? (root.app.wallpapersInfo.firstFrameFor(root.wallpaper) !== ""
@@ -321,38 +326,18 @@ Rectangle {
                 onTriggered: root.mediaArmed = true
             }
 
-            // The matugen source colors, overlaid at the bottom-left
-            // like the grid's selected cell: the selected dot feeds the
+            // The matugen source colors, overlaid at the bottom-left like the
+            // grid's selected cell: the selected dot feeds the
             // %scolor%/%sc% placeholders of the custom commands.
-            Rectangle {
-                id: sourceDotsContainer
+            SourceColorDots {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
                 anchors.margins: Kirigami.Units.smallSpacing * 2
                 visible: root.app.matugenDotsEnabled
                     && root.sourceColors.length > 0
-                color: "transparent"
-                width: sourceDots.implicitWidth + Kirigami.Units.smallSpacing * 2
-                height: sourceDots.implicitHeight + Kirigami.Units.smallSpacing * 2
-
-                RowLayout {
-                    id: sourceDots
-                    anchors.centerIn: parent
-                    spacing: 2
-
-                    Repeater {
-                        model: root.sourceColors
-                        delegate: ColorDot {
-                            required property string modelData
-                            required property int index
-                            id: sourceDot
-                            dotSize: Kirigami.Units.gridUnit * 0.95
-                            color: sourceDot.modelData
-                            selected: root.app.selectedSourceColorIndex === sourceDot.index
-                            onClicked: root.app.selectedSourceColorIndex = sourceDot.index
-                        }
-                    }
-                }
+                app: root.app
+                colors: root.sourceColors
+                dotSize: Kirigami.Units.gridUnit * 0.95
             }
         }
 

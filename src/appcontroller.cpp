@@ -15,6 +15,7 @@
 #include <QJsonObject>
 #include <QVariantMap>
 #include <QProcess>
+#include <QPointer>
 #include <QRunnable>
 #include <QStandardPaths>
 #include <QThreadPool>
@@ -39,6 +40,17 @@ bool isToolInstalled(const QString &binary)
     return !QStandardPaths::findExecutable(binary).isEmpty();
 }
 
+// Wraps a placeholder value as a POSIX single-quoted word: embedded single
+// quotes are closed and re-escaped ('\'' ), everything else ($, `, ", \,
+// newlines) is literal inside single quotes. Double-quoting would still let
+// a crafted file name expand $( ) / ` ` / " inside the shell.
+QString shellQuote(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace(QLatin1Char('\''), QStringLiteral("'\\''"));
+    return QStringLiteral("'%1'").arg(escaped);
+}
+
 // Runs the wallpaper switch off the main thread (D-Bus round trips +
 // config edits), directly through PlasmaApply or, when a transition is
 // enabled, through the standalone transition binary (the binary runs the
@@ -46,11 +58,12 @@ bool isToolInstalled(const QString &binary)
 class WallpaperApplyJob : public QRunnable
 {
 public:
-    WallpaperApplyJob(PlasmaApply *apply, QString type, QString path, bool lockscreen,
+    WallpaperApplyJob(PlasmaApply *apply, QObject *context, QString type, QString path, bool lockscreen,
                       const QString &binaryPath, QString framePath,
                       transitions::TransitionConfig cfg, bool generateResize,
                       std::function<void(bool, const QString &)> finish)
         : m_apply(apply)
+        , m_context(context)
         , m_type(std::move(type))
         , m_path(std::move(path))
         , m_lockscreen(lockscreen)
@@ -77,7 +90,12 @@ public:
             }
         }
         if (!m_cfg.enabled || m_binaryPath.isEmpty()) {
-            m_apply->applyWallpaper(m_type, m_path, m_lockscreen);
+            // The owner (and its PlasmaApply child) may already be gone when
+            // the pool runs this: skip if so. The finish arrives via
+            // PlasmaApply::result, queued to the main thread.
+            if (PlasmaApply *apply = m_apply) {
+                apply->applyWallpaper(m_type, m_path, m_lockscreen);
+            }
             return;
         }
         // Transition mode: run the standalone binary; its exit code is the
@@ -107,14 +125,14 @@ public:
         QProcess proc;
         proc.start(m_binaryPath, args);
         if (!proc.waitForStarted(5000)) {
-            m_finish(false, QStringLiteral("Could not start the transition process."));
+            finish(false, QStringLiteral("Could not start the transition process."));
             return;
         }
         // The animation is a few seconds plus the holds; be generous.
         if (!proc.waitForFinished(120000)) {
             proc.kill();
             proc.waitForFinished(3000);
-            m_finish(false, QStringLiteral("The transition timed out."));
+            finish(false, QStringLiteral("The transition timed out."));
             return;
         }
         const QByteArray err = proc.readAllStandardError();
@@ -124,20 +142,26 @@ public:
         const bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
         if (ok && m_lockscreen) {
             // The binary does not touch kscreenlockerrc; mirror it here
-            // with the same plugin/URL resolution as the direct path.
+            // with the same plugin/URL resolution as the direct path. The
+            // owner's PlasmaApply may already be gone when the pool runs.
+            PlasmaApply *apply = m_apply;
+            if (!apply) {
+                finish(false, QStringLiteral("The apply was cancelled."));
+                return;
+            }
             QString plugin = QString::fromLatin1(plasmaapply::kImagePluginId);
             QString imageUrl;
             QString videoEntryUrl;
             QString videoLastUrl;
-            if (m_type == QLatin1String("video") && m_apply->rebornAvailable()) {
+            if (m_type == QLatin1String("video") && apply->rebornAvailable()) {
                 plugin = QString::fromLatin1(plasmaapply::kRebornPluginId);
                 videoEntryUrl = plasmaapply::fileUrl(m_path);
                 videoLastUrl = plasmaapply::rawVideoUrl(m_path);
             } else {
                 imageUrl = plasmaapply::fileUrl(m_framePath.isEmpty() ? m_path : m_framePath);
             }
-            if (!m_apply->mirrorLockscreen(plugin, imageUrl, videoEntryUrl, videoLastUrl)) {
-                m_finish(false, QStringLiteral("Could not write kscreenlockerrc."));
+            if (!apply->mirrorLockscreen(plugin, imageUrl, videoEntryUrl, videoLastUrl)) {
+                finish(false, QStringLiteral("Could not write kscreenlockerrc."));
                 return;
             }
         }
@@ -155,11 +179,33 @@ public:
                 message = QStringLiteral("The wallpaper switch failed.");
             }
         }
-        m_finish(ok, ok ? QStringLiteral("Wallpaper set.") : message);
+        finish(ok, ok ? QStringLiteral("Wallpaper set.") : message);
     }
 
 private:
-    PlasmaApply *m_apply;
+    // Delivers the result on the owner's (main) thread. wallpaperFinished
+    // touches KConfig and QProcess::startDetached, neither safe off-thread,
+    // so never call m_finish directly from the pool. The owner may die
+    // before the queued call runs; the QPointer guard drops it then.
+    void finish(bool ok, const QString &message) const
+    {
+        const QPointer<QObject> context = m_context;
+        const std::function<void(bool, const QString &)> callback = m_finish;
+        if (!context) {
+            return;
+        }
+        QMetaObject::invokeMethod(
+            context.data(),
+            [context, callback, ok, message] {
+                if (context) {
+                    callback(ok, message);
+                }
+            },
+            Qt::QueuedConnection);
+    }
+
+    QPointer<PlasmaApply> m_apply;
+    QPointer<QObject> m_context;
     QString m_type;
     QString m_path;
     bool m_lockscreen;
@@ -419,9 +465,6 @@ void AppController::setColorCategoriesEnabled(bool enabled)
         return;
     }
     m_colorCategories = enabled;
-    if (WallpapersInfo *info = WallpapersInfo::instance()) {
-        info->setMatugenEnabled(m_matugenDots);
-    }
     saveConfig();
     emit colorCategoriesEnabledChanged();
 }
@@ -611,6 +654,7 @@ void AppController::setWallpaper(const QString &filePath)
     }
     QThreadPool::globalInstance()->start(
         new WallpaperApplyJob(m_plasmaApply,
+                              this,
                               video ? QStringLiteral("video") : QStringLiteral("image"),
                               target,
                               m_lockscreen,
@@ -728,11 +772,11 @@ QString AppController::expandPlaceholders(const QString &command) const
         ? colors.at(m_selectedSourceColorIndex)
         : QString();
     QString result = command;
-    result.replace(QStringLiteral("%path%"), QStringLiteral("\"%1\"").arg(m_selectedWallpaper));
-    result.replace(QStringLiteral("%image%"), QStringLiteral("\"%1\"").arg(image));
-    result.replace(QStringLiteral("%ccolor%"), m_customColor);
+    result.replace(QStringLiteral("%path%"), shellQuote(m_selectedWallpaper));
+    result.replace(QStringLiteral("%image%"), shellQuote(image));
+    result.replace(QStringLiteral("%ccolor%"), shellQuote(m_customColor));
     result.replace(QStringLiteral("%mode%"), m_themeMode);
-    result.replace(QStringLiteral("%scolor%"), scolor);
+    result.replace(QStringLiteral("%scolor%"), shellQuote(scolor));
     result.replace(QStringLiteral("%sc%"), QString::number(m_selectedSourceColorIndex));
     return result;
 }
@@ -1160,6 +1204,7 @@ void AppController::setTransitionAngle(double angle)
         return;
     }
     m_transitionAngle = angle;
+    saveConfig();
     emit transitionAngleChanged();
 }
 

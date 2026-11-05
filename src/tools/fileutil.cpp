@@ -26,8 +26,7 @@ bool writeFileAtomic(const QString &path, const QString &content)
         return false;
     tmp.close();
 
-    QFile::remove(path);
-    return QFile::rename(tmp.fileName(), path);
+    return renameAtomic(tmp.fileName(), path);
 }
 
 QString backupFile(const QString &path)
@@ -48,11 +47,29 @@ bool hasBackup(const QString &path)
 bool restoreBackup(const QString &path)
 {
     const QString backup = path + QStringLiteral(".bak");
-    if (!QFileInfo::exists(backup))
+    QFile source(backup);
+    if (!source.open(QIODevice::ReadOnly))
+        return false;
+    const QByteArray content = source.readAll();
+    source.close();
+    if (source.error() != QFileDevice::NoError)
         return false;
 
-    QFile::remove(path);
-    return QFile::copy(backup, path);
+    // Restore through a temp file + atomic rename so a crash never leaves
+    // the real file missing (a plain remove+copy would).
+    const QFileInfo info(path);
+    QTemporaryFile tmp;
+    tmp.setFileTemplate(info.absoluteDir().filePath(
+        QStringLiteral(".%1.restoring-XXXXXX").arg(info.fileName())));
+    if (!tmp.open())
+        return false;
+    if (tmp.write(content) != content.size())
+        return false;
+    tmp.flush();
+    if (tmp.error() != QFileDevice::NoError)
+        return false;
+    tmp.close();
+    return renameAtomic(tmp.fileName(), path);
 }
 
 }

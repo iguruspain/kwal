@@ -219,14 +219,47 @@ qt_standard_project_setup(REQUIRES 6.8)
 
 enable_testing()
 
+# Shared core sources compiled ONCE and reused by the app, the transition
+# binary and every unit test, instead of re-listing them in each target.
+# OBJECT library (not STATIC): every consumer gets the object files
+# unconditionally, so there are no static-archive link-order games.
+# Only sources that are NOT QML_ELEMENT/QML_SINGLETON live here: a QML type
+# must stay in the `kwal` module target or its module registration
+# (qml_register_types_org_kde_kwal) is dropped. Hence colorcategory and
+# tools/fileutil are shared here (self-contained, linked by every target),
+# while wallpapersinfo and wallpapermodel (QML-registered) stay with their
+# consuming targets.
+add_library(kwal_core OBJECT
+ src/colorcategory.cpp
+ src/colorcategory.h
+ src/tools/fileutil.cpp
+ src/tools/fileutil.h
+)
+target_include_directories(kwal_core PUBLIC src)
+target_link_libraries(kwal_core PUBLIC Qt6::Core Qt6::Gui mcu_lib)
+
+# PlasmaApply has Q_OBJECT but is not a QML type, so it can be shared — but
+# plasmaapply.cpp calls WallpapersInfo (instance()/firstFrameFor()), which
+# cannot move out of the QML module. So PlasmaApply gets its own object lib,
+# linked only by targets that need its symbols AND compile wallpapersinfo.cpp.
+# That is every target linking kwal_transitions (its planes.cpp uses
+# plasmaapply::Ini) plus appcontroller.cpp's users: kwal, kwal-transition,
+# tst_transitions, tst_appcontroller, tst_plasmaapply. The remaining tests
+# (tst_wallpapersinfo, tst_paletteextractor, tst_aitagger, the tool tests, ...)
+# touch neither PlasmaApply nor kwal_transitions and link just kwal_core.
+add_library(kwal_plasma OBJECT
+ src/plasmaapply.cpp
+ src/plasmaapply.h
+)
+target_include_directories(kwal_plasma PUBLIC src)
+target_link_libraries(kwal_plasma PUBLIC Qt6::Core Qt6::Gui Qt6::DBus)
+
 qt_add_executable(kwal
  src/aboutinfo.cpp
  src/aboutinfo.h
  src/aitagger.cpp
  src/aitagger.h
  src/appcontroller.cpp
- src/colorcategory.cpp
- src/colorcategory.h
  src/appcontroller.h
  src/fastfetchcontroller.cpp
  src/fastfetchcontroller.h
@@ -234,8 +267,6 @@ qt_add_executable(kwal
  src/fdothumbnailprovider.h
  src/paletteextractor.cpp
  src/paletteextractor.h
- src/plasmaapply.cpp
- src/plasmaapply.h
  src/main.cpp
  src/starshipcontroller.cpp
  src/starshipcontroller.h
@@ -243,8 +274,6 @@ qt_add_executable(kwal
  src/wallpapersinfo.h
  src/templateinstaller.cpp
  src/templateinstaller.h
- src/tools/fileutil.cpp
- src/tools/fileutil.h
  src/tools/fastfetchconfig.cpp
  src/tools/fastfetchconfig.h
  src/tools/starshipconfig.cpp
@@ -280,12 +309,14 @@ qt_add_qml_module(kwal
  qml/FastfetchPage.qml
  qml/StarshipPage.qml
  qml/StarshipPreview.qml
+ qml/ToolPage.qml
  qml/UlauncherPage.qml
  qml/UlauncherSettingsPage.qml
  qml/UlauncherMockup.qml
     qml/WallpapersSettingsPage.qml
     qml/ColorDot.qml
     qml/ColorRow.qml
+    qml/SourceColorDots.qml
     qml/FpsComboBox.qml
 )
 
@@ -302,6 +333,8 @@ Qt6::WebEngineQuick
     KF6::Kirigami
     PkgConfig::AVUTIL
  mcu_lib
+ kwal_core
+ kwal_plasma
  kwal_transitions
  tomlplusplus::tomlplusplus
 )
@@ -311,17 +344,15 @@ Qt6::WebEngineQuick
 # test transitions against the live desktop.
 qt_add_executable(kwal-transition
  src/kwal-transition.cpp
- src/plasmaapply.cpp
- src/plasmaapply.h
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
- src/colorcategory.cpp
- src/colorcategory.h
 )
 target_include_directories(kwal-transition PRIVATE src)
 target_link_libraries(kwal-transition
  PRIVATE
  kwal_transitions
+ kwal_core
+ kwal_plasma
  Qt6::Core
  Qt6::Gui
  Qt6::Qml
@@ -331,12 +362,8 @@ target_link_libraries(kwal-transition
 
 qt_add_executable(tst_transitions
  tests/tst_transitions.cpp
- src/plasmaapply.cpp
- src/plasmaapply.h
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
- src/colorcategory.cpp
- src/colorcategory.h
  src/wallpapermodel.cpp
  src/wallpapermodel.h
 )
@@ -344,6 +371,8 @@ target_include_directories(tst_transitions PRIVATE src)
 target_link_libraries(tst_transitions
  PRIVATE
  kwal_transitions
+ kwal_core
+ kwal_plasma
  Qt6::Core
  Qt6::Gui
  Qt6::Qml
@@ -359,8 +388,6 @@ qt_add_executable(tst_appcontroller
  src/aitagger.cpp
  src/aitagger.h
  src/appcontroller.cpp
- src/colorcategory.cpp
- src/colorcategory.h
  src/appcontroller.h
  src/templateinstaller.cpp
  src/templateinstaller.h
@@ -370,12 +397,8 @@ qt_add_executable(tst_appcontroller
  src/wallpapersinfo.h
  src/paletteextractor.cpp
  src/paletteextractor.h
- src/plasmaapply.cpp
- src/plasmaapply.h
  src/ulaunchercontroller.cpp
  src/ulaunchercontroller.h
- src/tools/fileutil.cpp
- src/tools/fileutil.h
  src/tools/ulaunchertheme.cpp
  src/tools/ulaunchertheme.h
  src/tools/ulauncherpreview.cpp
@@ -399,6 +422,8 @@ target_link_libraries(tst_appcontroller
  mcu_lib
  KF6::ConfigCore
  kwal_transitions
+ kwal_core
+ kwal_plasma
 )
 add_test(NAME tst_appcontroller COMMAND tst_appcontroller)
 qt_add_executable(tst_aitagger
@@ -409,8 +434,6 @@ qt_add_executable(tst_aitagger
  src/wallpapermodel.h
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
- src/colorcategory.cpp
- src/colorcategory.h
 )
 target_include_directories(tst_aitagger PRIVATE src)
 target_link_libraries(tst_aitagger
@@ -422,13 +445,12 @@ target_link_libraries(tst_aitagger
  Qt6::Test
  KF6::ConfigCore
  mcu_lib
+ kwal_core
 )
 add_test(NAME tst_aitagger COMMAND tst_aitagger)
 qt_add_executable(tst_wallpapersinfo
  tests/tst_wallpapersinfo.cpp
  src/wallpapersinfo.cpp
- src/colorcategory.cpp
- src/colorcategory.h
  src/wallpapersinfo.h
  src/wallpapermodel.cpp
  src/wallpapermodel.h
@@ -441,16 +463,13 @@ target_link_libraries(tst_wallpapersinfo
  Qt6::Qml
  Qt6::Test
  mcu_lib
+ kwal_core
 )
 add_test(NAME tst_wallpapersinfo COMMAND tst_wallpapersinfo)
 qt_add_executable(tst_plasmaapply
  tests/tst_plasmaapply.cpp
- src/plasmaapply.cpp
- src/plasmaapply.h
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
- src/colorcategory.cpp
- src/colorcategory.h
  src/wallpapermodel.cpp
  src/wallpapermodel.h
 )
@@ -464,13 +483,13 @@ target_link_libraries(tst_plasmaapply
  Qt6::Test
  mcu_lib
  kwal_transitions
+ kwal_core
+ kwal_plasma
 )
 add_test(NAME tst_plasmaapply COMMAND tst_plasmaapply)
 qt_add_executable(tst_paletteextractor
  tests/tst_paletteextractor.cpp
  src/paletteextractor.cpp
- src/colorcategory.cpp
- src/colorcategory.h
  src/paletteextractor.h
  src/wallpapersinfo.cpp
  src/wallpapersinfo.h
@@ -485,12 +504,11 @@ target_link_libraries(tst_paletteextractor
  Qt6::Qml
  mcu_lib
  Qt6::Test
+ kwal_core
 )
 add_test(NAME tst_paletteextractor COMMAND tst_paletteextractor)
 qt_add_executable(tst_tools
  tests/tst_tools.cpp
- src/tools/fileutil.cpp
- src/tools/fileutil.h
  src/tools/fastfetchconfig.cpp
  src/tools/fastfetchconfig.h
  src/tools/tintimage.cpp
@@ -505,14 +523,13 @@ target_link_libraries(tst_tools
  Qt6::Core
  Qt6::Gui
  Qt6::Test
+ kwal_core
 )
 add_test(NAME tst_tools COMMAND tst_tools)
 qt_add_executable(tst_fastfetch
  tests/tst_fastfetch.cpp
  src/fastfetchcontroller.cpp
  src/fastfetchcontroller.h
- src/tools/fileutil.cpp
- src/tools/fileutil.h
  src/tools/fastfetchconfig.cpp
  src/tools/fastfetchconfig.h
  src/tools/tintimage.cpp
@@ -524,14 +541,13 @@ target_link_libraries(tst_fastfetch
  Qt6::Core
  Qt6::Gui
  Qt6::Test
+ kwal_core
 )
 add_test(NAME tst_fastfetch COMMAND tst_fastfetch)
 
 
 qt_add_executable(tst_starship
  tests/tst_starship.cpp
- src/tools/fileutil.cpp
- src/tools/fileutil.h
  src/tools/starshipconfig.cpp
  src/tools/starshipconfig.h
  src/tools/starshippreview.cpp
@@ -547,13 +563,12 @@ target_link_libraries(tst_starship
  Qt6::Qml
  Qt6::Test
  tomlplusplus::tomlplusplus
+ kwal_core
 )
 add_test(NAME tst_starship COMMAND tst_starship)
 
 qt_add_executable(tst_ulauncher
  tests/tst_ulauncher.cpp
- src/tools/fileutil.cpp
- src/tools/fileutil.h
  src/tools/ulaunchertheme.cpp
  src/tools/ulaunchertheme.h
  src/tools/ulauncherpreview.cpp
@@ -571,6 +586,7 @@ target_link_libraries(tst_ulauncher
  Qt6::Qml
  Qt6::Test
  KF6::ConfigCore
+ kwal_core
 )
 
 qt_add_executable(tst_aboutinfo
@@ -591,7 +607,6 @@ add_test(NAME tst_aboutinfo COMMAND tst_aboutinfo)
 
 install(FILES org.kde.kwal.desktop
  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
- RENAME kwal.desktop
 )
 install(FILES
  icons/hicolor/8x8/apps/kwal.svg

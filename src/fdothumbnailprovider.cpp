@@ -1,4 +1,5 @@
 #include "fdothumbnailprovider.h"
+#include "tools/fileutil.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -8,6 +9,7 @@
 #include <QImageReader>
 #include <QRunnable>
 #include <QStandardPaths>
+#include <QTemporaryFile>
 #include <QThreadPool>
 #include <QUrl>
 
@@ -71,7 +73,25 @@ QImage FdoThumbnailProvider::thumbnailImage(const QString &path)
 
     const QDir cacheDir = QFileInfo(thumbnailPath).absoluteDir();
     if (cacheDir.mkpath(QStringLiteral("."))) {
-        original.save(thumbnailPath, "PNG");
+        // Write to a uniquely-named temp file + atomic rename: two
+        // concurrent requests for the same source must not share a tmp
+        // name nor interleave into a corrupt PNG.
+        QTemporaryFile tmpFile;
+        tmpFile.setAutoRemove(false);
+        tmpFile.setFileTemplate(cacheDir.filePath(
+            QStringLiteral(".%1-XXXXXX.png").arg(QFileInfo(thumbnailPath).completeBaseName())));
+        if (!tmpFile.open()) {
+            return original;
+        }
+        const QString tmp = tmpFile.fileName();
+        tmpFile.close();
+        if (tmp.isEmpty()) {
+            return original;
+        }
+        if (original.save(tmp, "PNG") && tools::renameAtomic(tmp, thumbnailPath)) {
+            return original;
+        }
+        QFile::remove(tmp);
     }
     return original;
 }

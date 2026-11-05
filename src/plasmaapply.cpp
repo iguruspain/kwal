@@ -1,4 +1,5 @@
 #include "plasmaapply.h"
+#include "tools/fileutil.h"
 #include "transitions/perf.h"
 #include "wallpapersinfo.h"
 
@@ -179,11 +180,9 @@ bool Ini::save(const QString &path) const
     }
     tmp.close();
     const QString tmpPath = tmp.fileName();
-    // Qt's QFile::rename does not replace an existing target, so drop it first.
-    if (QFile::exists(path)) {
-        QFile::remove(path);
-    }
-    return QFile::rename(tmpPath, path);
+    // Single atomic replace (rename(2)): the whole Plasma appletsrc is
+    // swapped in one step, so a crash never leaves it missing.
+    return tools::renameAtomic(tmpPath, path);
 }
 
 QString Ini::render() const

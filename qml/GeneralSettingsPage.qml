@@ -15,7 +15,7 @@ Kirigami.ScrollablePage {
     // with the controls below.
     property var searchKeys: [
         qsTr("Enable transparency"),
-        qsTr("Transparency level"),
+        qsTr("Opacity"),
         qsTr("Default width"),
         qsTr("Default height")
     ]
@@ -49,7 +49,8 @@ Kirigami.ScrollablePage {
 
         Kirigami.FormLayout {
             SpinBox {
-                Kirigami.FormData.label: qsTr("Transparency level")
+                activeFocusOnTab: true
+                Kirigami.FormData.label: qsTr("Opacity")
                 from: 0
                 to: 100
                 stepSize: 5
@@ -62,6 +63,7 @@ Kirigami.ScrollablePage {
             }
 
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Default width")
                 from: 700
                 to: 3840
@@ -71,6 +73,7 @@ Kirigami.ScrollablePage {
             }
 
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Default height")
                 from: 400
                 to: 2160

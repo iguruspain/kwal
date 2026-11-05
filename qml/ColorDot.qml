@@ -32,6 +32,13 @@ Item {
 
     implicitWidth: dotSize
     implicitHeight: dotSize
+    // Mouse-operated swatch; the role only announces it to assistive tech.
+    Accessible.role: Accessible.Button
+    Accessible.name: root.tooltipText !== ""
+        ? root.tooltipText
+        : root.color.startsWith("#")
+            ? root.color.toUpperCase()
+            : qsTr("Pick color")
 
     Rectangle {
         anchors.fill: parent
@@ -77,10 +84,13 @@ Item {
         onAccepted: root.accepted(root.dialogHex())
     }
 
-    // Invisible TextEdit used to copy text to the clipboard.
+    // Invisible TextEdit used to copy text to the clipboard. Pure plumbing:
+    // hide it from accessibility, where it showed up as a phantom editable
+    // field per dot.
     TextEdit {
         id: clipboard
         visible: false
+        Accessible.ignored: true
     }
 
     function dialogHex() {

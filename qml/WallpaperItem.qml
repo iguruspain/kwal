@@ -27,6 +27,10 @@ ItemDelegate {
     bottomPadding: 2
     leftPadding: 2
     rightPadding: 2
+    // The grid is navigated through its view, never through cells: the cell
+    // is not a tab stop (the desktop style already defaults ItemDelegate to
+    // false, but being explicit keeps the chain identical in every style).
+    activeFocusOnTab: false
 
     readonly property bool isSelected: root.path === root.app.selectedWallpaper
     // Whether the wallpapers page is currently visible; passed down by the page.
@@ -56,6 +60,14 @@ ItemDelegate {
     // shows the grid selection (this cell, since the click selected it).
     signal openDetail()
 
+    // ItemDelegate (AbstractButton) swallows Space as its own click, so the
+    // page's GridView-level handler never sees it while a cell has focus.
+    // The attached handler runs first: Space = keyboard double-click.
+    Keys.onSpacePressed: function(event) {
+        event.accepted = true
+        root.openDetail()
+    }
+
     // Covers the highlight transition (GridView default ~250ms).
     Timer {
         id: videoStartTimer
@@ -73,7 +85,12 @@ ItemDelegate {
         MouseArea {
             id: cellMouse
             anchors.fill: parent
-            onClicked: root.grid.currentIndex = root.index
+            // Clicking also keeps keyboard control with the grid, so the
+            // arrow keys keep working right after a mouse selection.
+            onClicked: {
+                root.grid.currentIndex = root.index
+                root.grid.forceActiveFocus()
+            }
             onDoubleClicked: root.openDetail()
         }
         // Rounded clipped container like the old app: keeps the hover/selection zoom inside the cell.
@@ -179,6 +196,10 @@ ItemDelegate {
             icon.name: "preferences-desktop-wallpaper"
             display: AbstractButton.IconOnly
             visible: root.isSelected
+            // Mouse affordance only: the keyboard applies with Enter on the
+            // grid. Keeping it a tab stop would make a stray Tab+Enter apply
+            // a wallpaper, and the chain would repeat it for every cell.
+            activeFocusOnTab: false
             Accessible.name: qsTr("Set as Wallpaper")
             ToolTip.text: qsTr("Set as Wallpaper")
             ToolTip.visible: hovered

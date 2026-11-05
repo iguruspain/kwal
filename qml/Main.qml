@@ -117,32 +117,34 @@ Kirigami.ApplicationWindow {
                     }
                 }
                 Item { Layout.fillWidth: true }
-            }
-        }
-        Item { Layout.fillWidth: true }
-        ToolButton {
-            id: menuButton
-            icon.name: "open-menu-symbolic"
-            onClicked: appMenu.open()
+                // The menu button belongs in the RowLayout: an orphaned child
+                // of the header Rectangle would sit in its top-left corner and
+                // land out of order in the tab chain.
+                ToolButton {
+                    id: menuButton
+                    icon.name: "open-menu-symbolic"
+                    onClicked: appMenu.open()
 
-            Menu {
-                id: appMenu
-                y: menuButton.height
+                    Menu {
+                        id: appMenu
+                        y: menuButton.height
 
-                MenuItem {
-                    text: qsTr("Configure Kwal")
-                    icon.name: "preferences-system-symbolic"
-                    onTriggered: {
-                        if (!window.settingsWindow)
-                            window.settingsWindow = settingsWindowComponent.createObject(window)
-                        window.settingsWindow.show()
+                        MenuItem {
+                            text: qsTr("Configure Kwal")
+                            icon.name: "preferences-system-symbolic"
+                            onTriggered: {
+                                if (!window.settingsWindow)
+                                    window.settingsWindow = settingsWindowComponent.createObject(window)
+                                window.settingsWindow.show()
+                            }
+                        }
+                        MenuSeparator {}
+                        MenuItem {
+                            text: qsTr("Quit")
+                            icon.name: "application-exit"
+                            onTriggered: Qt.quit()
+                        }
                     }
-                }
-                MenuSeparator {}
-                MenuItem {
-                    text: qsTr("Quit")
-                    icon.name: "application-exit"
-                    onTriggered: Qt.quit()
                 }
             }
         }

@@ -52,11 +52,48 @@ Rectangle {
             Layout.fillHeight: true
             clip: true
             model: root.app.folders
-            // highlight: Rectangle {
-            //     radius: Kirigami.Units.smallSpacing
-            //     color: Kirigami.Theme.highlightColor
-            //     opacity: 0.25
-            // }
+            // The list itself is the sidebar's tab stop (rows are
+            // ItemDelegates, which are not stops): Tab enters here, arrow
+            // keys move the cursor, Enter/Space picks the folder under it.
+            activeFocusOnTab: true
+            highlight: Rectangle {
+                radius: Kirigami.Units.smallSpacing
+                color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
+                border.color: Kirigami.Theme.highlightColor
+                border.width: 2
+                width: folderList.width
+                height: folderList.currentItem ? folderList.currentItem.height : 0
+            }
+            // Keep the keyboard cursor on the active folder, so Tab into the
+            // list starts where the user is; arrow keys move the cursor
+            // without applying until Enter.
+            Connections {
+                target: root.app
+                function onCurrentFolderIndexChanged() {
+                    folderList.currentIndex = root.app.currentFolderIndex
+                }
+                function onFoldersChanged() {
+                    folderList.currentIndex = root.app.currentFolderIndex
+                }
+            }
+            Component.onCompleted: folderList.currentIndex = root.app.currentFolderIndex
+            // The keyboard's "click" for the row under the cursor.
+            function activateCurrent() {
+                if (folderList.currentIndex >= 0)
+                    root.app.setCurrentFolderIndex(folderList.currentIndex)
+            }
+            Keys.onReturnPressed: function(event) {
+                event.accepted = true
+                folderList.activateCurrent()
+            }
+            Keys.onEnterPressed: function(event) {
+                event.accepted = true
+                folderList.activateCurrent()
+            }
+            Keys.onSpacePressed: function(event) {
+                event.accepted = true
+                folderList.activateCurrent()
+            }
             delegate: FolderRow {
                 app: root.app
                 // ListView does not stretch delegates; match the list width so the row (and its button) fit the sidebar.

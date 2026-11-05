@@ -165,6 +165,7 @@ Kirigami.ScrollablePage {
             }
 
             DoubleSpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Duration (s)")
                 from: 0.1
                 to: 10
@@ -183,6 +184,7 @@ Kirigami.ScrollablePage {
             }
 
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Step")
                 from: 1
                 to: 255
@@ -193,6 +195,7 @@ Kirigami.ScrollablePage {
             }
 
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Angle (°)")
                 from: 0
                 to: 360
@@ -203,6 +206,7 @@ Kirigami.ScrollablePage {
             }
 
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Wave width")
                 from: 1
                 to: 500
@@ -213,6 +217,7 @@ Kirigami.ScrollablePage {
             }
 
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Wave height")
                 from: 0
                 to: 500

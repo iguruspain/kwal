@@ -40,6 +40,7 @@ Kirigami.ScrollablePage {
 
         Kirigami.FormLayout {
             SpinBox {
+                activeFocusOnTab: true
                 Kirigami.FormData.label: qsTr("Ulauncher width")
                 from: 400
                 to: 1200

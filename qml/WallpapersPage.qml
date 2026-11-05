@@ -59,6 +59,10 @@ Kirigami.Page {
 
     function toggleSearch() {
         searchOpen = !searchOpen
+        // Closing the field must not orphan the focus: the field goes hidden,
+        // focus falls to the window root and arrow keys stop doing anything.
+        if (!searchOpen)
+            gridView.forceActiveFocus()
     }
 
     // Accessibility: Shortcut for Ctrl+F to toggle search
@@ -68,12 +72,20 @@ Kirigami.Page {
         onActivated: page.toggleSearch()
     }
 
-    // Closes the detail panel (the old overlay drawer closed on Escape too).
+    // Escape closes the topmost transient layer - detail panel first, then
+    // search - and hands keyboard control back to the grid, the page's main
+    // view (the old overlay drawer closed on Escape too).
     Shortcut {
         sequence: "Escape"
         context: Qt.ApplicationShortcut
-        enabled: page.detailOpen
-        onActivated: page.detailOpen = false
+        enabled: page.detailOpen || page.searchOpen
+        onActivated: {
+            if (page.detailOpen)
+                page.detailOpen = false
+            else
+                page.searchOpen = false
+            gridView.forceActiveFocus()
+        }
     }
 
     header:ToolBar {
@@ -149,6 +161,7 @@ Kirigami.Page {
                     checkable: true
                     checked: page.searchOpen
                     onClicked: page.toggleSearch()
+                    Accessible.name: qsTr("Toggle Search Panel")
                     ToolTip.text: qsTr("Toggle Search Panel")
                     ToolTip.visible: hovered
                     display: AbstractButton.IconOnly
@@ -168,6 +181,9 @@ Kirigami.Page {
                         tooltipText: modelData.label
                         enableCopy: false
                         selected: page.selectedCategories.indexOf(modelData.name) !== -1
+                        // Mouse-operated only: the 15 chips stay out of the
+                        // Tab chain (the "Clear" chip stays its own stop).
+                        activeFocusOnTab: false
                         onClicked: page.toggleCategory(modelData.name)
                     }
                 }
@@ -235,10 +251,18 @@ Kirigami.Page {
                     cacheBuffer: 700
                     model: page.app.wallpaperModel
                     focus: true
+                    // The view is the grid's single tab stop (views default to
+                    // activeFocusOnTab false, so Tab would never reach it and
+                    // the initial focus would be a dead end). Delegates stay
+                    // non-focusable: one Tab enters the grid, arrow keys move
+                    // the highlight.
+                    activeFocusOnTab: true
                     highlight: Rectangle {
                         color: Kirigami.Theme.highlightColor
-                        //opacity: 0.4
                         radius: Kirigami.Units.smallSpacing
+                        // Dim the highlight while the view lacks focus, so the
+                        // arrow-key cursor never looks active when it is not.
+                        opacity: gridView.activeFocus ? 1.0 : 0.4
                     }
                     delegate: WallpaperItem {
                         required property var model
@@ -268,6 +292,13 @@ Kirigami.Page {
                     Keys.onReturnPressed: function(event) {
                         event.accepted = true
                         page.app.applyWallpaper()
+                    }
+                    // Space is the keyboard's double-click: it opens the detail
+                    // panel on the current selection.
+                    Keys.onSpacePressed: function(event) {
+                        event.accepted = true
+                        if (page.app.selectedWallpaper !== "")
+                            page.openDetail()
                     }
                 }
             }
@@ -306,7 +337,11 @@ Kirigami.Page {
             Behavior on opacity {
                 OpacityAnimator { duration: Kirigami.Units.shortDuration }
             }
-            onCloseRequested: page.detailOpen = false
+            onCloseRequested: {
+                page.detailOpen = false
+                // The drawer's controls vanish; keep focus with the grid.
+                gridView.forceActiveFocus()
+            }
         }
     }
 

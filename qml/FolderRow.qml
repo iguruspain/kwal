@@ -16,6 +16,12 @@ ItemDelegate {
 
     highlighted: root.app.currentFolderIndex === root.index
     onClicked: root.app.setCurrentFolderIndex(root.index)
+    // ItemDelegate (AbstractButton) swallows Space as its own click; the
+    // attached handler runs first and applies the row's folder directly.
+    Keys.onSpacePressed: function(event) {
+        event.accepted = true
+        root.app.setCurrentFolderIndex(root.index)
+    }
 
     contentItem: RowLayout {
         spacing: Kirigami.Units.smallSpacing
@@ -44,14 +50,10 @@ ItemDelegate {
             ToolTip.text: qsTr("Remove this folder")
             ToolTip.visible: hovered
             onClicked: root.app.removeFolder(root.index)
-            // Kirigami.Icon with a semantic color: the Basic style follows the platform palette,
-            // which is light by default and would render the icon nearly invisible.
-            // contentItem: Kirigami.Icon {
-            //     source: "edit-clear"
-            //     color: Kirigami.Theme.textColor
-            //     width: Kirigami.Units.iconSizes.tiny
-            //     height: Kirigami.Units.iconSizes.tiny
-            // }
+            // Not a tab stop: it is hidden until hover, so tabbing to it
+            // would land focus on an invisible control. The sidebar itself
+            // is the single stop of the folder list.
+            activeFocusOnTab: false
         }
     }
 }

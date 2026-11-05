@@ -36,6 +36,9 @@ Rectangle {
                 dotSize: root.dotSize
                 color: sourceDot.modelData
                 selected: root.app.selectedSourceColorIndex === sourceDot.index
+                // Mouse-operated only: the dots stay out of the Tab chain so
+                // it never walks them and the keyboard stays with the grid.
+                activeFocusOnTab: false
                 onClicked: root.app.selectedSourceColorIndex = sourceDot.index
             }
         }

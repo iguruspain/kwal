@@ -14,7 +14,20 @@ ItemDelegate {
         return parts.length > 0 ? parts[parts.length - 1] : modelData
     }
 
-    highlighted: root.app.currentFolderIndex === root.index
+    // Selection + keyboard cursor drawn here (no ListView highlight): the
+    // background fills the delegate, so hover/press/selection share one
+    // geometry. The ListView keeps currentIndex on the applied folder;
+    // arrow keys move it before Enter/Space applies it.
+    readonly property bool cursorOnRow: ListView.view && ListView.view.currentIndex === index
+    background: Rectangle {
+        radius: Kirigami.Units.smallSpacing
+        border.width: root.cursorOnRow ? 2 : 0
+        border.color: Kirigami.Theme.highlightColor
+        color: root.cursorOnRow ? Qt.alpha(Kirigami.Theme.highlightColor, 0.8)
+             : root.down ? Qt.alpha(Kirigami.Theme.highlightColor, 0.4)
+             : root.hovered ? Qt.alpha(Kirigami.Theme.highlightColor, 0.25)
+             : "transparent"
+    }
     onClicked: root.app.setCurrentFolderIndex(root.index)
     // ItemDelegate (AbstractButton) swallows Space as its own click; the
     // attached handler runs first and applies the row's folder directly.

@@ -56,14 +56,9 @@ Rectangle {
             // ItemDelegates, which are not stops): Tab enters here, arrow
             // keys move the cursor, Enter/Space picks the folder under it.
             activeFocusOnTab: true
-            highlight: Rectangle {
-                radius: Kirigami.Units.smallSpacing
-                color: Qt.alpha(Kirigami.Theme.highlightColor, 0.15)
-                border.color: Kirigami.Theme.highlightColor
-                border.width: 2
-                width: folderList.width
-                height: folderList.currentItem ? folderList.currentItem.height : 0
-            }
+            // No ListView highlight rectangle: the selection/cursor fill is
+            // drawn by FolderRow's own background, guaranteeing identical
+            // geometry to the hover state.
             // Keep the keyboard cursor on the active folder, so Tab into the
             // list starts where the user is; arrow keys move the cursor
             // without applying until Enter.

@@ -330,29 +330,36 @@ Kirigami.ScrollablePage {
                 fps: page.app.resizeFps
                 onFpsChanged: page.app.resizeFps = fps
             }
-        }
 
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            ComboBox {
-                id: folderCombo
+            RowLayout {
+                Kirigami.FormData.label: qsTr("Folder")
                 Layout.fillWidth: true
-                model: page.app.videoFolders
-                enabled: page.app.videoFolders.length > 0
-            }
+                spacing: Kirigami.Units.smallSpacing
 
-            Button {
-                text: page.app.wallpapersInfo.resizing ? qsTr("Generating…") : qsTr("Generate resizes")
-                enabled: page.app.videoFolders.length > 0 && !page.app.wallpapersInfo.resizing
-                onClicked: {
-                    const index = folderCombo.currentIndex
-                    if (index >= 0 && index < folderCombo.model.length) {
-                        page.app.generateVideoResizes(folderCombo.model[index])
+                ComboBox {
+                    id: folderCombo
+                    Layout.fillWidth: true
+                    model: page.app.videoFolders
+                    enabled: page.app.videoFolders.length > 0
+                }
+                
+                ToolButton {
+                    icon.name: page.app.aiTagger.tagging ? "hourglass" : "video-display"
+                    display: AbstractButton.IconOnly
+                    Accessible.name: qsTr("Generate resizes")
+                    ToolTip.text: qsTr("Generate resized versions of videos in the folder")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    enabled: page.app.videoFolders.length > 0 && !page.app.wallpapersInfo.resizing
+                    onClicked: {
+                        const index = folderCombo.currentIndex
+                        if (index >= 0 && index < folderCombo.model.length) {
+                            page.app.generateVideoResizes(folderCombo.model[index])
+                        }
                     }
                 }
-            }
+
+            }        
         }
 
         ProgressBar {

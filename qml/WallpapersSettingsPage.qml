@@ -22,6 +22,7 @@ Kirigami.ScrollablePage {
         qsTr("Frame rate"),
         qsTr("Folder"),
         qsTr("Generate resizes"),
+        qsTr("Clear resizes cache"),
         qsTr("Use transitions"),
         qsTr("Layer"),
         qsTr("Type"),
@@ -37,7 +38,8 @@ Kirigami.ScrollablePage {
         qsTr("API endpoint"),
         qsTr("Model"),
         qsTr("System prompt"),
-        qsTr("Tag wallpapers")
+        qsTr("Tag wallpapers"),
+        qsTr("Clear all tags")
     ]
 
     // The page is hosted by the settings window; notify there so the
@@ -359,7 +361,23 @@ Kirigami.ScrollablePage {
                     }
                 }
 
-            }        
+                ToolButton {
+                    icon.name: "edit-clear"
+                    display: AbstractButton.IconOnly
+                    Accessible.name: qsTr("Clear resizes cache")
+                    ToolTip.text: qsTr("Delete every cached resized video and its entry in the index")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    enabled: !page.app.wallpapersInfo.resizing
+                    onClicked: {
+                        const removed = page.app.wallpapersInfo.clearAllResizes()
+                        page.notify(removed === 0
+                            ? qsTr("No cached resizes to clear")
+                            : qsTr("Cleared %1 cached resizes").arg(removed))
+                    }
+                }
+
+            }
         }
 
         ProgressBar {
@@ -467,6 +485,22 @@ Kirigami.ScrollablePage {
                         && page.app.aiTagger.model !== ""
                         && page.app.folders.length > 0
                     onClicked: page.app.aiTagger.tagFolder(page.app.aiTagger.folder)
+                }
+
+                ToolButton {
+                    icon.name: "edit-clear"
+                    display: AbstractButton.IconOnly
+                    Accessible.name: qsTr("Clear all tags")
+                    ToolTip.text: qsTr("Remove every tag from the wallpaper index")
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Kirigami.Units.toolTipDelay
+                    enabled: !page.app.aiTagger.tagging
+                    onClicked: {
+                        const changed = page.app.wallpapersInfo.clearAllTags()
+                        page.notify(changed === 0
+                            ? qsTr("No tags to clear")
+                            : qsTr("Cleared the tags of %1 wallpapers").arg(changed))
+                    }
                 }
             }
         }

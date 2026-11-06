@@ -39,6 +39,8 @@ private slots:
     void testRecalculateCategories();
     void testAutoCategoryCap();
     void testMergeTags();
+    void testClearAllResizes();
+    void testClearAllTags();
 
 private:
     static QString cacheRoot()
@@ -627,6 +629,122 @@ void tst_WallpapersInfo::testMergeTags()
     QCOMPARE(info->tagsFor(path),
              (QStringList{QStringLiteral("landscape"), QStringLiteral("sunflower"),
                           QStringLiteral("photo"), QStringLiteral("clouds")}));
+}
+
+void tst_WallpapersInfo::testClearAllResizes()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString video = dir.path() + QStringLiteral("/clip.mp4");
+    const QString other = dir.path() + QStringLiteral("/other.mp4");
+    const QString plain = dir.path() + QStringLiteral("/plain.png");
+    writeFile(video, QByteArray(100, 'v'));
+    writeFile(other, QByteArray(100, 'o'));
+    writeFile(plain, QByteArray(100, 'p'));
+
+    const QString resizesDir = cacheRoot() + QStringLiteral("/video_resizes");
+    QVERIFY(QDir().mkpath(resizesDir));
+    const QString copy = resizesDir + QStringLiteral("/clip.mp4");
+    const QString otherCopy = resizesDir + QStringLiteral("/other.mp4");
+    writeFile(copy, QByteArray("resize"));
+    writeFile(otherCopy, QByteArray("otherresize"));
+
+    // Two videos with cache copies plus an image without one.
+    QJsonObject root;
+    root[QStringLiteral("version")] = 2;
+    root[QStringLiteral("files")] = QJsonArray{
+        QJsonObject{{QStringLiteral("file"), video},
+                    {QStringLiteral("type"), QStringLiteral("video")},
+                    {QStringLiteral("resized"), copy},
+                    {QStringLiteral("last_modified"), 1.0}},
+        QJsonObject{{QStringLiteral("file"), other},
+                    {QStringLiteral("type"), QStringLiteral("video")},
+                    {QStringLiteral("resized"), otherCopy},
+                    {QStringLiteral("last_modified"), 1.0}},
+        QJsonObject{{QStringLiteral("file"), plain},
+                    {QStringLiteral("type"), QStringLiteral("image")},
+                    {QStringLiteral("last_modified"), 1.0}},
+    };
+    writeFile(cacheRoot() + QStringLiteral("/wallpapers_info.json"), QJsonDocument(root).toJson());
+    WallpapersInfo::initialize(QCoreApplication::instance());
+    WallpapersInfo *info = WallpapersInfo::instance();
+
+    QSignalSpy changed(info, &WallpapersInfo::entryChanged);
+    QSignalSpy purged(info, &WallpapersInfo::purged);
+    QCOMPARE(info->clearAllResizes(), 2);
+    QCOMPARE(purged.count(), 1);
+    // One entryChanged per affected file, carrying the wallpaper path.
+    QCOMPARE(changed.count(), 2);
+    QStringList changedPaths;
+    for (const auto &args : changed) {
+        changedPaths.append(args.at(0).toString());
+    }
+    QVERIFY(changedPaths.contains(video));
+    QVERIFY(changedPaths.contains(other));
+
+    // The references are gone from memory and from the persisted index.
+    QVERIFY(info->entryFor(video).resized.isEmpty());
+    QVERIFY(info->entryFor(other).resized.isEmpty());
+    // The cache copies are deleted on disk.
+    QVERIFY(!QFileInfo(copy).exists());
+    QVERIFY(!QFileInfo(otherCopy).exists());
+    QFile file(cacheRoot() + QStringLiteral("/wallpapers_info.json"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    for (const QJsonValue &value : doc.object().value(QStringLiteral("files")).toArray()) {
+        QVERIFY(value.toObject().value(QStringLiteral("resized")).toString().isEmpty());
+    }
+
+    // A second clear with nothing left is a no-op: no signals, no writes.
+    QSignalSpy changed2(info, &WallpapersInfo::entryChanged);
+    QSignalSpy purged2(info, &WallpapersInfo::purged);
+    QCOMPARE(info->clearAllResizes(), 0);
+    QCOMPARE(changed2.count(), 0);
+    QCOMPARE(purged2.count(), 0);
+}
+
+void tst_WallpapersInfo::testClearAllTags()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString tagged = dir.path() + QStringLiteral("/tagged.jpg");
+    const QString manual = dir.path() + QStringLiteral("/manual.jpg");
+    const QString clean = dir.path() + QStringLiteral("/clean.png");
+
+    info->mergeTags(tagged, {QStringLiteral("forest"), QStringLiteral("night")});
+    info->setTags(manual, {QStringLiteral("custom")});
+
+    QSignalSpy changed(info, &WallpapersInfo::entryChanged);
+    QCOMPARE(info->clearAllTags(), 2);
+    QCOMPARE(info->tagsFor(tagged), QStringList());
+    QCOMPARE(info->tagsFor(manual), QStringList());
+    // The manual flag is reset too: a later rescan/AI run starts clean.
+    QCOMPARE(info->entryFor(tagged).tagsManual, false);
+    QCOMPARE(info->entryFor(manual).tagsManual, false);
+    QCOMPARE(info->entryFor(clean).tagsManual, false);
+    QCOMPARE(changed.count(), 2);
+
+    // Persisted: the cleared tags and manual flag are in the JSON.
+    QFile file(cacheRoot() + QStringLiteral("/wallpapers_info.json"));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    bool foundTagged = false;
+    for (const QJsonValue &value : doc.object().value(QStringLiteral("files")).toArray()) {
+        const QJsonObject obj = value.toObject();
+        if (obj.value(QStringLiteral("file")).toString() != tagged) {
+            continue;
+        }
+        foundTagged = true;
+        QVERIFY(obj.value(QStringLiteral("tags")).toArray().isEmpty());
+        QCOMPARE(obj.value(QStringLiteral("tags_manual")).toBool(), false);
+    }
+    QVERIFY(foundTagged);
+
+    // A second clear with no tags anywhere is a no-op.
+    QSignalSpy changed2(info, &WallpapersInfo::entryChanged);
+    QCOMPARE(info->clearAllTags(), 0);
+    QCOMPARE(changed2.count(), 0);
 }
 
 int main(int argc, char *argv[])

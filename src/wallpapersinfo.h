@@ -79,6 +79,16 @@ public:
     // Replaces the entry's categories with the automatic ones (computed from
     // the image or first frame) and clears the manual flag.
     Q_INVOKABLE void recalculateCategories(const QString &path);
+    // Cache cleanup from the Settings page.
+    // Removes every cached resize copy on disk and the "resized" reference
+    // of every entry; a no-op while a "Generate resizes" batch runs.
+    // Returns the number of copies removed; emits entryChanged per affected
+    // file and purged() so dead playlist URLs leave the desktop appletsrc.
+    Q_INVOKABLE int clearAllResizes();
+    // Drops the tags of every entry and clears the manual flag, so a later
+    // AI run or rescan starts from an empty tag set. Returns the number of
+    // entries changed; emits entryChanged per affected file.
+    Q_INVOKABLE int clearAllTags();
 
     bool ffmpegAvailable() const;
     bool matugenAvailable() const;

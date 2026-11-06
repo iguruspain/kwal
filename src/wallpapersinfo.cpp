@@ -844,6 +844,66 @@ void WallpapersInfo::mergeTags(const QString &path, const QStringList &additions
     emit entryChanged(path);
 }
 
+int WallpapersInfo::clearAllResizes()
+{
+    QStringList changedPaths;
+    QStringList copies;
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_resizePending > 0) {
+            // A "Generate resizes" batch is running; clearing mid-batch
+            // would race with the jobs writing the new copies.
+            return 0;
+        }
+        for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
+            if (it->resized.isEmpty()) {
+                continue;
+            }
+            copies.append(it->resized);
+            it->resized.clear();
+            changedPaths.append(it.key());
+        }
+        if (copies.isEmpty()) {
+            return 0;
+        }
+        saveLocked();
+    }
+    for (const QString &copy : std::as_const(copies)) {
+        QFile::remove(copy);
+    }
+    for (const QString &path : std::as_const(changedPaths)) {
+        emit entryChanged(path);
+    }
+    // Same contract as sweep(): cache files went away, so the desktop
+    // video playlist gets its dead URLs pruned.
+    emit purged();
+    return copies.size();
+}
+
+int WallpapersInfo::clearAllTags()
+{
+    QStringList changedPaths;
+    {
+        QMutexLocker locker(&m_mutex);
+        for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
+            if (it->tags.isEmpty() && !it->tagsManual) {
+                continue;
+            }
+            it->tags.clear();
+            it->tagsManual = false;
+            changedPaths.append(it.key());
+        }
+        if (changedPaths.isEmpty()) {
+            return 0;
+        }
+        saveLocked();
+    }
+    for (const QString &path : std::as_const(changedPaths)) {
+        emit entryChanged(path);
+    }
+    return changedPaths.size();
+}
+
 void WallpapersInfo::recalculateCategories(const QString &path)
 {
     QString image;

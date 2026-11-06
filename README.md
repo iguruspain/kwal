@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icons/hicolor/scalable/apps/kwal.svg" width="180" alt="Kwal jellyfish logo" loading="lazy">
+</p>
+
 # Kwal
 
 KDE Plasma utility to manage the desktop wallpaper and to tint supported

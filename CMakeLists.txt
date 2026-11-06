@@ -74,13 +74,16 @@ endif()
 
 # material-color-utilities: the official Material You color library. Fetched at
 # a pinned commit and built as a static library (no system package exists).
+# A commit tarball, not GIT_SHALLOW: CMake's shallow clone only carries branch
+# heads, so checking out this (non-head) pinned SHA fails with "Failed to
+# checkout tag" on a clean build.
 include(FetchContent)
 set(MCU_GIT_TAG "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3")
 FetchContent_Declare(
     mcu
-    GIT_REPOSITORY https://github.com/material-foundation/material-color-utilities.git
-    GIT_TAG ${MCU_GIT_TAG}
-    GIT_SHALLOW TRUE
+    URL https://github.com/material-foundation/material-color-utilities/archive/${MCU_GIT_TAG}.tar.gz
+    URL_HASH SHA256=176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(mcu)
 # The pinned commit is not self-contained on GCC 16: temperature_cache.h

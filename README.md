@@ -63,6 +63,16 @@ Settings are stored by KConfig in `kwalrc` (`[Wallpapers]`, `[Commands]`,
 `~/.cache/kwal/` (thumbnail/first-frame cache, video resizes, and a
 versioned per-file index).
 
+## Acknowledgements
+
+- [awww](https://codeberg.org/LGFae/awww) — the animated wallpaper switch of
+  `kwal-transition` is a C++ port of its transition renderer (via the
+  awww-based `kdewall-plugin-switcher` reference implementation).
+- [Smart Video Wallpaper Reborn](https://github.com/luisbocanegra/plasma-smart-video-wallpaper-reborn)
+  by [luisbocanegra](https://github.com/luisbocanegra) — the Plasma 6 wallpaper
+  plugin kwal drives to play video wallpapers (desktop and lockscreen),
+  including the video playlists it maintains in the plugin's config.
+
 ## License
 
 GPL-3.0-or-later — see `LICENSE.txt`.

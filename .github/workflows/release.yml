@@ -1,11 +1,12 @@
 name: Release
 
-# Tag push (v*) => build the AppImage and publish it as a GitHub release.
-# workflow_dispatch => same build, but only upload CI artifacts (no release):
-# the way to iterate on the recipe before anything is ever published.
+# workflow_dispatch => build the AppImage as CI artifacts only (no release):
+# the way to iterate on the recipe without ever publishing.
+# The tag trigger stays OFF until a dispatch run proves the recipe: with it
+# on, the first v* tag would race the manual Phase 1 release (source-only)
+# and make an unvalidated AppImage block the first launch. Re-enable with:
+#   on.push.tags: ['v*']
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
 
 jobs:

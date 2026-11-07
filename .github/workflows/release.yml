@@ -13,6 +13,11 @@ on:
       tag:
         description: 'Tag to release (e.g. v0.1.0)'
         required: true
+      publish:
+        description: 'Actually create the release (unchecked = dry run: guard + sums + notes printed only)'
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   source-release:
@@ -44,7 +49,7 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
 
-      - name: Create release
+      - name: Build release notes (always, also on dry runs)
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
@@ -54,6 +59,15 @@ jobs:
             insec { print }
           ' CHANGELOG.md > notes.md
           cat docs/RELEASE_TEMPLATE.md >> notes.md
+          cat notes.md
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+
+      - name: Create release
+        if: inputs.publish
+        run: |
+          set -euo pipefail
+          ver="${INPUT_TAG#v}"
           gh release create "$INPUT_TAG" sha256sums.txt \
             --title "Kwal $ver" --notes-file notes.md
         env:

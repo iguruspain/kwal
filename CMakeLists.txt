@@ -9,6 +9,17 @@ project(kwal
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Single source of truth for the version: project(VERSION) above. aboutdata.json
+# (compiled into the binary via resources/resources.qrc) must carry the same
+# value; a divergence is a configure error, not a silent stale About page.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/aboutdata.json" _aboutdata_json)
+string(JSON _aboutdata_version GET "${_aboutdata_json}" Version)
+if (NOT _aboutdata_version VERSION_EQUAL PROJECT_VERSION)
+    message(FATAL_ERROR
+        "aboutdata.json Version \"${_aboutdata_version}\" != project VERSION "
+        "${PROJECT_VERSION}: bump both together")
+endif()
+
 find_package(ECM 6.31.0 NO_MODULE REQUIRED)
 set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
@@ -77,47 +88,55 @@ endif()
 # A commit tarball, not GIT_SHALLOW: CMake's shallow clone only carries branch
 # heads, so checking out this (non-head) pinned SHA fails with "Failed to
 # checkout tag" on a clean build.
+# The pinned commit is not self-contained on GCC 16 (std::optional without
+# <optional>; abseil in utils.cc/wsmeans.cc) - cmake/mcu-gcc16.patch carries
+# the fix. Offline builds: point FETCHCONTENT_SOURCE_DIR_MCU (and
+# FETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS) at prepared source trees and configure
+# downloads nothing; the patch below is still applied to a pristine tree.
 include(FetchContent)
+find_program(KWAL_PATCH_PROGRAM NAMES patch)
 set(MCU_GIT_TAG "bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3")
-FetchContent_Declare(
-    mcu
-    URL https://github.com/material-foundation/material-color-utilities/archive/${MCU_GIT_TAG}.tar.gz
-    URL_HASH SHA256=176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78
-    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-)
+if (KWAL_PATCH_PROGRAM)
+    FetchContent_Declare(
+        mcu
+        URL https://github.com/material-foundation/material-color-utilities/archive/${MCU_GIT_TAG}.tar.gz
+        URL_HASH SHA256=176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        PATCH_COMMAND "${KWAL_PATCH_PROGRAM}" -p0 -N -s -i "${CMAKE_CURRENT_SOURCE_DIR}/cmake/mcu-gcc16.patch"
+    )
+else()
+    FetchContent_Declare(
+        mcu
+        URL https://github.com/material-foundation/material-color-utilities/archive/${MCU_GIT_TAG}.tar.gz
+        URL_HASH SHA256=176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+endif()
 FetchContent_MakeAvailable(mcu)
-# The pinned commit is not self-contained on GCC 16: temperature_cache.h
-# uses std::optional without including <optional>, and utils.cc /
-# wsmeans.cc pull in abseil (HexFromArgb is only called by mcu's own,
-# excluded tests). Patch the checked-out tree once so the static library
-# builds standalone.
+# With FETCHCONTENT_SOURCE_DIR_MCU the patch step above never runs: apply the
+# same patch at configure time when the provided tree is still pristine
+# (marker: the <optional> include the patch adds).
 set(_mcu_root "${mcu_SOURCE_DIR}/cpp")
-set(_mcu_temp_cache "${_mcu_root}/temperature/temperature_cache.h")
-file(READ "${_mcu_temp_cache}" _mcu_temp_cache_src)
+if (EXISTS "${_mcu_root}/temperature/temperature_cache.h")
+    file(READ "${_mcu_root}/temperature/temperature_cache.h" _mcu_temp_cache_src)
+else()
+    message(FATAL_ERROR "mcu source tree at ${mcu_SOURCE_DIR} has no cpp/ directory")
+endif()
 if (NOT _mcu_temp_cache_src MATCHES "#include <optional>")
-    string(REPLACE "#include \"cpp/cam/hct.h\""
-            "#include \"cpp/cam/hct.h\"\n#include <optional>"
-            _mcu_temp_cache_src "${_mcu_temp_cache_src}")
-    file(WRITE "${_mcu_temp_cache}" "${_mcu_temp_cache_src}")
-endif()
-set(_mcu_utils "${_mcu_root}/utils/utils.cc")
-file(READ "${_mcu_utils}" _mcu_utils_src)
-if (_mcu_utils_src MATCHES "absl/strings/str_cat.h")
-    string(REPLACE "#include \"absl/strings/str_cat.h\"" "#include <format>"
-            _mcu_utils_src "${_mcu_utils_src}")
-    string(REPLACE "return absl::StrCat(absl::Hex(argb));"
-            "return std::format(\"{:08x}\", argb);"
-            _mcu_utils_src "${_mcu_utils_src}")
-    file(WRITE "${_mcu_utils}" "${_mcu_utils_src}")
-endif()
-set(_mcu_wsmeans "${_mcu_root}/quantize/wsmeans.cc")
-file(READ "${_mcu_wsmeans}" _mcu_wsmeans_src)
-if (_mcu_wsmeans_src MATCHES "absl/container/flat_hash_map.h")
-    string(REPLACE "#include \"absl/container/flat_hash_map.h\"" "#include <unordered_map>"
-            _mcu_wsmeans_src "${_mcu_wsmeans_src}")
-    string(REPLACE "absl::flat_hash_map" "std::unordered_map"
-            _mcu_wsmeans_src "${_mcu_wsmeans_src}")
-    file(WRITE "${_mcu_wsmeans}" "${_mcu_wsmeans_src}")
+    if (NOT KWAL_PATCH_PROGRAM)
+        message(FATAL_ERROR
+            "material-color-utilities needs cmake/mcu-gcc16.patch applied "
+            "(requires the 'patch' program) or FETCHCONTENT_SOURCE_DIR_MCU "
+            "pointing at an already-patched tree")
+    endif()
+    execute_process(
+        COMMAND "${KWAL_PATCH_PROGRAM}" -p0 -N -i "${CMAKE_CURRENT_SOURCE_DIR}/cmake/mcu-gcc16.patch"
+        WORKING_DIRECTORY "${mcu_SOURCE_DIR}"
+        RESULT_VARIABLE _mcu_patch_rc
+    )
+    if (NOT _mcu_patch_rc EQUAL 0)
+        message(FATAL_ERROR "applying cmake/mcu-gcc16.patch to ${mcu_SOURCE_DIR} failed")
+    endif()
 endif()
 
 add_library(mcu_lib STATIC
@@ -608,6 +627,9 @@ target_link_libraries(tst_aboutinfo
 add_test(NAME tst_ulauncher COMMAND tst_ulauncher)
 add_test(NAME tst_aboutinfo COMMAND tst_aboutinfo)
 
+install(TARGETS kwal kwal-transition
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 install(FILES org.kde.kwal.desktop
  DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )

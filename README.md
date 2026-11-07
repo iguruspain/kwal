@@ -38,7 +38,12 @@ App id: `org.kde.kwal`.
 - ImageMagick (`magick`) at runtime
 
 CMake fetches two third-party dependencies via `FetchContent`:
-`tomlplusplus` and `material-color-utilities` (built as a static `mcu_lib`).
+`tomlplusplus` and `material-color-utilities` (built as a static `mcu_lib`,
+patched to build without abseil via `cmake/mcu-gcc16.patch`). For offline or
+packaged builds, point `FETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS` and
+`FETCHCONTENT_SOURCE_DIR_MCU` at prepared source trees and configure with
+`-DFETCHCONTENT_FULLY_DISCONNECTED=ON`; the patch is applied to a pristine
+tree automatically.
 
 ## Build
 
@@ -51,6 +56,14 @@ ctest --test-dir build          # QtTest unit tests (sandbox HOME/XDG)
 
 `./build.sh [build|test|run|config|clean]` wraps the same steps and
 auto-configures on first run.
+
+To install (`kwal` + `kwal-transition`, desktop file and icon; the QML module
+`org.kde.kwal` is embedded in the binary):
+
+```sh
+cmake --install build                     # prefix = CMake default
+cmake --install build --prefix ~/.local   # per-user instead
+```
 
 > On systems where Qt 5 and Qt 6 coexist, `/usr/bin/qml` and
 > `/usr/bin/qmllint` may be Qt 5. Use `qml6` and the Qt 6 `qmllint` (or the

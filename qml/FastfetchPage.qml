@@ -212,13 +212,29 @@ ToolPage {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredHeight: 300
+                    // Same as the wallpaper grid: Image (QQuickImage) only shows the
+                    // first frame of a GIF, so animated sources use AnimatedImage.
+                    readonly property bool isGif: page.controller.configImage.toLowerCase().endsWith(".gif")
                     Image {
                         anchors.centerIn: parent
                         source: page.controller.configImageUrl
                         asynchronous: true
                         cache: false
                         fillMode: Image.PreserveAspectFit
-                        visible: page.controller.configImage !== ""
+                        visible: page.controller.configImage !== "" && !configPreviewArea.isGif
+                        width: Math.min(configPreviewArea.width, configPreviewArea.height)
+                        height: Math.min(configPreviewArea.width, configPreviewArea.height)
+                    }
+                    AnimatedImage {
+                        anchors.centerIn: parent
+                        source: configPreviewArea.isGif ? page.controller.configImageUrl : ""
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                        // AnimatedImage caches every frame in memory; cap the stored
+                        // frame width at 1280 with a zero height so Qt keeps the GIF's
+                        // aspect ratio (same rule as the wallpaper grid).
+                        sourceSize: Qt.size(1280, 0)
+                        playing: page.visible
                         width: Math.min(configPreviewArea.width, configPreviewArea.height)
                         height: Math.min(configPreviewArea.width, configPreviewArea.height)
                     }
@@ -261,12 +277,28 @@ ToolPage {
                             id: originalPreviewArea
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            readonly property bool isGif: page.controller.selectedFile.toLowerCase().endsWith(".gif")
                             Image {
                                 anchors.centerIn: parent
                                 source: page.controller.fileUrl(page.controller.selectedFile)
                                 asynchronous: true
                                 cache: false
                                 fillMode: Image.PreserveAspectFit
+                                visible: !originalPreviewArea.isGif
+                                width: Math.min(originalPreviewArea.width, originalPreviewArea.height)
+                                height: Math.min(originalPreviewArea.width, originalPreviewArea.height)
+                            }
+                            // Animated like the grid; the tinted preview below stays
+                            // static on purpose (its content is mid-tint).
+                            AnimatedImage {
+                                anchors.centerIn: parent
+                                source: originalPreviewArea.isGif
+                                    ? page.controller.fileUrl(page.controller.selectedFile)
+                                    : ""
+                                asynchronous: true
+                                fillMode: Image.PreserveAspectFit
+                                sourceSize: Qt.size(1280, 0)
+                                playing: page.visible
                                 width: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                                 height: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                             }

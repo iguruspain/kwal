@@ -1,0 +1,88 @@
+name: AppImage (test)
+
+# Optional, last-resort asset: builds the AppImage as CI artifacts only.
+# Nothing here is ever published — dispatch runs exist to iterate on the
+# recipe. Only when a run goes green does the release optionally link the
+# AppImage as the one binary that carries its own Qt/KF6 stack.
+on:
+  workflow_dispatch:
+
+jobs:
+  appimage:
+    name: AppImage (x86_64)
+    container:
+      image: archlinux:latest
+    env:
+      # No FUSE inside containers: make the linuxdeploy AppImages (and the
+      # plugin AppImages linuxdeploy nests) extract-and-run.
+      APPIMAGE_EXTRACT_AND_RUN: 1
+      # linuxdeploy-plugin-qt: scan the repo's QML sources for imported
+      # modules (Kirigami etc.); $QT_INSTALL_QML is searched additionally.
+      QML_SOURCES_PATHS: ${{ github.workspace }}/qml
+      # The app runs natively on Wayland; xcb alone would not be enough.
+      EXTRA_PLATFORM_PLUGINS: libqwayland-egl.so;libqwayland-generic.so
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize pacman keyring (fresh container)
+        run: |
+          set -euxo pipefail
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm
+
+      - name: Install dependencies
+        run: >
+          pacman -Syu --noconfirm --needed
+          base-devel git cmake ninja pkgconf
+          qt6-base qt6-declarative qt6-multimedia qt6-webengine qt6-shadertools
+          extra-cmake-modules kirigami kconfig qqc2-desktop-style
+          wayland ffmpeg imagemagick
+          squashfs-tools
+
+      - name: Build and stage AppDir
+        run: |
+          set -euxo pipefail
+          cmake --preset default
+          cmake --build --preset default
+          DESTDIR="$PWD/AppDir" cmake --install build --prefix /usr
+          # Bundle the runtime helpers (static in nature): ImageMagick for
+          # logo tinting, ffmpeg/ffprobe for video frames and resizes.
+          # AppRun puts AppDir/usr/bin first in PATH.
+          cp -a /usr/bin/magick /usr/bin/ffmpeg /usr/bin/ffprobe AppDir/usr/bin/
+          cp -a /usr/lib/ImageMagick-* AppDir/usr/lib/
+          # org.kde.desktop Controls style (qqc2-desktop-style): main.cpp
+          # requests it explicitly, so it must exist inside the AppImage.
+          mkdir -p AppDir/usr/lib/qt6/qml/org/kde
+          cp -a /usr/lib/qt6/qml/org/kde/desktop AppDir/usr/lib/qt6/qml/org/kde/
+          # QtWebEngine (Starship preview page): the plugin does not handle
+          # it, so stage the helper process and the .pak resources.
+          cp -a /usr/lib/qt6/QtWebEngineProcess AppDir/usr/lib/qt6/
+          mkdir -p AppDir/usr/share/qt6
+          cp -a /usr/share/qt6/resources AppDir/usr/share/qt6/
+
+      - name: Bundle with linuxdeploy
+        run: |
+          set -euxo pipefail
+          mkdir -p tools && cd tools
+          curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x *.AppImage
+          cd ..
+          # Run from the repo root: linuxdeploy writes the output AppImage
+          # into its CWD.
+          ./tools/linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --desktop-file org.kde.kwal.desktop \
+            --icon-file icons/hicolor/scalable/apps/kwal.svg \
+            --plugin qt --output appimage
+          mkdir -p dist
+          mv -f ./*.AppImage dist/kwal-x86_64.AppImage
+          (cd dist && sha256sum kwal-x86_64.AppImage > ../sha256sums.txt)
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: |
+            dist/kwal-x86_64.AppImage
+            sha256sums.txt

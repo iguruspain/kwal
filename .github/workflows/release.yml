@@ -1,48 +1,22 @@
 name: Release
 
-# workflow_dispatch => build the AppImage as CI artifacts only (no release):
-# the way to iterate on the recipe without ever publishing.
-# The tag trigger stays OFF until a dispatch run proves the recipe: with it
-# on, the first v* tag would race the manual Phase 1 release (source-only)
-# and make an unvalidated AppImage block the first launch. Re-enable with:
-#   on.push.tags: ['v*']
+# On tag v*: create the GitHub release for the source. GitHub generates the
+# source tarball itself; this job only verifies the tag matches the project
+# version, computes the tarball's sha256, and writes the release notes from
+# the CHANGELOG section + docs/RELEASE_TEMPLATE.md. Per-distro .deb/.rpm
+# download links (OBS/COPR) get pasted into the notes at release time; the
+# AppImage is optional and lives in appimage.yml.
 on:
-  workflow_dispatch:
+  push:
+    tags: ['v*']
 
 jobs:
-  appimage:
-    name: AppImage (x86_64)
-    container:
-      image: archlinux:latest
-    env:
-      # No FUSE inside containers: make the linuxdeploy AppImages (and the
-      # plugin AppImages linuxdeploy nests) extract-and-run.
-      APPIMAGE_EXTRACT_AND_RUN: 1
-      # linuxdeploy-plugin-qt: scan the repo's QML sources for imported
-      # modules (Kirigami etc.); $QT_INSTALL_QML is searched additionally.
-      QML_SOURCES_PATHS: ${{ github.workspace }}/qml
-      # The app runs natively on Wayland; xcb alone would not be enough.
-      EXTRA_PLATFORM_PLUGINS: libqwayland-egl.so;libqwayland-generic.so
+  source-release:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Initialize pacman keyring (fresh container)
-        run: |
-          set -euxo pipefail
-          pacman -Sy --noconfirm archlinux-keyring
-          pacman -Syu --noconfirm
-
-      - name: Install dependencies
-        run: >
-          pacman -Syu --noconfirm --needed
-          base-devel git cmake ninja pkgconf
-          qt6-base qt6-declarative qt6-multimedia qt6-webengine qt6-shadertools
-          extra-cmake-modules kirigami kconfig qqc2-desktop-style
-          wayland ffmpeg imagemagick
-          squashfs-tools
-
       - name: Version guard (tag must match project(VERSION))
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME#v}"
@@ -52,70 +26,25 @@ jobs:
             exit 1
           fi
 
-      - name: Build and stage AppDir
+      - name: Source checksums
         run: |
-          set -euxo pipefail
-          cmake --preset default
-          cmake --build --preset default
-          DESTDIR="$PWD/AppDir" cmake --install build --prefix /usr
-          # Runtime helpers the plan decided to bundle (static in nature):
-          # ImageMagick for logo tinting, ffmpeg/ffprobe for video frames
-          # and resizes. AppRun puts AppDir/usr/bin first in PATH.
-          cp -a /usr/bin/magick /usr/bin/ffmpeg /usr/bin/ffprobe AppDir/usr/bin/
-          cp -a /usr/lib/ImageMagick-* AppDir/usr/lib/
-          # org.kde.desktop Controls style (qqc2-desktop-style): main.cpp
-          # requests it explicitly, so it must exist inside the AppImage.
-          mkdir -p AppDir/usr/lib/qt6/qml/org/kde
-          cp -a /usr/lib/qt6/qml/org/kde/desktop AppDir/usr/lib/qt6/qml/org/kde/
-          # QtWebEngine (Starship preview page): the plugin does not handle
-          # it, so stage the helper process and the .pak resources.
-          cp -a /usr/lib/qt6/QtWebEngineProcess AppDir/usr/lib/qt6/
-          mkdir -p AppDir/usr/share/qt6
-          cp -a /usr/share/qt6/resources AppDir/usr/share/qt6/
+          set -euo pipefail
+          tarball="kwal-${GITHUB_REF_NAME#v}.tar.gz"
+          curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o "$tarball"
+          sha256sum "$tarball" > sha256sums.txt
+          cat sha256sums.txt
 
-      - name: Bundle with linuxdeploy
+      - name: Create release
         run: |
-          set -euxo pipefail
-          mkdir -p tools && cd tools
-          curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
-          chmod +x *.AppImage
-          cd ..
-          # Run from the repo root: linuxdeploy writes the output AppImage
-          # into its CWD.
-          ./tools/linuxdeploy-x86_64.AppImage --appdir AppDir \
-            --desktop-file org.kde.kwal.desktop \
-            --icon-file icons/hicolor/scalable/apps/kwal.svg \
-            --plugin qt --output appimage
-          mkdir -p dist
-          mv -f ./*.AppImage dist/kwal-x86_64.AppImage
-          (cd dist && sha256sum kwal-x86_64.AppImage > ../sha256sums.txt)
-
-      - name: Upload artifacts (no release)
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: appimage
-          path: |
-            dist/kwal-x86_64.AppImage
-            sha256sums.txt
-
-      - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          set -euxo pipefail
-          pacman -Syu --noconfirm --needed gh
+          set -euo pipefail
           ver="${GITHUB_REF_NAME#v}"
-          # Notes: release template body + this version's CHANGELOG section.
           awk -v v="$ver" '
             $0 ~ "^## \\[" v "\\]" { insec = 1 }
             insec && /^## \[/ && $0 !~ "^## \\[" v "\\]" { exit }
             insec { print }
           ' CHANGELOG.md > notes.md
           cat docs/RELEASE_TEMPLATE.md >> notes.md
-          gh release create "$GITHUB_REF_NAME" \
-            dist/kwal-x86_64.AppImage sha256sums.txt \
+          gh release create "$GITHUB_REF_NAME" sha256sums.txt \
             --title "Kwal $ver" --notes-file notes.md
         env:
           GH_TOKEN: ${{ github.token }}

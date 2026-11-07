@@ -1,0 +1,67 @@
+# Prep PKGBUILD for AUR (kwal) — NOT published yet (distribucion.md Fase 2b):
+# it goes live with the first tag; until then the install channel is
+# git clone + cmake (README).
+#
+# Before publishing: fill the kwal tarball sha256 once the tag exists
+#   curl -L https://github.com/iguruspain/kwal/archive/v$pkgver.tar.gz | sha256sum
+# then generate .SRCINFO: makepkg --printsrcinfo > .SRCINFO
+#
+# Packaging facts (verified against the project CMakeLists.txt):
+# - Both pinned deps are fed offline via FETCHCONTENT_SOURCE_DIR_* +
+#   FETCHCONTENT_FULLY_DISCONNECTED (the documented offline flow): the
+#   system tomlplusplus is deliberately NOT used — find_package(tomlplusplus)
+#   would skip FetchContent but the fully-disconnected configure then has
+#   nothing to populate (verified: generate fails with "target
+#   tomlplusplus::tomlplusplus not found"). The raw pinned tarballs are the
+#   correct sources — the project CMake applies its own compile-fix patch to
+#   a pristine mcu tree at configure time.
+# - ffmpeg/ffprobe and magick are invoked as binaries (QStandardPaths), not
+#   linked: full packages, not -libs.
+# - libwayland-client is linked directly (transition overlay); the scanner
+#   (wayland-scanner) and the vendored protocol XMLs cover the rest.
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="KDE Plasma utility to manage the wallpaper and tint tools with palettes from the wallpaper"
+arch=('x86_64')
+url="https://github.com/iguruspain/kwal"
+license=('GPL3')
+depends=(
+    qt6-base          # Core Gui Widgets Network DBus Qml/Quick hosts
+    qt6-declarative   # QML module, QuickControls2, qmlcachegen
+    qt6-multimedia    # inline video/GIF playback in the grid
+    qt6-webengine     # Starship terminal preview
+    kirigami          # KF6 Kirigami + KirigamiPlatform
+    kconfig           # kwalrc
+    wayland           # libwayland-client (transition overlay)
+    ffmpeg            # ffmpeg/ffprobe binaries (frames, resizes)
+    imagemagick       # magick binary (logo tinting)
+)
+makedepends=(
+    cmake
+    extra-cmake-modules
+    ninja
+    pkgconf
+)
+source=(
+    "https://github.com/iguruspain/kwal/archive/v${pkgver}.tar.gz"
+    "https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz"
+    "https://github.com/material-foundation/material-color-utilities/archive/bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3.tar.gz"
+)
+sha256sums=(
+    'TBD_FILL_AFTER_FIRST_TAG'
+    '8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155'
+    '176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78'
+)
+
+build() {
+    cmake -B build -S "kwal-${pkgver}" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
+        -DFETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS="$srcdir/tomlplusplus-3.4.0" \
+        -DFETCHCONTENT_SOURCE_DIR_MCU="$srcdir/material-color-utilities-bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3"
+    cmake --build build
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+}

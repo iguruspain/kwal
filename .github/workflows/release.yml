@@ -1,50 +1,61 @@
 name: Release
 
-# On tag v*: create the GitHub release for the source. GitHub generates the
-# source tarball itself; this job only verifies the tag matches the project
-# version, computes the tarball's sha256, and writes the release notes from
-# the CHANGELOG section + docs/RELEASE_TEMPLATE.md. Per-distro .deb/.rpm
-# download links (OBS/COPR) get pasted into the notes at release time; the
-# AppImage is optional and lives in appimage.yml.
+# Manual by design for now (the first install channel is git clone + cmake;
+# packages arrive with OBS/AUR in Fase 2): run this workflow from the Actions
+# tab and type the tag. It verifies the tag matches project(VERSION), sums
+# the GitHub source tarball, and creates the release with notes built from
+# the CHANGELOG section + docs/RELEASE_TEMPLATE.md. No builds here — source
+# only. Per-distro .deb/.rpm download links (OBS/COPR) get pasted into the
+# notes at release time; the AppImage is optional and lives in appimage.yml.
 on:
-  push:
-    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0)'
+        required: true
 
 jobs:
   source-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
 
       - name: Version guard (tag must match project(VERSION))
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${INPUT_TAG#v}"
           ver="$(sed -nE 's/^ VERSION ([0-9.]+)$/\1/p' CMakeLists.txt)"
           if [ "$tag" != "$ver" ]; then
-            echo "::error::tag v$tag != project(VERSION $ver); bump CMakeLists.txt and aboutdata.json first"
+            echo "::error::tag $INPUT_TAG != project(VERSION $ver); bump CMakeLists.txt and aboutdata.json first"
             exit 1
           fi
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
 
       - name: Source checksums
         run: |
           set -euo pipefail
-          tarball="kwal-${GITHUB_REF_NAME#v}.tar.gz"
-          curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o "$tarball"
+          tarball="kwal-${INPUT_TAG#v}.tar.gz"
+          curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${INPUT_TAG}.tar.gz" -o "$tarball"
           sha256sum "$tarball" > sha256sums.txt
           cat sha256sums.txt
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
 
       - name: Create release
         run: |
           set -euo pipefail
-          ver="${GITHUB_REF_NAME#v}"
+          ver="${INPUT_TAG#v}"
           awk -v v="$ver" '
             $0 ~ "^## \\[" v "\\]" { insec = 1 }
             insec && /^## \[/ && $0 !~ "^## \\[" v "\\]" { exit }
             insec { print }
           ' CHANGELOG.md > notes.md
           cat docs/RELEASE_TEMPLATE.md >> notes.md
-          gh release create "$GITHUB_REF_NAME" sha256sums.txt \
+          gh release create "$INPUT_TAG" sha256sums.txt \
             --title "Kwal $ver" --notes-file notes.md
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}

@@ -65,6 +65,20 @@ cmake --install build                     # prefix = CMake default
 cmake --install build --prefix ~/.local   # per-user instead
 ```
 
+To uninstall a manual install, remove exactly what `cmake --install` copied
+using its manifest (run it before cleaning the build dir, or keep the
+manifest):
+
+```sh
+xargs -r rm < build/install_manifest.txt              # per-user install
+sudo xargs -r rm < build/install_manifest.txt         # system install
+```
+
+Distro packages uninstall through their package manager as usual. Uninstalling
+never removes user state: `~/.config/kwal/` (settings, templates),
+`~/.cache/kwal/` (thumbnails, video frames and resizes, index) and the Plasma
+configuration the app applied stay untouched by design.
+
 > On systems where Qt 5 and Qt 6 coexist, `/usr/bin/qml` and
 > `/usr/bin/qmllint` may be Qt 5. Use `qml6` and the Qt 6 `qmllint` (or the
 > built binary) for QML tooling.

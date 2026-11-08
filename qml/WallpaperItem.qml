@@ -48,9 +48,15 @@ ItemDelegate {
     // right away.
     readonly property bool videoActive:
         root.isVideo && root.isSelected && root.pageVisible && !root.detailOpen
-    // Animated GIF: QQuickImage only shows the first frame, so GIFs use
-    // AnimatedImage (QMovie-based, plays the frames in place).
-    readonly property bool isGif: root.extension.toLowerCase() === "gif"
+    // Animated GIF/WebP: QQuickImage only shows the first frame, so these
+    // use AnimatedImage, which plays the frames in place through QMovie.
+    // QMovie::supportedFormats() on this Qt lists gif, webp, avif, jxl, svg
+    // and ani; APNG stays out of the condition because png is not in that
+    // list (Qt's PNG handler reports no animation), so those files are
+    // stills everywhere.
+    readonly property bool isAnimated:
+        root.extension.toLowerCase() === "gif"
+        || root.extension.toLowerCase() === "webp"
     // Armed after the start delay; the Loader (whose active defaults to
     // true) is only loaded once armed, and it disarms itself immediately
     // whenever it stops.
@@ -121,24 +127,24 @@ ItemDelegate {
                 // VideoOutput is transparent before the first frame.
                 opacity: status === Image.Ready ? 1.0 : 0.0
                 Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
-                visible: !root.isGif
+                visible: !root.isAnimated
             }
             // AnimatedImage cannot use QQuickImageProvider, so it loads the
             // real file URL instead of the thumbnail.
             AnimatedImage {
-                id: gifImage
+                id: animatedImage
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
                 // AnimatedImage caches every frame in memory; cap the
-                // stored frame width at 1280 so a big GIF does not exhaust
-                // memory. The zero height lets Qt compute it from the GIF's
-                // natural size, keeping the aspect ratio (a fixed square
-                // would stretch the frames).
+                // stored frame width at 1280 so a big GIF/WebP does not
+                // exhaust memory. The zero height lets Qt compute it from
+                // the image's natural size, keeping the aspect ratio (a
+                // fixed square would stretch the frames).
                 sourceSize: Qt.size(1280, 0)
-                source: root.isGif ? root.app.fileUrl(root.path) : ""
-                visible: root.isGif
+                source: root.isAnimated ? root.app.fileUrl(root.path) : ""
+                visible: root.isAnimated
                 // Like the video player, the animation pauses while the
                 // detail panel shows the same file.
                 playing: !root.detailOpen
@@ -187,7 +193,7 @@ ItemDelegate {
             visible: !videoLoader.active
                 && (root.thumbnail.toString() === ""
                     || thumbnailImage.status === Image.Error
-                    || (root.isGif && gifImage.status === Image.Error))
+                    || (root.isAnimated && animatedImage.status === Image.Error))
         }
         ToolButton {
             anchors.right: parent.right

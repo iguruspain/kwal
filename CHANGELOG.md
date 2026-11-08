@@ -26,7 +26,7 @@ from it.
   the detail panel and survive rescans.
 - Detail panel: a non-overlay side panel (media preview, categories, tags,
   palettes, custom commands) that follows the grid selection; videos play
-  inline muted, GIFs animate inline.
+  inline muted, GIFs and animated WebP animate inline.
 - Palettes: Material You through the official `material-color-utilities`
   library (nine M3 schemes, 16 swatches each, cached per wallpaper and dark
   mode), plus ImageMagick unique-color extraction; the source-color dots of

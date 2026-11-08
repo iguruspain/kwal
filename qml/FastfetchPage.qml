@@ -213,26 +213,28 @@ ToolPage {
                     Layout.fillHeight: true
                     Layout.preferredHeight: 300
                     // Same as the wallpaper grid: Image (QQuickImage) only shows the
-                    // first frame of a GIF, so animated sources use AnimatedImage.
-                    readonly property bool isGif: page.controller.configImage.toLowerCase().endsWith(".gif")
+                    // first frame, so animated sources (GIF/WebP) use AnimatedImage.
+                    readonly property bool isAnimated:
+                        page.controller.configImage.toLowerCase().endsWith(".gif")
+                        || page.controller.configImage.toLowerCase().endsWith(".webp")
                     Image {
                         anchors.centerIn: parent
                         source: page.controller.configImageUrl
                         asynchronous: true
                         cache: false
                         fillMode: Image.PreserveAspectFit
-                        visible: page.controller.configImage !== "" && !configPreviewArea.isGif
+                        visible: page.controller.configImage !== "" && !configPreviewArea.isAnimated
                         width: Math.min(configPreviewArea.width, configPreviewArea.height)
                         height: Math.min(configPreviewArea.width, configPreviewArea.height)
                     }
                     AnimatedImage {
                         anchors.centerIn: parent
-                        source: configPreviewArea.isGif ? page.controller.configImageUrl : ""
+                        source: configPreviewArea.isAnimated ? page.controller.configImageUrl : ""
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
                         // AnimatedImage caches every frame in memory; cap the stored
-                        // frame width at 1280 with a zero height so Qt keeps the GIF's
-                        // aspect ratio (same rule as the wallpaper grid).
+                        // frame width at 1280 with a zero height so Qt keeps the
+                        // image's aspect ratio (same rule as the wallpaper grid).
                         sourceSize: Qt.size(1280, 0)
                         playing: page.visible
                         width: Math.min(configPreviewArea.width, configPreviewArea.height)
@@ -277,14 +279,16 @@ ToolPage {
                             id: originalPreviewArea
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            readonly property bool isGif: page.controller.selectedFile.toLowerCase().endsWith(".gif")
+                            readonly property bool isAnimated:
+                                page.controller.selectedFile.toLowerCase().endsWith(".gif")
+                                || page.controller.selectedFile.toLowerCase().endsWith(".webp")
                             Image {
                                 anchors.centerIn: parent
                                 source: page.controller.fileUrl(page.controller.selectedFile)
                                 asynchronous: true
                                 cache: false
                                 fillMode: Image.PreserveAspectFit
-                                visible: !originalPreviewArea.isGif
+                                visible: !originalPreviewArea.isAnimated
                                 width: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                                 height: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                             }
@@ -292,7 +296,7 @@ ToolPage {
                             // static on purpose (its content is mid-tint).
                             AnimatedImage {
                                 anchors.centerIn: parent
-                                source: originalPreviewArea.isGif
+                                source: originalPreviewArea.isAnimated
                                     ? page.controller.fileUrl(page.controller.selectedFile)
                                     : ""
                                 asynchronous: true

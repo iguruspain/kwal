@@ -39,12 +39,18 @@ Rectangle {
     // Whether the tag input field is shown; toggled by the "+" button.
     property bool tagInputVisible: false
 
-    // Animated GIF: QQuickImage only shows the first frame, so the media
-    // area uses AnimatedImage (QMovie-based) for them.
-    readonly property bool isGif: {
+    // Animated GIF/WebP: QQuickImage only shows the first frame, so the
+    // media area uses AnimatedImage for them (QMovie-driven: this Qt's
+    // QMovie::supportedFormats() lists gif, webp, avif, jxl, svg and ani).
+    // APNG stays out: png is not in that list, Qt's PNG handler reports no
+    // animation.
+    readonly property bool isAnimated: {
         const dot = root.wallpaper.lastIndexOf(".")
-        return dot > 0
-            && root.wallpaper.substring(dot + 1).toLowerCase() === "gif"
+        if (dot <= 0) {
+            return false
+        }
+        const ext = root.wallpaper.substring(dot + 1).toLowerCase()
+        return ext === "gif" || ext === "webp"
     }
 
     property string paletteBackend: "materialyou"
@@ -261,7 +267,7 @@ Rectangle {
                 // (or the cached first frame); decoding it at native size
                 // (e.g. 4K) wastes memory the panel never displays.
                 sourceSize: Qt.size(1280, 0)
-                visible: !root.isGif
+                visible: !root.isAnimated
                 source: root.isVideo
                     ? (root.app.wallpapersInfo.firstFrameFor(root.wallpaper) !== ""
                         ? root.app.fileUrl(root.app.wallpapersInfo.firstFrameFor(root.wallpaper))
@@ -269,24 +275,24 @@ Rectangle {
                     : root.app.fileUrl(root.wallpaper)
             }
 
-            // Plays the GIF frames in place while the panel is open
+            // Plays the GIF/WebP frames in place while the panel is open
             // (QQuickImage above only shows the first frame).
             AnimatedImage {
-                id: mediaGif
+                id: mediaAnimated
                 anchors.fill: parent
                 anchors.margins: 2
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
                 // AnimatedImage caches every frame in memory; cap the
-                // stored frame width at 1280 so a big GIF does not exhaust
-                // memory. The zero height lets Qt compute it from the GIF's
-                // natural size, keeping the aspect ratio (a fixed square
-                // would stretch the frames).
+                // stored frame width at 1280 so a big GIF/WebP does not
+                // exhaust memory. The zero height lets Qt compute it from
+                // the image's natural size, keeping the aspect ratio (a
+                // fixed square would stretch the frames).
                 sourceSize: Qt.size(1280, 0)
-                source: root.isGif ? root.app.fileUrl(root.wallpaper) : ""
-                visible: root.isGif
-                playing: root.isGif && root.open
+                source: root.isAnimated ? root.app.fileUrl(root.wallpaper) : ""
+                visible: root.isAnimated
+                playing: root.isAnimated && root.open
             }
 
             // The MediaPlayer lives inside the Loader so closing the

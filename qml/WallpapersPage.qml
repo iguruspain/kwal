@@ -270,6 +270,7 @@ Kirigami.Page {
                         grid: gridView
                         pageVisible: page.pageActive
                         detailOpen: page.detailOpen
+                        isAnimated: model.isAnimated
                         sourceColors: model.sourceColors
                         onOpenDetail: page.openDetail()
                         // GridView does not resize delegates; fill the cell like the old app.

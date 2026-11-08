@@ -44,6 +44,11 @@ public:
         // Categories/tags were edited manually in the UI; rescans preserve them.
         bool categoriesManual = false;
         bool tagsManual = false;
+        // Whether the image is an animation (probed off-thread with the
+        // QImageReader::imageCount() frame count during the refresh; videos
+        // are never animations). -1 = not probed yet (entry from an older
+        // index).
+        int animated = -1;
         double lastModified = 0.0;
     };
 
@@ -70,6 +75,10 @@ public:
     Q_INVOKABLE QStringList sourceColorsFor(const QString &path) const;
     Q_INVOKABLE QStringList colorCategoriesFor(const QString &path) const;
     Q_INVOKABLE QStringList tagsFor(const QString &path) const;
+    // True when the file needs a QMovie (AnimatedImage) instead of a still:
+    // the probed flag when the entry has one, the gif/webp extension rule
+    // while the entry is still unprobed (e.g. during the first scan).
+    Q_INVOKABLE bool isAnimatedFor(const QString &path) const;
     // Manual overrides from the UI; preserved across folder rescans.
     Q_INVOKABLE void setCategories(const QString &path, const QStringList &categories);
     Q_INVOKABLE void setTags(const QString &path, const QStringList &tags);
@@ -138,6 +147,10 @@ private:
 
     void saveLocked();
     void upsert(const Entry &entry);
+    void notifyEntryChanged(const QString &path);
+    // Fills the animated flag of an up-to-date but unprobed entry with the
+    // cheap frame-count probe, without re-running the heavy refresh.
+    void fillMissingAnimatedProbe(const QString &path);
     void jobFinished();
     // Finishes one resize job; updates the batch progress on the object's thread.
     void resizeJobFinished();

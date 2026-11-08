@@ -11,7 +11,9 @@
 #include <QImage>
 #include <QImageReader>
 #include <QPainter>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QSize>
 #include <QStandardPaths>
@@ -28,6 +30,7 @@ private slots:
     void testRoundTrip();
     void testCorruptJson();
     void testFirstFrame();
+    void testAnimatedProbe();
     void testVideoResize();
     void testEnsureResizedCopy();
     void testColorCategory();
@@ -371,6 +374,7 @@ void tst_WallpapersInfo::testMatugenUpToDate()
     obj[QStringLiteral("type")] = QStringLiteral("image");
     obj[QStringLiteral("last_modified")] = mtime;
     obj[QStringLiteral("matugen_done")] = true;
+    obj[QStringLiteral("animated")] = 0;
     obj[QStringLiteral("color_categories")] = QJsonArray{QStringLiteral("blue")};
     QJsonArray files;
     files.append(obj);
@@ -745,6 +749,112 @@ void tst_WallpapersInfo::testClearAllTags()
     QSignalSpy changed2(info, &WallpapersInfo::entryChanged);
     QCOMPARE(info->clearAllTags(), 0);
     QCOMPARE(changed2.count(), 0);
+}
+
+void tst_WallpapersInfo::testAnimatedProbe()
+{
+    WallpapersInfo *info = WallpapersInfo::instance();
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    // A still image is never an animation.
+    const QString png = dir.path() + QStringLiteral("/still.png");
+    writeImage(png, Qt::red);
+    info->refreshFile(png, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(png).animated == 0, 30000);
+    QVERIFY(!info->isAnimatedFor(png));
+
+    // A multi-frame GIF (ffmpeg's gif encoder) is a real animation.
+    const QString gif = dir.path() + QStringLiteral("/anim.gif");
+    QProcess process;
+    process.start(QStringLiteral("ffmpeg"),
+                  {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
+                   QStringLiteral("-f"), QStringLiteral("lavfi"),
+                   QStringLiteral("-i"), QStringLiteral("color=c=blue:s=32x32:d=0.4:r=10"),
+                   gif});
+    QVERIFY(process.waitForFinished(60000));
+    QCOMPARE(process.exitCode(), 0);
+    info->refreshFile(gif, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(gif).animated == 1, 30000);
+    QVERIFY(info->isAnimatedFor(gif));
+
+    // A single-frame GIF is detected as static even though its extension
+    // says otherwise (the gif handler's supportsAnimation() is only a
+    // format capability — this is why the probe uses imageCount()).
+    const QString stillGif = dir.path() + QStringLiteral("/still.gif");
+    process.start(QStringLiteral("ffmpeg"),
+                  {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
+                   QStringLiteral("-f"), QStringLiteral("lavfi"),
+                   QStringLiteral("-i"), QStringLiteral("color=c=red:s=32x32:d=0.1:r=10"),
+                   QStringLiteral("-frames:v"), QStringLiteral("1"),
+                   stillGif});
+    QVERIFY(process.waitForFinished(60000));
+    QCOMPARE(process.exitCode(), 0);
+    info->refreshFile(stillGif, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(stillGif).animated == 0, 30000);
+    QVERIFY(!info->isAnimatedFor(stillGif));
+
+    // Animated and still WebP behave the same way (the WebP-heavy folders
+    // never pay the QMovie path unless the file really animates).
+    const QString webp = dir.path() + QStringLiteral("/anim.webp");
+    process.start(QStringLiteral("ffmpeg"),
+                  {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
+                   QStringLiteral("-f"), QStringLiteral("lavfi"),
+                   QStringLiteral("-i"), QStringLiteral("testsrc2=size=32x32:rate=10"),
+                   QStringLiteral("-frames:v"), QStringLiteral("7"),
+                   webp});
+    QVERIFY(process.waitForFinished(60000));
+    QCOMPARE(process.exitCode(), 0);
+    info->refreshFile(webp, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(webp).animated == 1, 30000);
+    QVERIFY(info->isAnimatedFor(webp));
+
+    const QString stillWebp = dir.path() + QStringLiteral("/still.webp");
+    process.start(QStringLiteral("ffmpeg"),
+                  {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
+                   QStringLiteral("-f"), QStringLiteral("lavfi"),
+                   QStringLiteral("-i"), QStringLiteral("color=c=green:s=32x32"),
+                   QStringLiteral("-frames:v"), QStringLiteral("1"),
+                   stillWebp});
+    QVERIFY(process.waitForFinished(60000));
+    QCOMPARE(process.exitCode(), 0);
+    info->refreshFile(stillWebp, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(stillWebp).animated == 0, 30000);
+    QVERIFY(!info->isAnimatedFor(stillWebp));
+
+    // The flag survives the JSON round-trip.
+    WallpapersInfo::initialize(QCoreApplication::instance());
+    QCOMPARE(WallpapersInfo::instance()->entryFor(gif).animated, 1);
+    QCOMPARE(WallpapersInfo::instance()->entryFor(stillGif).animated, 0);
+
+    // An entry from an older index (no "animated" key): unknown on load, so
+    // isAnimatedFor falls back to the extension rule; the next refresh (the
+    // entry is up to date) fills just the probe without a full reprocess.
+    const QString json = cacheRoot() + QStringLiteral("/wallpapers_info.json");
+    {
+        QFile file(json);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QJsonObject root = QJsonDocument::fromJson(file.readAll()).object();
+        file.close();
+        QJsonArray files = root.value(QStringLiteral("files")).toArray();
+        for (int i = 0; i < files.size(); ++i) {
+            QJsonObject obj = files.at(i).toObject();
+            obj.remove(QStringLiteral("animated"));
+            files.replace(i, obj);
+        }
+        root.insert(QStringLiteral("files"), files);
+        QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        file.write(QJsonDocument(root).toJson());
+    }
+    WallpapersInfo::initialize(QCoreApplication::instance());
+    QCOMPARE(WallpapersInfo::instance()->entryFor(gif).animated, -1);
+    // Extension fallback while unprobed: gif is a maybe, png is not.
+    QVERIFY(WallpapersInfo::instance()->isAnimatedFor(gif));
+    WallpapersInfo::instance()->refreshFile(gif, QStringLiteral("image"));
+    QTRY_VERIFY_WITH_TIMEOUT(WallpapersInfo::instance()->entryFor(gif).animated == 1, 30000);
+    // Unknown paths keep the extension rule.
+    QVERIFY(WallpapersInfo::instance()->isAnimatedFor(QStringLiteral("/nowhere/movie.gif")));
+    QVERIFY(!WallpapersInfo::instance()->isAnimatedFor(QStringLiteral("/nowhere/still.png")));
 }
 
 int main(int argc, char *argv[])

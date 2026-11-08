@@ -438,6 +438,32 @@ private:
     QPointer<WallpapersInfo> m_info;
     QString m_path;
 };
+
+// Formats that can carry an animation in this Qt (QMovie::supportedFormats
+// lists gif, webp, avif, jxl, svg and ani; only these ever appear as
+// wallpapers). Used as the fallback while an entry is still unprobed.
+bool couldBeAnimatedFormat(const QString &path)
+{
+    const QString suffix = QFileInfo(path).suffix().toLower();
+    return suffix == QLatin1String("gif") || suffix == QLatin1String("webp")
+        || suffix == QLatin1String("avif") || suffix == QLatin1String("jxl");
+}
+
+// Per-file animation probe: QImageReader::imageCount() is the handler's real
+// frame count (measured on this Qt: worst case here 23 ms for the 232-frame
+// GIF, WebP 0-1 ms). QImageReader::supportsAnimation() is NOT usable: the gif
+// handler treats it as a format capability and answers true even for a
+// single-frame GIF, while the webp handler answers per file. A handler that
+// cannot count frames (-1) falls back to the capability answer.
+int probeAnimated(const QString &path)
+{
+    QImageReader probe(path);
+    const int frames = probe.imageCount();
+    if (frames >= 0) {
+        return frames > 1 ? 1 : 0;
+    }
+    return probe.supportsAnimation() ? 1 : 0;
+}
 } // namespace
 
 WallpapersInfo *WallpapersInfo::s_instance = nullptr;
@@ -510,6 +536,10 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
         }
     }
     if (upToDate) {
+        // Entries written by an older index have no animated probe; fill it
+        // with the cheap frame-count probe instead of re-running the heavy
+        // refresh (measured ≤23 ms per file, off-thread here).
+        fillMissingAnimatedProbe(path);
         // jobFinished() acquires m_mutex itself; it must not be called
         // while this scope still holds it (non-recursive self-deadlock).
         jobFinished();
@@ -527,6 +557,11 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
         }
     }
     const QString image = (type == QLatin1String("video")) ? entry.firstFrame : path;
+    // Animation probe (per-file frame count, measured ≤23 ms per file,
+    // off-thread): drives the grid/drawer decision to use AnimatedImage, so
+    // a static GIF/WebP never pays the QMovie path. Videos are never
+    // animations.
+    entry.animated = (type == QLatin1String("video")) ? 0 : probeAnimated(path);
     // Color categories from the image itself (material-color-utilities:
     // Celebi top colors + HCT classification), independent of matugen.
     computeImageCategories(image, entry.colorCategories);
@@ -565,12 +600,40 @@ void WallpapersInfo::upsert(const Entry &entry)
         m_entries.insert(entry.file, entry);
         saveLocked();
     }
-    const QString path = entry.file;
+    notifyEntryChanged(entry.file);
+}
+
+void WallpapersInfo::notifyEntryChanged(const QString &path)
+{
     if (QThread::currentThread() == thread()) {
         emit entryChanged(path);
     } else {
         QMetaObject::invokeMethod(this, [this, path]() { emit entryChanged(path); }, Qt::QueuedConnection);
     }
+}
+
+void WallpapersInfo::fillMissingAnimatedProbe(const QString &path)
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        const auto it = m_entries.constFind(path);
+        if (it == m_entries.constEnd() || it->animated >= 0) {
+            return;
+        }
+    }
+    // The probe reads the file: keep m_mutex out of the way (QImageReader is
+    // reentrant and runs on the refresh pool thread).
+    const int probed = probeAnimated(path);
+    {
+        QMutexLocker locker(&m_mutex);
+        const auto it = m_entries.find(path);
+        if (it == m_entries.end() || it->animated >= 0) {
+            return; // the entry changed while probing; the next pass covers it
+        }
+        it->animated = probed;
+        saveLocked();
+    }
+    notifyEntryChanged(path);
 }
 
 void WallpapersInfo::sweep()
@@ -696,6 +759,7 @@ void WallpapersInfo::load()
         entry.matugenDone = obj.value(QStringLiteral("matugen_done")).toBool();
         entry.categoriesManual = obj.value(QStringLiteral("categories_manual")).toBool();
         entry.tagsManual = obj.value(QStringLiteral("tags_manual")).toBool();
+        entry.animated = obj.value(QStringLiteral("animated")).toInt(-1);
         if (migrate) {
             if (!entry.categoriesManual) {
                 entry.colorCategories.clear();
@@ -733,6 +797,9 @@ void WallpapersInfo::saveLocked()
         }
         if (entry.tagsManual) {
             obj[QStringLiteral("tags_manual")] = true;
+        }
+        if (entry.animated >= 0) {
+            obj[QStringLiteral("animated")] = entry.animated;
         }
         files.append(obj);
     }
@@ -781,6 +848,19 @@ QStringList WallpapersInfo::tagsFor(const QString &path) const
 {
     QMutexLocker locker(&m_mutex);
     return m_entries.value(path).tags;
+}
+
+bool WallpapersInfo::isAnimatedFor(const QString &path) const
+{
+    {
+        QMutexLocker locker(&m_mutex);
+        const int animated = m_entries.value(path).animated;
+        if (animated >= 0) {
+            return animated == 1;
+        }
+    }
+    // Entry not probed yet (or unknown path): fall back to the extension rule.
+    return couldBeAnimatedFormat(path);
 }
 
 void WallpapersInfo::setCategories(const QString &path, const QStringList &categories)

@@ -26,6 +26,7 @@ public:
         ExtensionRole,
         IsVideoRole,
         SourceColorsRole,
+        IsAnimatedRole,
     };
 
     explicit WallpaperModel(QObject *parent = nullptr);

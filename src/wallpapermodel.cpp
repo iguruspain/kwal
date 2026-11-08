@@ -64,6 +64,7 @@ QHash<int, QByteArray> WallpaperModel::roleNames() const
         {ExtensionRole, "extension"},
         {IsVideoRole, "isVideo"},
         {SourceColorsRole, "sourceColors"},
+        {IsAnimatedRole, "isAnimated"},
     };
 }
 
@@ -92,6 +93,16 @@ QVariant WallpaperModel::data(const QModelIndex &index, int role) const
     case SourceColorsRole: {
         const WallpapersInfo *info = WallpapersInfo::instance();
         return info ? info->sourceColorsFor(entry.path) : QStringList();
+    }
+    case IsAnimatedRole: {
+        // The cached frame-count probe (real animation, not just a
+        // gif/webp suffix); the extension rule while the entry is unprobed.
+        const WallpapersInfo *info = WallpapersInfo::instance();
+        if (info) {
+            return info->isAnimatedFor(entry.path);
+        }
+        return entry.extension.compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0
+            || entry.extension.compare(QLatin1String("webp"), Qt::CaseInsensitive) == 0;
     }
     default:
         return {};
@@ -281,7 +292,7 @@ void WallpaperModel::onEntryChanged(const QString &path)
         if (m_entries.at(row).path != path) {
             continue;
         }
-        QVector<int> roles{SourceColorsRole};
+        QVector<int> roles{SourceColorsRole, IsAnimatedRole};
         if (!frameThumbnail.isEmpty()) {
             m_entries[row].thumbnail = frameThumbnail;
             roles.prepend(ThumbnailRole);

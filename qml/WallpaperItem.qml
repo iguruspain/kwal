@@ -13,6 +13,10 @@ ItemDelegate {
     required property url thumbnail
     required property string extension
     required property bool isVideo
+    // Real animation (probed QImageReader::imageCount frame count cached per
+    // file, extension fallback while unprobed) — a static GIF/WebP is false
+    // and stays on the plain thumbnail path.
+    required property bool isAnimated
     // Matugen source colors of this wallpaper (from the cache index);
     // shown as dots on the selected cell.
     required property var sourceColors
@@ -48,15 +52,22 @@ ItemDelegate {
     // right away.
     readonly property bool videoActive:
         root.isVideo && root.isSelected && root.pageVisible && !root.detailOpen
-    // Animated GIF/WebP: QQuickImage only shows the first frame, so these
-    // use AnimatedImage, which plays the frames in place through QMovie.
-    // QMovie::supportedFormats() on this Qt lists gif, webp, avif, jxl, svg
-    // and ani; APNG stays out of the condition because png is not in that
-    // list (Qt's PNG handler reports no animation), so those files are
-    // stills everywhere.
-    readonly property bool isAnimated:
-        root.extension.toLowerCase() === "gif"
-        || root.extension.toLowerCase() === "webp"
+    // Animated GIF/WebP: only the selected, visible cell plays (same pattern
+    // as the video below). QMovie decodes every frame it plays on the GUI
+    // thread and restarts whenever a reused delegate rebinds the source, so
+    // an always-on animation turns scrolling into a decode storm; the other
+    // cells just show their static fdo thumbnail (the first frame).
+    readonly property bool animatedActive:
+        root.isAnimated && root.isSelected && root.pageVisible && !root.detailOpen
+    // The frame cache follows the size actually painted: QMovie's scaled size
+    // is a target (not a cap), so decoding at 1280 px for a ~250 px cell
+    // wastes ~26x the pixels. cellWidth x dpr covers HiDPI, topped at 768 so
+    // even a 4K screen does not balloon a single grid cell's cache.
+    readonly property int animatedFrameWidth:
+        Math.min(Math.ceil(root.grid.cellWidth * root.Screen.devicePixelRatio), 768)
+    // Armed after the start delay (mirrors videoArmed); the Loader unarms
+    // itself whenever it deactivates.
+    property bool animatedArmed: false
     // Armed after the start delay; the Loader (whose active defaults to
     // true) is only loaded once armed, and it disarms itself immediately
     // whenever it stops.
@@ -80,6 +91,15 @@ ItemDelegate {
         interval: 250
         running: root.videoActive
         onTriggered: root.videoArmed = true
+    }
+
+    // Same delay for the animation start, so selecting a GIF/WebP does not
+    // race its decode against the highlight transition.
+    Timer {
+        id: animatedStartTimer
+        interval: 250
+        running: root.animatedActive
+        onTriggered: root.animatedArmed = true
     }
 
     hoverEnabled: true
@@ -127,37 +147,41 @@ ItemDelegate {
                 // VideoOutput is transparent before the first frame.
                 opacity: status === Image.Ready ? 1.0 : 0.0
                 Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
-                visible: !root.isAnimated
+                // Always visible: for unselected animated cells this static
+                // first-frame thumbnail IS the cell; while a movie plays it
+                // simply stays underneath until the animation fades in.
             }
             // AnimatedImage cannot use QQuickImageProvider, so it loads the
-            // real file URL instead of the thumbnail.
-            AnimatedImage {
-                id: animatedImage
+            // real file URL instead of the thumbnail. The Loader keeps the
+            // QMovie (decoder + frame cache) alive only while this cell is
+            // the selected, visible one; every scroll pass over the other
+            // animated cells costs nothing beyond their plain thumbnail.
+            Loader {
+                id: animatedLoader
                 anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                smooth: true
-                // AnimatedImage caches every frame in memory; cap the
-                // stored frame width at 1280 so a big GIF/WebP does not
-                // exhaust memory. The zero height lets Qt compute it from
-                // the image's natural size, keeping the aspect ratio (a
-                // fixed square would stretch the frames).
-                sourceSize: Qt.size(1280, 0)
-                source: root.isAnimated ? root.app.fileUrl(root.path) : ""
-                visible: root.isAnimated
-                // Like the video player, the animation pauses while the
-                // detail panel shows the same file.
-                playing: !root.detailOpen
-                scale: root.hovered ? 1.14 : (root.isSelected ? 1.07 : 1.0)
-                Behavior on scale {
-                    SpringAnimation {
-                        spring: 8.0
-                        damping: 0.55
-                        mass: 1.0
+                active: root.animatedActive && root.animatedArmed
+                onActiveChanged: if (!active)
+                    root.animatedArmed = false
+                sourceComponent: Component {
+                    AnimatedImage {
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        smooth: true
+                        sourceSize: Qt.size(root.animatedFrameWidth, 0)
+                        source: root.app.fileUrl(root.path)
+                        playing: true
+                        scale: root.hovered ? 1.14 : (root.isSelected ? 1.07 : 1.0)
+                        Behavior on scale {
+                            SpringAnimation {
+                                spring: 8.0
+                                damping: 0.55
+                                mass: 1.0
+                            }
+                        }
+                        opacity: status === Image.Ready ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.InOutQuad } }
                     }
                 }
-                opacity: status === Image.Ready ? 1.0 : 0.0
-                Behavior on opacity { NumberAnimation { duration: Kirigami.Units.longDuration } }
             }
 
             Loader {
@@ -192,8 +216,7 @@ ItemDelegate {
             color: Kirigami.Theme.disabledTextColor
             visible: !videoLoader.active
                 && (root.thumbnail.toString() === ""
-                    || thumbnailImage.status === Image.Error
-                    || (root.isAnimated && animatedImage.status === Image.Error))
+                    || thumbnailImage.status === Image.Error)
         }
         ToolButton {
             anchors.right: parent.right

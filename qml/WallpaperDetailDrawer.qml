@@ -39,19 +39,12 @@ Rectangle {
     // Whether the tag input field is shown; toggled by the "+" button.
     property bool tagInputVisible: false
 
-    // Animated GIF/WebP: QQuickImage only shows the first frame, so the
-    // media area uses AnimatedImage for them (QMovie-driven: this Qt's
-    // QMovie::supportedFormats() lists gif, webp, avif, jxl, svg and ani).
-    // APNG stays out: png is not in that list, Qt's PNG handler reports no
-    // animation.
-    readonly property bool isAnimated: {
-        const dot = root.wallpaper.lastIndexOf(".")
-        if (dot <= 0) {
-            return false
-        }
-        const ext = root.wallpaper.substring(dot + 1).toLowerCase()
-        return ext === "gif" || ext === "webp"
-    }
+    // Whether the wallpaper is a real animation: the per-file
+    // QImageReader::imageCount() frame-count probe cached in WallpapersInfo
+    // (extension fallback until probed), so a static WebP/GIF never goes
+    // through the QMovie path. Re-synced by syncWithInfo on every
+    // entryChanged, like the colors and tags.
+    property bool isAnimated: false
 
     property string paletteBackend: "materialyou"
     property bool paletteDark: true
@@ -62,6 +55,9 @@ Rectangle {
     // Set by a short timer after opening so the first frame shows before
     // the video decoder starts. Reset whenever the video Loader unloads.
     property bool mediaArmed: false
+    // QMovie frame width for the media area, set by mediaWidthSettle once
+    // the panel width settles (initial guess until then).
+    property real mediaFrameWidth: 512
 
     // The page selector index: 0 = Info, 1 = Commands.
     property int pageSelected: 0
@@ -78,8 +74,11 @@ Rectangle {
     }
 
     // The panel always opens on the Info page.
-    onOpenChanged: if (open)
+    onOpenChanged: if (open) {
         pageSelected = 0
+        // Freshly settle the frame width for the panel that just opened.
+        mediaWidthSettle.restart()
+    }
 
     // Reloads the manual categories/tags from the backend and clears any
     // palette computed for the previous wallpaper.
@@ -87,6 +86,7 @@ Rectangle {
         categories = app.wallpapersInfo.colorCategoriesFor(root.wallpaper)
         tags = app.wallpapersInfo.tagsFor(root.wallpaper)
         sourceColors = app.wallpapersInfo.sourceColorsFor(root.wallpaper)
+        isAnimated = app.wallpapersInfo.isAnimatedFor(root.wallpaper)
         paletteSwatches = []
         paletteSelected = -1
         // A completion that is about to be discarded must not leave the
@@ -230,6 +230,7 @@ Rectangle {
         // immediately instead of a blank area while the decoder starts.
         // The matugen source colors overlay its bottom-left corner.
         Item {
+            id: mediaArea
             // The media area stays 16:9: the height starts from the full
             // content width and is capped at 40% of the panel height (so
             // the chips and palette below stay visible without scrolling);
@@ -239,6 +240,7 @@ Rectangle {
             readonly property real mediaHeight: Math.min(
                 (rootContent.width - 2 * Kirigami.Units.gridUnit) * 9 / 16,
                 root.height * 0.4)
+            onWidthChanged: mediaWidthSettle.restart()
             Layout.preferredWidth: mediaHeight * 16 / 9
             Layout.preferredHeight: mediaHeight
             Layout.alignment: Qt.AlignHCenter
@@ -275,6 +277,18 @@ Rectangle {
                     : root.app.fileUrl(root.wallpaper)
             }
 
+            // QMovie frame width follows the panel's settled width:
+            // setScaledSize is a decode target, not a cap (the old fixed
+            // 1280 px decoded frames the panel never shows), and every
+            // change reloads the frames — so feed it only the settled
+            // width, 400 ms after the last width change.
+            Timer {
+                id: mediaWidthSettle
+                interval: 400
+                onTriggered: if (mediaArea.width > 0)
+                    root.mediaFrameWidth = Math.min(Math.ceil(mediaArea.width * root.Screen.devicePixelRatio), 1024)
+            }
+
             // Plays the GIF/WebP frames in place while the panel is open
             // (QQuickImage above only shows the first frame).
             AnimatedImage {
@@ -284,12 +298,7 @@ Rectangle {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
-                // AnimatedImage caches every frame in memory; cap the
-                // stored frame width at 1280 so a big GIF/WebP does not
-                // exhaust memory. The zero height lets Qt compute it from
-                // the image's natural size, keeping the aspect ratio (a
-                // fixed square would stretch the frames).
-                sourceSize: Qt.size(1280, 0)
+                sourceSize: Qt.size(Math.round(root.mediaFrameWidth), 0)
                 source: root.isAnimated ? root.app.fileUrl(root.wallpaper) : ""
                 visible: root.isAnimated
                 playing: root.isAnimated && root.open

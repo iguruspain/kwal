@@ -50,6 +50,9 @@ public:
     Q_INVOKABLE bool isVideoFile(const QString &filePath) const;
     // True if the file has one of the supported image extensions.
     static bool isImage(const QString &filePath);
+    // The supported image extensions (the single source for "what the grid
+    // offers", reused by the settings page's readability warning).
+    static const QStringList &imageExtensions();
     // Name filters (e.g. "*.mp4") for the supported video extensions; the
     // single source for enumerating video files in a folder.
     static QStringList videoNameFilters();
@@ -88,3 +91,11 @@ private:
     QString m_filterText;
     QSet<QString> m_categoryFilter;
 };
+
+namespace wallpapermodel {
+// The entries of `accepted` (wallpaper extensions) that the image-reader
+// formats in `readable` (QImageReader::supportedImageFormats()) cannot decode,
+// lowercased and deduplicated. Case-insensitive, and a format counts as
+// readable when the plugin advertises any of its aliases (jpg/jpeg/jfif…).
+QStringList unreadableFormats(const QList<QByteArray> &readable, const QStringList &accepted);
+} // namespace wallpapermodel

@@ -579,6 +579,17 @@ QString AppController::fileUrl(const QString &path) const
     return QUrl::fromLocalFile(path).toString();
 }
 
+QStringList AppController::unreadableWallpaperFormats() const
+{
+    return wallpapermodel::unreadableFormats(QImageReader::supportedImageFormats(),
+                                             WallpaperModel::imageExtensions());
+}
+
+bool AppController::videoWallpaperPluginInstalled() const
+{
+    return m_plasmaApply->rebornAvailable();
+}
+
 void AppController::applyWallpaper()
 {
     if (m_selectedWallpaper.isEmpty()) {

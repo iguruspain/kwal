@@ -11,6 +11,35 @@ Kirigami.ScrollablePage {
 
     required property AppController app
 
+    // Wallpaper extensions the grid accepts but this Qt build cannot decode
+    // because the image handler plugin is not installed. The cell thumbnail
+    // still renders (it comes from the external freedesktop thumbnailer), so
+    // nothing else explains the empty palettes, categories and preview.
+    readonly property var unreadableFormats: page.app.unreadableWallpaperFormats()
+
+    // Arch package owning each handler plugin (verified with pacman -Qo on
+    // /usr/lib/qt6/plugins/imageformats/*.so).
+    readonly property var formatPackages: ({
+        "png": "qt6-base",
+        "jpg": "qt6-base",
+        "jpeg": "qt6-base",
+        "bmp": "qt6-base",
+        "gif": "qt6-base",
+        "webp": "qt6-imageformats",
+        "svg": "qt6-svg",
+    })
+
+    function installHint(formats) {
+        const packages = []
+        for (const format of formats) {
+            const package = page.formatPackages[format]
+            if (package !== undefined && !packages.includes(package)) {
+                packages.push(package)
+            }
+        }
+        return packages.join(", ")
+    }
+
     // Setting labels exposed to the settings drawer search; keep in sync
     // with the controls below.
     property var searchKeys: [
@@ -82,6 +111,29 @@ Kirigami.ScrollablePage {
             margins: Kirigami.Units.largeSpacing
         }
         spacing: Kirigami.Units.smallSpacing
+
+        // The two ways this install can be missing something the app needs,
+        // both invisible by default: a broken decode shows up as empty
+        // palettes/previews, a missing video plugin as a frozen wallpaper.
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            visible: page.unreadableFormats.length > 0
+            type: Kirigami.MessageType.Warning
+            text: qsTr("This Qt build cannot read %1, so those wallpapers show no palette, no color categories and no preview. Install the Qt 6 image format plugins — on Arch: %2.")
+                  .arg(page.unreadableFormats.join(", "), page.installHint(page.unreadableFormats))
+        }
+
+        Kirigami.InlineMessage {
+            Layout.fillWidth: true
+            // Only for folders that actually hold videos, and re-checked every
+            // time the page is shown: installing the plugin is what this asks
+            // for, and it needs no restart.
+            visible: page.visible
+                     && page.app.videoFolders.length > 0
+                     && !page.app.videoWallpaperPluginInstalled()
+            type: Kirigami.MessageType.Warning
+            text: qsTr("Plasma's video wallpaper plugin (Smart Video Wallpaper Reborn) is not installed, so the videos in your folders are applied as a still image — their first frame. Install it: on Arch the AUR package plasma6-wallpapers-smart-video-wallpaper-reborn, or Plasma Settings → Get New Wallpaper Plugins.")
+        }
 
         Kirigami.Heading {
             Layout.fillWidth: true

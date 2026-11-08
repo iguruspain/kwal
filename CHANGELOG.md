@@ -63,6 +63,13 @@ from it.
   (matugen dots, color categories, lockscreen, video resizes group, AI
   tagging group, transitions group), Ulauncher (preview mockup) and About
   (standard `Kirigami.AboutPage`).
+- Settings → Wallpapers diagnostics: two inline warnings for the two failures
+  that are otherwise invisible — image formats this Qt build cannot decode
+  (the accepted wallpaper extensions diffed against
+  `QImageReader::supportedImageFormats()`, naming the Arch package that owns
+  each missing handler), and a folder holding videos while Plasma's Smart Video
+  Wallpaper Reborn plugin is absent, re-checked every time the page opens so
+  installing it needs no restart.
 - Keyboard-first browsing: the grid, folder list and swatch groups are single
   Tab stops with arrow-key cursors; Space opens the detail panel, Escape
   closes it and returns focus to the grid.
@@ -89,3 +96,10 @@ from it.
   "Unsupported image format"), so every `.webp` probed as static and the
   animated-WebP test in `tst_wallpapersinfo` failed with a bare `FALSE`; the
   test now names the missing handler and the fixture checks its own frame count.
+- QML diagnostics reach the terminal again: `QtWebEngineQuick::initialize()`
+  installs its own message handler (it forwards Qt logging into Chromium's
+  logging system), which silently swallowed every `qWarning` — including
+  `QQmlApplicationEngine failed to load component`, the first diagnostic for a
+  window that never appears. `main.cpp` had a handler written for exactly this
+  but never installed it; it is now installed after the application object
+  exists, so the last installer wins.

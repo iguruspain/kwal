@@ -174,6 +174,15 @@ public:
     // file:// URL (percent-encoded) for a local path; for QML media sources.
     Q_INVOKABLE QString fileUrl(const QString &path) const;
 
+    // Wallpaper extensions this Qt build cannot decode because its image
+    // handler plugin is not installed (empty when all of them decode). The
+    // settings page turns a non-empty list into a visible warning.
+    Q_INVOKABLE QStringList unreadableWallpaperFormats() const;
+
+    // True when Plasma's Smart Video Wallpaper (reborn) plugin is installed:
+    // without it a video wallpaper can only be applied as its first frame.
+    Q_INVOKABLE bool videoWallpaperPluginInstalled() const;
+
     // Custom commands, in execution order; the drawer's list mirrors these.
     Q_INVOKABLE void addCustomCommand();
     Q_INVOKABLE void updateCustomCommand(int index, const QString &command);

@@ -75,7 +75,8 @@ sudo xargs -r rm < build/install_manifest.txt         # system install
 ```
 
 Distro packages uninstall through their package manager as usual. Uninstalling
-never removes user state: `~/.config/kwal/` (settings, templates),
+never removes user state: `~/.config/kwalrc` (settings),
+`~/.config/kwal/templates` (bundled tool templates),
 `~/.cache/kwal/` (thumbnails, video frames and resizes, index) and the Plasma
 configuration the app applied stay untouched by design.
 
@@ -85,8 +86,10 @@ configuration the app applied stay untouched by design.
 
 ## Configuration
 
-Settings are stored by KConfig in `kwalrc` (`[Wallpapers]`, `[Commands]`,
-`[Transitions]`, `[General]`, `[Ulauncher]`). Media caches live under
+Settings are stored by KConfig in `~/.config/kwalrc` (`KConfig::SimpleConfig`,
+so there is no `~/.config/kwal/` subfolder for them) in the groups
+`[Wallpapers]`, `[Commands]`,
+`[Transitions]`, `[General]` and `[Ulauncher]`. Media caches live under
 `~/.cache/kwal/` (thumbnail/first-frame cache, video resizes, and a
 versioned per-file index).
 

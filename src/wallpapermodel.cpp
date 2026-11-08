@@ -6,21 +6,9 @@
 #include <QFileSystemWatcher>
 #include <QTimer>
 
-namespace {
-const QStringList &imageExtensions()
-{
-    static const QStringList extensions = {
-        QStringLiteral("png"),
-        QStringLiteral("jpg"),
-        QStringLiteral("jpeg"),
-        QStringLiteral("webp"),
-        QStringLiteral("bmp"),
-        QStringLiteral("gif"),
-        QStringLiteral("svg"),
-    };
-    return extensions;
-}
+#include <algorithm>
 
+namespace {
 const QStringList &videoExtensions()
 {
     static const QStringList extensions = {
@@ -135,6 +123,20 @@ bool WallpaperModel::isVideo(const QString &filePath)
 bool WallpaperModel::isVideoFile(const QString &filePath) const
 {
     return isVideo(filePath);
+}
+
+const QStringList &WallpaperModel::imageExtensions()
+{
+    static const QStringList extensions = {
+        QStringLiteral("png"),
+        QStringLiteral("jpg"),
+        QStringLiteral("jpeg"),
+        QStringLiteral("webp"),
+        QStringLiteral("bmp"),
+        QStringLiteral("gif"),
+        QStringLiteral("svg"),
+    };
+    return extensions;
 }
 
 bool WallpaperModel::isImage(const QString &filePath)
@@ -340,3 +342,40 @@ QUrl WallpaperModel::videoThumbnailFor(const QString &filePath) const
     }
     return QUrl(QStringLiteral("image://fdo_thumbnail/") + frame);
 }
+
+namespace {
+// The jpeg handler advertises several names for the same codec; any of them
+// present means both jpg and jpeg decode.
+QStringList formatAliases(const QString &format)
+{
+    if (format == QLatin1String("jpg") || format == QLatin1String("jpeg")) {
+        return {QStringLiteral("jpe"), QStringLiteral("jfif"), QStringLiteral("jpg"), QStringLiteral("jpeg")};
+    }
+    return {format};
+}
+} // namespace
+
+namespace wallpapermodel {
+QStringList unreadableFormats(const QList<QByteArray> &readable, const QStringList &accepted)
+{
+    QSet<QString> known;
+    known.reserve(readable.size());
+    for (const QByteArray &format : readable) {
+        known.insert(QString::fromLatin1(format).toLower());
+    }
+    QStringList missing;
+    for (const QString &extension : accepted) {
+        const QString lowered = extension.toLower();
+        if (missing.contains(lowered)) {
+            continue;
+        }
+        const QStringList aliases = formatAliases(lowered);
+        const bool decodes = std::any_of(aliases.cbegin(), aliases.cend(),
+                                         [&known](const QString &alias) { return known.contains(alias); });
+        if (!decodes) {
+            missing << lowered;
+        }
+    }
+    return missing;
+}
+} // namespace wallpapermodel

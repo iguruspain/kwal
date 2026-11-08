@@ -23,6 +23,7 @@ private slots:
     void testTransparencyPersistence();
     void testTransparencyLevelPersistence();
     void testToolDetection();
+    void testUnreadableFormats();
     void testCustomCommands();
     void testCustomCommandExpansion();
     void testCustomCommandQuoting();
@@ -252,6 +253,50 @@ void tst_AppController::testToolDetection()
 
     qputenv("PATH", previousPath);
     QDir().remove(fakeBin);
+}
+
+void tst_AppController::testUnreadableFormats()
+{
+    const QStringList accepted = WallpaperModel::imageExtensions();
+    QVERIFY(!accepted.isEmpty());
+
+    // Everything decodes: nothing to warn about.
+    QVERIFY(wallpapermodel::unreadableFormats({QByteArrayLiteral("png"), QByteArrayLiteral("jpg"),
+                                               QByteArrayLiteral("jpeg"), QByteArrayLiteral("webp"),
+                                               QByteArrayLiteral("bmp"), QByteArrayLiteral("gif"),
+                                               QByteArrayLiteral("svg")},
+                                              accepted)
+                .isEmpty());
+
+    // Only the two formats whose handler lives outside qt6-base are reported,
+    // in accepted order; the jpeg plugin (advertising "jpeg") covers ".jpg".
+    QCOMPARE(wallpapermodel::unreadableFormats({QByteArrayLiteral("png"), QByteArrayLiteral("jpeg"),
+                                                QByteArrayLiteral("bmp"), QByteArrayLiteral("gif")},
+                                               accepted),
+             QStringList({QStringLiteral("webp"), QStringLiteral("svg")}));
+
+    // Handler aliases: a plugin advertising "jpeg" decodes .jpg too, so a
+    // build that only reports jpeg must not be blamed for jpg.
+    QVERIFY(wallpapermodel::unreadableFormats({QByteArrayLiteral("jpeg")},
+                                              {QStringLiteral("jpg"), QStringLiteral("jpeg")})
+                .isEmpty());
+
+    // Case-insensitive, reported lowercased, repeated extensions collapsed.
+    QCOMPARE(wallpapermodel::unreadableFormats({QByteArrayLiteral("PNG")},
+                                               {QStringLiteral("PNG"), QStringLiteral("WebP"),
+                                                QStringLiteral("webp")}),
+             QStringList({QStringLiteral("webp")}));
+
+    // On the real build the handlers that ship inside qt6-base must never be
+    // blamed for a missing plugin: that warning would tell the user to
+    // reinstall Qt itself.
+    AppController app;
+    const QStringList reported = app.unreadableWallpaperFormats();
+    for (const QString &extension : {QStringLiteral("png"), QStringLiteral("jpg"),
+                                     QStringLiteral("gif"), QStringLiteral("bmp")}) {
+        QVERIFY2(!reported.contains(extension),
+                 qPrintable(extension + QStringLiteral(" reported unreadable: ") + reported.join(QLatin1Char(','))));
+    }
 }
 
 void tst_AppController::testCustomCommands()

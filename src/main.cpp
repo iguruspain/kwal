@@ -60,6 +60,13 @@ int main(int argc, char *argv[])
     // org.kde.kwal) so Plasma shows the right icon/name and StartupNotify
     // works. Must be the installed org.kde.kwal.desktop base name.
     app.setDesktopFileName(QStringLiteral("org.kde.kwal"));
+    // WebEngine's initialize() installs its own message handler (it forwards
+    // Qt logging into Chromium's logging system), which silently swallows
+    // every qWarning/console message from the QML side — including the QML
+    // load failures that are the first diagnostic for a missing window.
+    // Re-install ours after the application object exists so the last
+    // installer wins.
+    qInstallMessageHandler(messageHandler);
     WallpapersInfo::initialize(&app);
     AboutInfo::initialize(&app);
     QQmlApplicationEngine engine;

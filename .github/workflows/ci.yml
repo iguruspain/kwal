@@ -23,9 +23,16 @@ jobs:
           # Refresh the keyring first: the pinned image's signing keys can lag
           # behind rotated Arch master keys and break the full upgrade below.
           pacman -Sy --noconfirm archlinux-keyring
+          # Arch splits Qt's image-format plugins out of qt6-base and nothing
+          # depends on the pieces: qt6-imageformats carries libqwebp.so (plus
+          # tiff/icns/tga/wbmp) and qt6-svg carries libqsvg.so. Without them Qt
+          # cannot read those files at all — the animated-WebP probe in
+          # tst_wallpapersinfo would have nothing to probe, and svg wallpapers
+          # would lose their palette/category decode.
           pacman -Syu --noconfirm --needed \
             base-devel git cmake ninja pkgconf \
             qt6-base qt6-declarative qt6-multimedia qt6-webengine qt6-shadertools \
+            qt6-imageformats qt6-svg \
             extra-cmake-modules kirigami kconfig \
             wayland \
             ffmpeg imagemagick

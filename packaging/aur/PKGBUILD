@@ -30,6 +30,8 @@ depends=(
     qt6-declarative   # QML module, QuickControls2, qmlcachegen
     qt6-multimedia    # inline video/GIF playback in the grid
     qt6-webengine     # Starship terminal preview
+    qt6-imageformats  # WebP/TIFF/ICNS image handlers (libqwebp.so is not in qt6-base)
+    qt6-svg           # SVG image handler (libqsvg.so) for svg wallpapers
     kirigami          # KF6 Kirigami + KirigamiPlatform
     kconfig           # kwalrc
     wayland           # libwayland-client (transition overlay)

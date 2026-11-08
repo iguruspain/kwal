@@ -81,3 +81,11 @@ from it.
 - Cache hygiene: orphaned first frames / resized videos swept at startup,
   dead playlist URLs pruned from the desktop config, "Clear resizes cache"
   keeps `appletsrc` consistent.
+- Arch's split Qt image-format plugins declared as dependencies (AUR package, CI
+  and AppImage containers): `qt6-imageformats` carries the WebP handler
+  `libqwebp.so` and `qt6-svg` carries `libqsvg.so` — neither is pulled in by
+  `qt6-base`/`qt6-declarative`, and `svg`/`webp` are accepted wallpaper types.
+  Without the handler Qt cannot read the file at all (`QImageReader` answers
+  "Unsupported image format"), so every `.webp` probed as static and the
+  animated-WebP test in `tst_wallpapersinfo` failed with a bare `FALSE`; the
+  test now names the missing handler and the fixture checks its own frame count.

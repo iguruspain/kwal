@@ -17,6 +17,7 @@ Kwal — KDE Plasma utility to manage the wallpaper and tint applications/tools 
 - Kirigami 6.31.0 / KDE Frameworks 6.31 (`KF6::Kirigami`, `KF6::ConfigCore`)
 - CMake 4.x + Ninja, GCC 16
 - **Qt5/Qt6 coexist:** `/usr/bin/qml` and `/usr/bin/qmllint` are **Qt 5.15**. Use `qml6` and `/usr/lib/qt6/bin/qmllint` (or the app binary directly).
+- **Image-format plugins are separate packages on Arch and nothing depends on them:** QtGui itself decodes png/bmp/xpm, `qt6-base` ships the jpeg/gif/ico handlers, **`qt6-imageformats`** ships `libqwebp/libqtiff/libqicns/libqtga/libqwbmp`, and **`qt6-svg`** ships `libqsvg.so`. The grid's accepted extensions (`wallpapermodel.cpp`: png, jpg, jpeg, webp, bmp, gif, svg) therefore need all three, so CI, the AppImage workflow and `packaging/aur/PKGBUILD` install them explicitly. Without a handler `QImageReader` reports "Unsupported image format" (`imageCount()` = -1), which silently reads as "static, no categories, no palette". `kimageformats` (avif/heif/jxl/jp2) is deliberately **not** a dependency: the model does not accept those extensions.
 
 ## Commands
 

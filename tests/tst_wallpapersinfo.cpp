@@ -795,32 +795,54 @@ void tst_WallpapersInfo::testAnimatedProbe()
     QVERIFY(!info->isAnimatedFor(stillGif));
 
     // Animated and still WebP behave the same way (the WebP-heavy folders
-    // never pay the QMovie path unless the file really animates).
-    const QString webp = dir.path() + QStringLiteral("/anim.webp");
-    process.start(QStringLiteral("ffmpeg"),
-                  {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
-                   QStringLiteral("-f"), QStringLiteral("lavfi"),
-                   QStringLiteral("-i"), QStringLiteral("testsrc2=size=32x32:rate=10"),
-                   QStringLiteral("-frames:v"), QStringLiteral("7"),
-                   webp});
-    QVERIFY(process.waitForFinished(60000));
-    QCOMPARE(process.exitCode(), 0);
-    info->refreshFile(webp, QStringLiteral("image"));
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(webp).animated == 1, 30000);
-    QVERIFY(info->isAnimatedFor(webp));
+    // never pay the QMovie path unless the file really animates). Reading a
+    // WebP needs the WebP image-format plugin, which is not part of QtGui
+    // (Arch ships libqwebp.so in the separate qt6-imageformats package, listed
+    // in the app's dependencies): with no handler QImageReader cannot read the
+    // fixture at all, and the probe would answer "static" for a reason that
+    // has nothing to do with the probe. Report the available formats and run
+    // only the rest of the test in that case.
+    QStringList formats;
+    for (const QByteArray &format : QImageReader::supportedImageFormats()) {
+        formats << QString::fromLatin1(format);
+    }
+    if (!formats.contains(QStringLiteral("webp"), Qt::CaseInsensitive)) {
+        qWarning().noquote() << "no WebP image handler (formats:" << formats.join(QLatin1Char(' '))
+                             << ") - skipping the WebP half of the probe test";
+    } else {
+        const QString webp = dir.path() + QStringLiteral("/anim.webp");
+        process.start(QStringLiteral("ffmpeg"),
+                      {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
+                       QStringLiteral("-f"), QStringLiteral("lavfi"),
+                       QStringLiteral("-i"), QStringLiteral("testsrc2=size=32x32:rate=10"),
+                       QStringLiteral("-frames:v"), QStringLiteral("7"),
+                       webp});
+        QVERIFY(process.waitForFinished(60000));
+        QVERIFY2(process.exitCode() == 0, qPrintable(QString::fromUtf8(process.readAllStandardError())));
+        // The fixture itself must be a multi-frame WebP before the pipeline can
+        // be expected to see one (an ffmpeg build without libwebp animation
+        // support writes a still and exits 0).
+        QImageReader fixture(webp);
+        QVERIFY2(fixture.imageCount() > 1,
+                 qPrintable(QStringLiteral("ffmpeg wrote a %1-frame WebP; this ffmpeg cannot animate WebP")
+                                .arg(fixture.imageCount())));
+        info->refreshFile(webp, QStringLiteral("image"));
+        QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(webp).animated == 1, 30000);
+        QVERIFY(info->isAnimatedFor(webp));
 
-    const QString stillWebp = dir.path() + QStringLiteral("/still.webp");
-    process.start(QStringLiteral("ffmpeg"),
-                  {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
-                   QStringLiteral("-f"), QStringLiteral("lavfi"),
-                   QStringLiteral("-i"), QStringLiteral("color=c=green:s=32x32"),
-                   QStringLiteral("-frames:v"), QStringLiteral("1"),
-                   stillWebp});
-    QVERIFY(process.waitForFinished(60000));
-    QCOMPARE(process.exitCode(), 0);
-    info->refreshFile(stillWebp, QStringLiteral("image"));
-    QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(stillWebp).animated == 0, 30000);
-    QVERIFY(!info->isAnimatedFor(stillWebp));
+        const QString stillWebp = dir.path() + QStringLiteral("/still.webp");
+        process.start(QStringLiteral("ffmpeg"),
+                      {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
+                       QStringLiteral("-f"), QStringLiteral("lavfi"),
+                       QStringLiteral("-i"), QStringLiteral("color=c=green:s=32x32"),
+                       QStringLiteral("-frames:v"), QStringLiteral("1"),
+                       stillWebp});
+        QVERIFY(process.waitForFinished(60000));
+        QVERIFY2(process.exitCode() == 0, qPrintable(QString::fromUtf8(process.readAllStandardError())));
+        info->refreshFile(stillWebp, QStringLiteral("image"));
+        QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(stillWebp).animated == 0, 30000);
+        QVERIFY(!info->isAnimatedFor(stillWebp));
+    }
 
     // The flag survives the JSON round-trip.
     WallpapersInfo::initialize(QCoreApplication::instance());

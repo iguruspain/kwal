@@ -151,7 +151,7 @@ ToolPage {
                     ToolButton {
                         icon.name: page.controller.busy ? "" : "dialog-ok-apply"
                         ToolTip.text: page.controller.busy
-                            ? qsTr("Tinting the image…")
+                            ? qsTr("Applying the tinted image…")
                             : qsTr("Apply the tinted image")
                         ToolTip.visible: hovered
                         enabled: page.controller.selectedFile !== ""
@@ -334,6 +334,20 @@ ToolPage {
                             id: tintedPreviewArea
                             Layout.fillWidth: true
                             Layout.fillHeight: true
+                            // The tinted preview keeps animated sources animated (a
+                            // tinted GIF/WebP is generated as one animated file), so
+                            // like the other two areas the sequence plays through
+                            // AnimatedImage. Before a tint exists the selected file
+                            // itself shows instead.
+                            readonly property bool isAnimated:
+                                (page.controller.tintedPreviewPath !== ""
+                                    ? page.controller.tintedPreviewPath
+                                    : page.controller.selectedFile)
+                                    .toLowerCase().endsWith(".gif")
+                                || (page.controller.tintedPreviewPath !== ""
+                                    ? page.controller.tintedPreviewPath
+                                    : page.controller.selectedFile)
+                                    .toLowerCase().endsWith(".webp")
                             Image {
                                 anchors.centerIn: parent
                                 source: page.controller.tintedPreviewUrl !== ""
@@ -342,8 +356,48 @@ ToolPage {
                                 asynchronous: true
                                 cache: false
                                 fillMode: Image.PreserveAspectFit
+                                visible: !tintedPreviewArea.isAnimated
                                 width: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
                                 height: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
+                            }
+                            AnimatedImage {
+                                anchors.centerIn: parent
+                                source: tintedPreviewArea.isAnimated
+                                    ? (page.controller.tintedPreviewUrl !== ""
+                                        ? page.controller.tintedPreviewUrl
+                                        : page.controller.fileUrl(page.controller.selectedFile))
+                                    : ""
+                                asynchronous: true
+                                fillMode: Image.PreserveAspectFit
+                                // Frame-cache cap, same rule as the grid and the
+                                // other preview areas.
+                                sourceSize: Qt.size(1280, 0)
+                                playing: page.visible
+                                width: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
+                                height: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
+                            }
+                            // The tint pass runs off the UI thread: while it works the
+                            // area keeps showing the last preview under a busy spinner.
+                            // Only this area spins - the apply buttons stay free, since
+                            // a queued apply just copies this file when the pass lands.
+                            // The spinner gets its own translucent chip: over the image it
+                            // would otherwise vanish into the wallpaper colors.
+                            Rectangle {
+                                anchors.centerIn: parent
+                                visible: page.controller.previewBusy
+                                width: previewBusySpinner.width + Kirigami.Units.largeSpacing
+                                height: previewBusySpinner.height + Kirigami.Units.largeSpacing
+                                radius: Kirigami.Units.smallSpacing
+                                color: Qt.rgba(Kirigami.Theme.backgroundColor.r,
+                                               Kirigami.Theme.backgroundColor.g,
+                                               Kirigami.Theme.backgroundColor.b, 0.8)
+                                border.color: Kirigami.Theme.textColor
+                                border.width: 0.5
+                                BusyIndicator {
+                                    id: previewBusySpinner
+                                    anchors.centerIn: parent
+                                    running: parent.visible
+                                }
                             }
                         }
                     }

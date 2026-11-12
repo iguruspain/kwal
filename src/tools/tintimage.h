@@ -8,15 +8,17 @@
 // than re-implemented.
 namespace tools
 {
-// One ImageMagick pass: grayscale, then -fill/-tint (pct = strength*100).
-// A GIF source with a GIF destination goes through -coalesce, keeping every
-// frame, its delay and the loop count; any other combination outputs a still
-// image (a GIF source contributes its first frame, `src[0]`).
-// When previewMaxDim > 0 the still image is resized to fit within that square
-// (shrink only), for a small, fast preview. Returns false when ImageMagick is
-// missing, the source is unreadable, or the pass fails.
+// One ImageMagick pass: grayscale, then -fill/-tint (pct = strength*100),
+// full resolution, every frame. An animated source (GIF or WebP) with an
+// animated destination keeps the whole sequence — frames, delays, loop
+// count (-coalesce for GIFs; the WebP writer re-encodes the animation
+// itself); an animated source with a still destination contributes its
+// first frame (`src[0]`) only, because ImageMagick would otherwise split
+// the sequence into one numbered file per frame.
+// Returns false when ImageMagick is missing, the source is unreadable, or
+// the pass fails.
 bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &tint,
-                 qreal strength = 0.8, int previewMaxDim = 0);
+                 qreal strength = 0.8);
 
 // Path of the tinted copy written in a "tinted" subfolder next to the
 // original image (<dir>/tinted/<stem>-tinted.<ext>).

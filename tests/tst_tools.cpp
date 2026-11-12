@@ -23,6 +23,7 @@ private slots:
     void testBackupRestore();
     void testTintImageTo();
     void testTintAnimatedGif();
+    void testTintAnimatedWebp();
     void testTintedImagePath();
     void testFastfetchSetSource();
     void testFastfetchDetectImage();
@@ -120,12 +121,12 @@ void tst_Tools::testTintImageTo()
     QVERIFY(qRed(px) > qGreen(px));
     QVERIFY(qRed(px) > qBlue(px));
 
-    // Preview mode writes a shrunk copy (green fill: green dominates).
+    // A preview pass with another color: green fill dominates (the pass
+    // keeps the source size; there is no scaled variant anymore).
     const QString small = QDir::tempPath() + QStringLiteral("/kwal-test-tint-small.png");
-    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10), 0.8, 8));
+    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10)));
     const QImage preview(small);
     QVERIFY(!preview.isNull());
-    QVERIFY(preview.width() <= 8 && preview.height() <= 8);
     const QRgb spx = preview.pixel(0, 0);
     QVERIFY(qGreen(spx) > qRed(spx));
     QVERIFY(qGreen(spx) > qBlue(spx));
@@ -154,31 +155,40 @@ void tst_Tools::testTintAnimatedGif()
 
     const QString src = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-src.gif");
     const QString dst = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-dst.gif");
-    const QString small = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-small.png");
+    const QString small = QDir::tempPath() + QStringLiteral("/kwal-test-tint-gif-small.gif");
     QFile::remove(src);
     QFile::remove(dst);
     QFile::remove(small);
 
-    // Two solid frames (red, blue): the multi-frame case the pipeline used to
-    // fail on. No shell involved, so the parentheses are literal arguments.
+    // Six solid frames (red, green, blue, yellow, cyan, magenta): the
+    // multi-frame case the pipeline used to fail on. No shell involved, so
+    // the parentheses are literal arguments.
     QProcess gen;
     gen.start(im, {QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
                    QStringLiteral("xc:red"), QStringLiteral(")"),
                    QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
-                   QStringLiteral("xc:blue"), QStringLiteral(")"), src});
+                   QStringLiteral("xc:green"), QStringLiteral(")"),
+                   QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                   QStringLiteral("xc:blue"), QStringLiteral(")"),
+                   QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                   QStringLiteral("xc:yellow"), QStringLiteral(")"),
+                   QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                   QStringLiteral("xc:cyan"), QStringLiteral(")"),
+                   QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                   QStringLiteral("xc:magenta"), QStringLiteral(")"), src});
     QVERIFY(gen.waitForFinished(10000));
     {
         QImageReader check(src);
-        if (!check.canRead() || check.imageCount() != 2)
+        if (!check.canRead() || check.imageCount() != 6)
             QSKIP("could not generate the test GIF fixture");
     }
 
-    // Full-resolution apply: the output stays a 2-frame animated GIF.
+    // The tint pass keeps the whole animated GIF, delays included.
     QVERIFY(tools::tintImageTo(src, dst, QColor(0, 0, 255)));
     QVERIFY(QFile::exists(dst));
     QImageReader out(dst);
     QVERIFY(out.canRead());
-    QCOMPARE(out.imageCount(), 2);
+    QCOMPARE(out.imageCount(), 6);
 
     // Frame 0 was solid red: after gray + 80% blue tint, blue dominates.
     // Repeated read() calls return successive frames.
@@ -191,11 +201,84 @@ void tst_Tools::testTintAnimatedGif()
     // The second frame is still present and readable.
     QVERIFY(!out.read().isNull());
 
-    // Preview mode on a GIF: a still single-frame PNG of the first frame.
-    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10), 0.8, 8));
-    const QImage smallImage(small);
-    QVERIFY(!smallImage.isNull());
-    QVERIFY(smallImage.width() <= 8 && smallImage.height() <= 8);
+    // The preview pass on a GIF keeps the whole sequence in one animated
+    // GIF, never a numbered file per frame.
+    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10)));
+    QImageReader smallOut(small);
+    QVERIFY(smallOut.canRead());
+    QCOMPARE(smallOut.imageCount(), 6);
+    const QImage smallFrame = smallOut.read();
+    QVERIFY(!smallFrame.isNull());
+    QVERIFY(!QFile::exists(small + QStringLiteral("-0.gif")));
+
+    QFile::remove(src);
+    QFile::remove(dst);
+    QFile::remove(small);
+}
+
+void tst_Tools::testTintAnimatedWebp()
+{
+    // The pipeline shells out to ImageMagick; skip when it is not installed.
+    const bool hasMagick = !QStandardPaths::findExecutable(QStringLiteral("magick")).isEmpty()
+        || !QStandardPaths::findExecutable(QStringLiteral("convert")).isEmpty();
+    if (!hasMagick)
+        QSKIP("ImageMagick is not installed");
+    const QString magickPath = QStandardPaths::findExecutable(QStringLiteral("magick"));
+    const QString im = magickPath.isEmpty()
+        ? QStandardPaths::findExecutable(QStringLiteral("convert"))
+        : magickPath;
+
+    const QString src = QDir::tempPath() + QStringLiteral("/kwal-test-tint-webp-src.webp");
+    const QString dst = QDir::tempPath() + QStringLiteral("/kwal-test-tint-webp-dst.webp");
+    const QString small = QDir::tempPath() + QStringLiteral("/kwal-test-tint-webp-small.webp");
+    QFile::remove(src);
+    QFile::remove(dst);
+    QFile::remove(small);
+
+    // Six frames (red, green, blue, yellow, cyan, magenta), same
+    // parenthesized-operand form as the GIF fixture. WebP needs explicit
+    // frame delays for a real sequence.
+    QProcess gen;
+    const QStringList colors = {QStringLiteral("red"), QStringLiteral("green"),
+                                QStringLiteral("blue"), QStringLiteral("yellow"),
+                                QStringLiteral("cyan"), QStringLiteral("magenta")};
+    QStringList genArgs;
+    for (const QString &color : colors) {
+        genArgs << QStringLiteral("(") << QStringLiteral("-size") << QStringLiteral("16x16")
+                << QStringLiteral("xc:") + color << QStringLiteral("-delay")
+                << QStringLiteral("10") << QStringLiteral(")");
+    }
+    genArgs << QStringLiteral("-coalesce") << src;
+    gen.start(im, genArgs);
+    QVERIFY(gen.waitForFinished(10000));
+    {
+        QImageReader check(src);
+        if (!check.canRead() || check.imageCount() != 6)
+            QSKIP("could not generate the test WebP fixture");
+    }
+
+    // The tint pass keeps the whole animated WebP, delays included.
+    QVERIFY(tools::tintImageTo(src, dst, QColor(0, 0, 255)));
+    QImageReader out(dst);
+    QVERIFY(out.canRead());
+    QCOMPARE(out.imageCount(), 6);
+    const QImage frame0 = out.read();
+    QVERIFY(!frame0.isNull());
+    const QRgb p0 = frame0.pixel(8, 8);
+    QVERIFY(qBlue(p0) > qRed(p0));
+    QVERIFY(qBlue(p0) > qGreen(p0));
+    QVERIFY(!out.read().isNull());
+
+    // The preview pass keeps the whole sequence in one animated WebP, not
+    // the per-frame PNG split ImageMagick produces when a sequence is
+    // written to a still format.
+    QVERIFY(tools::tintImageTo(src, small, QColor(0, 200, 10)));
+    QImageReader smallOut(small);
+    QVERIFY(smallOut.canRead());
+    QCOMPARE(smallOut.imageCount(), 6);
+    const QImage smallFrame = smallOut.read();
+    QVERIFY(!smallFrame.isNull());
+    QVERIFY(!QFile::exists(small + QStringLiteral("-0.webp")));
 
     QFile::remove(src);
     QFile::remove(dst);

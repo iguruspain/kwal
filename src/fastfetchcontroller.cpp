@@ -35,28 +35,25 @@ bool parseTint(const QString &text, QColor &out)
     return out.isValid();
 }
 
-// Max dimension of the tinted preview; the full-resolution pass is only
-// run by the apply.
-constexpr int kPreviewMaxDim = 512;
-
 }
 
-// Runs the ImageMagick tint on a pool thread: the pass takes minutes for a
-// multi-hundred-frame GIF and must never block the UI thread. The result is
-// posted back to the owning thread, where the state is updated.
+// Runs the full-resolution ImageMagick tint on a pool thread: the pass
+// takes seconds to minutes for a multi-hundred-frame animation and must
+// never block the UI thread. The result is posted back to the owning
+// thread, where the state is updated. One pass serves both purposes: the
+// preview is the file the apply later copies into place, so the tint is
+// never computed twice.
 class FastfetchController::TintJob : public QRunnable
 {
 public:
     TintJob(QPointer<FastfetchController> controller,
             QString src,
             QString dst,
-            QColor tint,
-            bool preview)
+            QColor tint)
         : m_controller(std::move(controller))
         , m_src(std::move(src))
         , m_dst(std::move(dst))
         , m_tint(tint)
-        , m_preview(preview)
     {
         setAutoDelete(true);
     }
@@ -66,19 +63,14 @@ public:
         if (!m_controller) {
             return;
         }
-        const bool ok = m_preview
-            ? tools::tintImageTo(m_src, m_dst, m_tint, 0.8, kPreviewMaxDim)
-            : tools::tintImageTo(m_src, m_dst, m_tint);
+        const bool ok = tools::tintImageTo(m_src, m_dst, m_tint);
         QMetaObject::invokeMethod(
             m_controller.data(),
-            [ctl = m_controller, ok, src = m_src, dst = m_dst, preview = m_preview]() {
+            [ctl = m_controller, ok, src = m_src, dst = m_dst]() {
                 if (!ctl) {
                     return;
                 }
-                if (preview)
-                    ctl->finishPreviewTint(ok, src, dst);
-                else
-                    ctl->finishApplyTint(ok, src, dst);
+                ctl->finishPreviewTint(ok, src, dst);
             },
             Qt::QueuedConnection);
     }
@@ -88,7 +80,6 @@ private:
     QString m_src;
     QString m_dst;
     QColor m_tint;
-    bool m_preview;
 };
 
 FastfetchController::FastfetchController(QObject *parent)
@@ -153,6 +144,11 @@ bool FastfetchController::hasBackup() const
 bool FastfetchController::busy() const
 {
     return m_applyRunning;
+}
+
+bool FastfetchController::previewBusy() const
+{
+    return m_previewRunning;
 }
 
 bool FastfetchController::manuallySelected() const
@@ -224,6 +220,7 @@ void FastfetchController::generateTintedPreview()
     QColor tint;
     if (m_selectedFile.isEmpty() || !parseTint(m_draftColor, tint)) {
         m_previewPending = false;
+        m_previewValid = false;
         setTintedPreviewPath(QString());
         return;
     }
@@ -233,31 +230,66 @@ void FastfetchController::generateTintedPreview()
         m_previewPending = true;
         return;
     }
-    const QString previewDir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+    const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
         + QStringLiteral("/kwal");
+    const QString previewDir = cacheRoot + QStringLiteral("/fastfetch_preview");
     QDir().mkpath(previewDir);
-    m_previewPath = previewDir + QStringLiteral("/fastfetch-preview.png");
-    m_previewRunning = true;
-    m_pool.start(new TintJob(QPointer<FastfetchController>{this}, m_selectedFile, m_previewPath, tint, true));
+    // The folder holds exactly one preview: empty it before every pass so a
+    // failed or interrupted run (and ImageMagick's numbered per-frame
+    // fallback outputs) never leaves stale files behind.
+    QDir dir(previewDir);
+    const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Hidden);
+    for (const QFileInfo &entry : entries)
+        QFile::remove(entry.absoluteFilePath());
+    // Older builds wrote the preview loose in the cache root, where an
+    // animated source exploded into one PNG per frame: drop those leftovers.
+    const QFileInfoList legacy = QDir(cacheRoot).entryInfoList(
+        {QStringLiteral("fastfetch-preview*")}, QDir::Files | QDir::Hidden);
+    for (const QFileInfo &entry : legacy)
+        QFile::remove(entry.absoluteFilePath());
+    // The preview keeps the source's animated family (GIF/WebP): the tinted
+    // preview itself is an animated GIF/WebP, not a per-frame PNG dump; a
+    // still source previews as PNG.
+    const QString suffix = QFileInfo(m_selectedFile).suffix().toLower();
+    const QString previewSuffix =
+        (suffix == QLatin1String("gif") || suffix == QLatin1String("webp"))
+            ? suffix
+            : QStringLiteral("png");
+    m_previewPath = previewDir + QStringLiteral("/fastfetch-preview.") + previewSuffix;
+    m_previewValid = false;
+    setPreviewBusy(true);
+    m_pool.start(new TintJob(QPointer<FastfetchController>{this}, m_selectedFile, m_previewPath, tint));
 }
 
 void FastfetchController::finishPreviewTint(bool ok, const QString &src, const QString &dst)
 {
-    m_previewRunning = false;
+    setPreviewBusy(false);
     if (src == m_selectedFile) {
         if (ok) {
+            m_previewValid = true;
             // Same cache path, new content: bump the cache-buster so the QML
             // Image source changes and reloads (the path itself does not).
             m_tintedPreviewRevision++;
             setTintedPreviewPath(dst);
             emit tintedPreviewChanged();
         } else {
+            m_previewValid = false;
             setTintedPreviewPath(QString());
         }
     }
     if (m_previewPending) {
         m_previewPending = false;
         generateTintedPreview();
+        return;
+    }
+    // An apply clicked while this pass ran (or while no usable preview
+    // existed) rides on the fresh result instead of re-tinting.
+    if (m_applyAfterPreview) {
+        m_applyAfterPreview = false;
+        if (m_previewValid && src == m_selectedFile)
+            copyPreviewToTinted();
+        else
+            emit operationResult(false, tr("Failed to generate the tinted image."));
     }
 }
 
@@ -266,6 +298,14 @@ void FastfetchController::setBusy(bool value)
     if (m_applyRunning != value) {
         m_applyRunning = value;
         emit busyChanged();
+    }
+}
+
+void FastfetchController::setPreviewBusy(bool value)
+{
+    if (m_previewRunning != value) {
+        m_previewRunning = value;
+        emit previewBusyChanged();
     }
 }
 
@@ -307,23 +347,37 @@ void FastfetchController::applyTintedImage()
         return;
     }
 
-    setBusy(true);
-    const QString tintedPath = tools::tintedImagePath(m_selectedFile);
-    QDir(QFileInfo(tintedPath).absolutePath()).mkpath(QStringLiteral("."));
-    // Full resolution on the pool: this file becomes the actual fastfetch
-    // logo, and the pass takes minutes for large animated GIFs.
-    m_pool.start(new TintJob(QPointer<FastfetchController>{this}, m_selectedFile, tintedPath, tint, false));
-}
-
-void FastfetchController::finishApplyTint(bool ok, const QString &src, const QString &dst)
-{
-    setBusy(false);
-    if (src != m_selectedFile) {
-        emit operationResult(false, tr("The selection changed while the tint was running."));
+    // Never re-tint: the apply is a plain copy of the preview the same
+    // selection+color pass already produced. If that pass is not up to
+    // date (never run, failed, or superseded by a newer color), run it
+    // and copy when it lands.
+    if (!m_previewValid) {
+        m_applyAfterPreview = true;
+        if (!m_previewRunning)
+            generateTintedPreview();
         return;
     }
+    copyPreviewToTinted();
+}
+
+// Replaces <dir>/tinted/<stem>-tinted.<ext> with the preview file and
+// points the fastfetch config at it. The file stays put afterwards: a
+// later preview regeneration clears the cache folder, never the applied
+// copy (fastfetch may be reading it at this very moment).
+void FastfetchController::copyPreviewToTinted()
+{
+    setBusy(true);
+    const QString dst = tools::tintedImagePath(m_selectedFile);
+    QDir().mkpath(QFileInfo(dst).absolutePath());
+    QFile::remove(dst);
+    const bool ok = QFile::copy(m_previewPath, dst);
     if (!ok) {
-        emit operationResult(false, tr("Failed to generate the tinted image."));
+        // The cache file vanished or is unreadable: the preview is no
+        // longer usable, so a repeated apply regenerates instead of
+        // copying the missing file again.
+        m_previewValid = false;
+        setBusy(false);
+        emit operationResult(false, tr("Failed to write the tinted copy."));
         return;
     }
 
@@ -331,6 +385,7 @@ void FastfetchController::finishApplyTint(bool ok, const QString &src, const QSt
     setHasBackup(tools::hasConfigBackup());
 
     if (!tools::setImageSource(dst)) {
+        setBusy(false);
         emit operationResult(false, tr("Tinted image saved, but the fastfetch config could not be updated."));
         return;
     }
@@ -392,6 +447,9 @@ void FastfetchController::setManuallySelected(bool manual)
 
 void FastfetchController::finishApply(const QString &appliedPath)
 {
+    // The apply step is over: the busy flag it set (via
+    // copyPreviewToTinted) ends here, before the result is announced.
+    setBusy(false);
     tools::clearCache();
     setConfigImage(appliedPath);
     setHasBackup(true);

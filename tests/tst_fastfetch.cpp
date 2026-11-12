@@ -5,6 +5,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QImageReader>
+#include <QProcess>
 #include <QUrl>
 #include <QStandardPaths>
 #include <QtTest>
@@ -46,6 +48,12 @@ bool hasImageMagick()
         || !QStandardPaths::findExecutable(QStringLiteral("convert")).isEmpty();
 }
 
+QString magickExe()
+{
+    const QString magick = QStandardPaths::findExecutable(QStringLiteral("magick"));
+    return magick.isEmpty() ? QStandardPaths::findExecutable(QStringLiteral("convert")) : magick;
+}
+
 }
 
 class tst_Fastfetch : public QObject
@@ -59,6 +67,8 @@ private slots:
     void testAutoAdoptionTracksConfigChange();
     void testSelectFileNormalizesFileUrl();
     void testTintedPreviewUrlBumpsCacheBuster();
+    void testAnimatedPreviewCacheLayout();
+    void testApplyCopiesPreviewWithoutRetinting();
     void testConfigImageUrlBumpsOnRefresh();
     void testSetDraftColorRegeneratesPreview();
     void testTintedImagePathFor();
@@ -181,6 +191,144 @@ void tst_Fastfetch::testTintedPreviewUrlBumpsCacheBuster()
     QCOMPARE(controller.tintedPreviewUrl().isEmpty(), true);
 
     QFile::remove(img);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testAnimatedPreviewCacheLayout()
+{
+    if (!hasImageMagick())
+        QSKIP("ImageMagick is not installed");
+    cleanConfig();
+
+    const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+        + QStringLiteral("/kwal");
+    QDir().mkpath(cacheRoot);
+    // A stray file from the old flat layout (where an animated source
+    // exploded into one PNG per frame): generating a preview must clear it.
+    const QString legacy = cacheRoot + QStringLiteral("/fastfetch-preview-0.png");
+    saveImage(legacy, Qt::red);
+
+    const QString gif = QDir::tempPath() + QStringLiteral("/kwal-test-ff-anim.gif");
+    QFile::remove(gif);
+    QProcess gen;
+    gen.start(magickExe(), {QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                            QStringLiteral("xc:red"), QStringLiteral(")"),
+                            QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                            QStringLiteral("xc:blue"), QStringLiteral(")"), gif});
+    QVERIFY(gen.waitForFinished(10000));
+    {
+        QImageReader check(gif);
+        if (!check.canRead() || check.imageCount() != 2)
+            QSKIP("could not generate the test GIF fixture");
+    }
+
+    FastfetchController controller;
+    QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
+    controller.selectFile(gif);
+    controller.setDraftColor(QStringLiteral("#00c80a"));
+    QVERIFY(previewSpy.wait(30000));
+    QVERIFY(!controller.tintedPreviewPath().isEmpty());
+
+    // The preview lives in its own cache folder and keeps the source's
+    // animated family: one tinted animated GIF, not a per-frame dump.
+    QCOMPARE(controller.tintedPreviewPath(),
+        cacheRoot + QStringLiteral("/fastfetch_preview/fastfetch-preview.gif"));
+    QImageReader out(controller.tintedPreviewPath());
+    QVERIFY(out.canRead());
+    QCOMPARE(out.imageCount(), 2);
+    QVERIFY(!QFile::exists(controller.tintedPreviewPath() + QStringLiteral("-0.gif")));
+
+    // The old-layout leftovers are gone; only the current preview remains
+    // in the preview folder.
+    QVERIFY(!QFile::exists(legacy));
+    const QStringList kept = QDir(cacheRoot + QStringLiteral("/fastfetch_preview"))
+        .entryList(QDir::Files | QDir::Hidden);
+    QCOMPARE(kept.size(), 1);
+
+    controller.clearSelection();
+    QFile::remove(gif);
+    cleanConfig();
+}
+
+void tst_Fastfetch::testApplyCopiesPreviewWithoutRetinting()
+{
+    if (!hasImageMagick())
+        QSKIP("ImageMagick is not installed");
+    cleanConfig();
+
+    const QString gif = QDir::tempPath() + QStringLiteral("/kwal-test-ff-apply.gif");
+    QFile::remove(gif);
+    QProcess gen;
+    gen.start(magickExe(), {QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                            QStringLiteral("xc:red"), QStringLiteral(")"),
+                            QStringLiteral("("), QStringLiteral("-size"), QStringLiteral("16x16"),
+                            QStringLiteral("xc:blue"), QStringLiteral(")"), gif});
+    QVERIFY(gen.waitForFinished(10000));
+    {
+        QImageReader check(gif);
+        if (!check.canRead() || check.imageCount() != 2)
+            QSKIP("could not generate the test GIF fixture");
+    }
+
+    // Config points at the gif so the controller adopts it and the apply
+    // can rewrite the source key.
+    writeConfig(QStringLiteral("{\n  source: \"%1\"\n}\n").arg(gif));
+    FastfetchController controller;
+    QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
+    controller.selectFile(gif);
+    controller.setDraftColor(QStringLiteral("#00c80a"));
+    QVERIFY(previewSpy.wait(30000));
+
+    // Apply copies the finished preview next to the source: the applied
+    // file is byte-identical to the preview (no second tint pass), keeps
+    // every frame, and the config starts pointing at it.
+    const QString previewFile = controller.tintedPreviewPath();
+    QSignalSpy resultSpy(&controller, &FastfetchController::operationResult);
+    controller.applyTintedImage();
+    // The copy is synchronous when the preview is up to date; QTRY covers
+    // both that and the queued path without missing an early emission.
+    QTRY_COMPARE_WITH_TIMEOUT(resultSpy.count(), 1, 30000);
+    QCOMPARE(resultSpy.at(0).at(0).toBool(), true);
+
+    const QString applied = controller.tintedImagePathFor(gif);
+    QVERIFY(QFile::exists(applied));
+    QFile p1(previewFile);
+    QFile p2(applied);
+    QVERIFY(p1.open(QIODevice::ReadOnly));
+    QVERIFY(p2.open(QIODevice::ReadOnly));
+    QCOMPARE(p2.readAll(), p1.readAll());
+    QImageReader out(applied);
+    QVERIFY(out.canRead());
+    QCOMPARE(out.imageCount(), 2);
+    const QRgb first = out.read().pixel(8, 8);
+    QVERIFY(qGreen(first) > qRed(first));
+    QString configText;
+    QFile cfgFile(configPath());
+    if (cfgFile.open(QIODevice::ReadOnly))
+        configText = QString::fromUtf8(cfgFile.readAll());
+    QVERIFY(configText.contains(applied));
+
+    // Clicking apply while a fresh pass is still running must not re-tint
+    // nor copy a stale file: the queued apply lands on the new result.
+    // The pass exposes its own previewBusy; the apply busy stays free.
+    controller.setDraftColor(QStringLiteral("#0000ff"));
+    QVERIFY(controller.previewBusy());
+    QCOMPARE(controller.busy(), false);
+    controller.applyTintedImage();
+    QTRY_COMPARE_WITH_TIMEOUT(resultSpy.count(), 2, 30000);
+    QCOMPARE(resultSpy.last().at(0).toBool(), true);
+    QVERIFY(!controller.previewBusy());
+    QVERIFY(!controller.busy());
+    QImageReader queuedOut(applied);
+    QVERIFY(queuedOut.canRead());
+    QCOMPARE(queuedOut.imageCount(), 2);
+    const QRgb queued = queuedOut.read().pixel(8, 8);
+    QVERIFY(qBlue(queued) > qRed(queued));
+    QVERIFY(qBlue(queued) > qGreen(queued));
+
+    controller.clearSelection();
+    QFile::remove(gif);
+    QFile::remove(applied);
     cleanConfig();
 }
 

@@ -45,10 +45,18 @@ bool runMagick(const QString &exe, const QStringList &args)
     return true;
 }
 
+// The animated families the app treats as frame sequences (GIF and WebP);
+// every other source is a still image.
+bool isAnimatedSuffix(const QFileInfo &info)
+{
+    const QString suffix = info.suffix().toLower();
+    return suffix == QLatin1String("gif") || suffix == QLatin1String("webp");
+}
+
 }
 
 bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &tint,
-                 qreal strength, int previewMaxDim)
+                 qreal strength)
 {
     const QString im = magickExecutable();
     if (im.isEmpty())
@@ -58,25 +66,23 @@ bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &t
 
     const int pct = qBound(0, int(qRound(strength * 100.0)), 100);
     const QFileInfo dstInfo(dstPath);
-    const bool gifSource = QFileInfo(srcPath)
-        .suffix().compare(QStringLiteral("gif"), Qt::CaseInsensitive) == 0;
-    const bool gifDst = dstInfo.suffix().compare(QStringLiteral("gif"), Qt::CaseInsensitive) == 0;
+    const bool animatedSource = isAnimatedSuffix(QFileInfo(srcPath));
+    const bool animatedDst = isAnimatedSuffix(dstInfo);
 
     // A single ImageMagick pass: grayscale and tint applied in order to the
     // same image sequence (measured more than twice as fast as writing a
-    // grayscale intermediate and re-reading it). An animated GIF destination
-    // needs -coalesce and keeps every frame, its delay and the loop count;
-    // this ImageMagick silently drops a multi-frame image written to a
-    // single-frame format (and would flatten the animation anyway), so a
-    // still destination always reads the first frame only.
+    // grayscale intermediate and re-reading it). An animated destination
+    // keeps every frame, its delay and the loop count (-coalesce for GIFs;
+    // the WebP writer re-encodes the whole animation itself).
+    // ImageMagick silently splits a multi-frame source written to a
+    // single-frame destination into one numbered file per frame, and would
+    // flatten the animation anyway, so a still destination always reads the
+    // first frame only.
     QStringList args;
-    if (gifSource && gifDst)
+    if (animatedSource && animatedDst)
         args << srcPath << QStringLiteral("-coalesce");
     else
-        args << (gifSource ? srcPath + QStringLiteral("[0]") : srcPath);
-    if (previewMaxDim > 0 && !(gifSource && gifDst))
-        args << QStringLiteral("-resize")
-             << QStringLiteral("%1x%2>").arg(previewMaxDim).arg(previewMaxDim);
+        args << (animatedSource ? srcPath + QStringLiteral("[0]") : srcPath);
     args << QStringLiteral("-colorspace") << QStringLiteral("gray")
          << QStringLiteral("-fill") << fillColor(tint)
          << QStringLiteral("-tint") << QString::number(pct)

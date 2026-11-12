@@ -198,9 +198,12 @@ std::vector<Output> listOutputs(struct wl_display *display)
     }
 
     // Process events until every wl_output reports done (capped so we
-    // cannot hang if an output never completes).
+    // cannot hang if an output never completes). wl_display_flush returns
+    // the number of bytes it sent (0 when nothing was pending), so only
+    // < 0 is an error — the bind requests queued during the registry
+    // round-trip are exactly that pending data here.
     for (int i = 0; i < 100; ++i) {
-        if (wl_display_flush(display) != 0) {
+        if (wl_display_flush(display) < 0) {
             break;
         }
         bool all = !collect.infos.empty();

@@ -427,6 +427,10 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
         zwlr_layer_surface_v1_set_size(ls, 0, 0);
         // -1: ignore panels' exclusive zones and cover the whole output.
         zwlr_layer_surface_v1_set_exclusive_zone(ls, -1);
+        // Explicit protocol default: the overlay never wants keyboard focus,
+        // input passes through to the desktop (empty input region below).
+        zwlr_layer_surface_v1_set_keyboard_interactivity(
+            ls, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
         wl_surface_commit(surface);
 
         auto u = std::make_unique<LayerUser>();

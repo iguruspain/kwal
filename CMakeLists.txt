@@ -171,23 +171,34 @@ add_library(mcu_lib STATIC
 target_include_directories(mcu_lib PUBLIC ${mcu_SOURCE_DIR})
 target_compile_features(mcu_lib PUBLIC cxx_std_20)
 
-# Wayland client protocols for the wallpaper transition overlay: the
-# vendored XMLs are compiled with wayland-scanner into a client header
-# (inline request functions, listener structs) and private code (the
-# interface structs) at build time. The Wayland core protocol needs no
-# vendored copy: libwayland-client's headers declare and its shared
-# library defines every core interface (wl_compositor, wl_shm, wl_output…).
+# Wayland client protocols for the wallpaper transition overlay, compiled
+# with wayland-scanner into a client header (inline request functions,
+# listener structs) and private code (the interface structs) at build time.
+# The core Wayland protocol needs no XML at all: libwayland-client's headers
+# declare and its shared library defines every core interface (wl_compositor,
+# wl_shm, wl_output…). xdg-shell, viewporter and xdg-output are taken from
+# the system wayland-protocols package; only wlr-layer-shell stays vendored
+# (it is not part of wayland-protocols). xdg-shell is generated solely
+# because the layer-shell code references xdg_popup_interface (the interface
+# of get_popup's return type).
 enable_language(C)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
+# >= 1.24: the transition's zxdg_output_v1 listener needs the xdg-output v3
+# `done` event — the upstream XML is already v3 at 1.24 (verified); stable
+# xdg-shell and viewporter are older. The xdg-shell interface version (6 vs
+# the current 7) does not matter — only the generated xdg_popup_interface
+# symbol is used.
+pkg_check_modules(WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.24)
+pkg_get_variable(WAYLAND_PROTOCOLS_PKGDATADIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER wayland-scanner)
 if (NOT WAYLAND_SCANNER)
     message(FATAL_ERROR "wayland-scanner not found")
 endif()
 set(_kwal_transition_protocols
- "viewporter.xml viewporter"
- "wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1"
- "xdg-output-unstable-v1.xml xdg-output-unstable-v1"
- "xdg-shell.xml xdg-shell"
+ "${WAYLAND_PROTOCOLS_PKGDATADIR}/stable/xdg-shell/xdg-shell.xml xdg-shell"
+ "${WAYLAND_PROTOCOLS_PKGDATADIR}/stable/viewporter/viewporter.xml viewporter"
+ "${WAYLAND_PROTOCOLS_PKGDATADIR}/unstable/xdg-output/xdg-output-unstable-v1.xml xdg-output-unstable-v1"
+ "${CMAKE_CURRENT_SOURCE_DIR}/src/transitions/protocols/wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1"
 )
 add_library(kwal_transitions STATIC
  src/transitions/effects.cpp
@@ -215,7 +226,7 @@ foreach(_entry IN LISTS _kwal_transition_protocols)
     string(REPLACE " " ";" _parts "${_entry}")
     list(GET _parts 0 _xml)
     list(GET _parts 1 _base)
-    set(_xml_path "${CMAKE_CURRENT_SOURCE_DIR}/src/transitions/protocols/${_xml}")
+    set(_xml_path "${_xml}")
 add_custom_command(
     OUTPUT "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
     COMMAND ${WAYLAND_SCANNER} client-header "${_xml_path}" "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"

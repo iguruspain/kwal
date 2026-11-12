@@ -36,6 +36,9 @@ App id: `org.kde.kwal`.
   `QuickControls2`, `Widgets`, `WebEngineQuick`
 - ffmpeg (`libavutil` dev package; Qt Multimedia's FFmpeg backend)
 - ImageMagick (`magick`) at runtime
+- Wayland for the `kwal-transition` overlay: `wayland` (libwayland-client +
+  `wayland-scanner`) and `wayland-protocols` ≥ 1.24 (xdg-shell, viewporter,
+  xdg-output XMLs); the wlr-layer-shell XML is vendored in the repo
 
 CMake fetches two third-party dependencies via `FetchContent`:
 `tomlplusplus` and `material-color-utilities` (built as a static `mcu_lib`,

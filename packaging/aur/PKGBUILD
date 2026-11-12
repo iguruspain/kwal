@@ -18,7 +18,8 @@
 # - ffmpeg/ffprobe and magick are invoked as binaries (QStandardPaths), not
 #   linked: full packages, not -libs.
 # - libwayland-client is linked directly (transition overlay); the scanner
-#   (wayland-scanner) and the vendored protocol XMLs cover the rest.
+#   (wayland-scanner), the wayland-protocols XMLs (xdg-shell, viewporter,
+#   xdg-output) and the vendored wlr-layer-shell XML cover the rest.
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="KDE Plasma utility to manage the wallpaper and tint tools with palettes from the wallpaper"
@@ -43,6 +44,7 @@ makedepends=(
     extra-cmake-modules
     ninja
     pkgconf
+    wayland-protocols  # transition overlay protocol XMLs (build only)
 )
 source=(
     "https://github.com/iguruspain/kwal/archive/v${pkgver}.tar.gz"

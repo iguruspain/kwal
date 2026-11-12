@@ -172,11 +172,11 @@ target_include_directories(mcu_lib PUBLIC ${mcu_SOURCE_DIR})
 target_compile_features(mcu_lib PUBLIC cxx_std_20)
 
 # Wayland client protocols for the wallpaper transition overlay: the
-# vendored XMLs plus the Wayland core protocol (libwayland-client no
-# longer ships wl_compositor & co. in its headers) are compiled with
-# wayland-scanner into a client header (inline request functions,
-# listener structs) and a client implementation (the interface structs)
-# at build time.
+# vendored XMLs are compiled with wayland-scanner into a client header
+# (inline request functions, listener structs) and private code (the
+# interface structs) at build time. The Wayland core protocol needs no
+# vendored copy: libwayland-client's headers declare and its shared
+# library defines every core interface (wl_compositor, wl_shm, wl_output…).
 enable_language(C)
 pkg_check_modules(WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 find_program(WAYLAND_SCANNER wayland-scanner)
@@ -184,7 +184,6 @@ if (NOT WAYLAND_SCANNER)
     message(FATAL_ERROR "wayland-scanner not found")
 endif()
 set(_kwal_transition_protocols
- "wayland.xml wayland-core"
  "viewporter.xml viewporter"
  "wlr-layer-shell-unstable-v1.xml wlr-layer-shell-unstable-v1"
  "xdg-output-unstable-v1.xml xdg-output-unstable-v1"

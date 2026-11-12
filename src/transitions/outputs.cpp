@@ -14,7 +14,6 @@
 #include <vector>
 
 #include <wayland-client.h>
-#include <wayland-core-client-protocol.h>
 #include <xdg-output-unstable-v1-client-protocol.h>
 
 namespace transitions {

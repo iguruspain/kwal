@@ -8,7 +8,6 @@
 #include <QDebug>
 
 #include <wayland-client.h>
-#include <wayland-core-client-protocol.h>
 #include <viewporter-client-protocol.h>
 #include <wlr-layer-shell-unstable-v1-client-protocol.h>
 

@@ -223,10 +223,12 @@ const wl_registry_listener kRegistryListener = {
             s->outputs.push_back(OverlayState::OutputAnnouncement{name, out, QString()});
         } else if (std::string_view(interface) == "zwlr_layer_shell_v1") {
             s->shell = static_cast<struct zwlr_layer_shell_v1 *>(
-                wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface, 1));
+                wl_registry_bind(reg, name, &zwlr_layer_shell_v1_interface,
+                                 std::min(version, 4u)));
         } else if (std::string_view(interface) == "wp_viewporter") {
             s->viewporter = static_cast<struct wp_viewporter *>(
-                wl_registry_bind(reg, name, &wp_viewporter_interface, 1));
+                wl_registry_bind(reg, name, &wp_viewporter_interface,
+                                 std::min(version, 1u)));
         }
     },
     +[](void *, struct wl_registry *, uint32_t) {},

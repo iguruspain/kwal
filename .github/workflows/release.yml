@@ -88,8 +88,10 @@ jobs:
             insec && /^## \[/ && $0 !~ "^## \\[" v "\\]" { exit }
             insec { print }
           ' > notes.md
-          # The tail is version-neutral source; stamp the tag into it.
+          # The tail is version-neutral source; stamp the tag into it. Its own
+          # leading comment block is instructions for us, not release text.
           git show FETCH_HEAD:docs/RELEASE_TEMPLATE.md \
+            | awk '/^<!--/{c=1} c{if ($0 ~ /^-->/) c=0; next} {print}' \
             | sed "s/X\.Y\.Z/$ver/g" >> notes.md
           cat notes.md
           # The review gate: the run page renders exactly the body a publish

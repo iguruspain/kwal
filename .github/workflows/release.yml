@@ -26,6 +26,13 @@ on:
 jobs:
   source-release:
     runs-on: ubuntu-latest
+    # The GITHUB_TOKEN otherwise carries only the repo's default (read for
+    # contents). Creating a release needs push access — REST releases docs:
+    # "Users with push access to the repository can create a release" — and the
+    # first run of this workflow died exactly there (all read-only steps green,
+    # `gh release create` exit 1). Write is scoped to this job only.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:

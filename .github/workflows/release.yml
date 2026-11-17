@@ -141,15 +141,24 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
+          # GitHub's `target_commitish` must name a branch or a commit: passing
+          # the tag itself dies with HTTP 422 "Release.target_commitish is
+          # invalid" (measured on the first publish run). The tag is peeled to
+          # its commit — the checkout is already at that tag, and the signature
+          # guard above verified it — so the SHA is exactly the intended target.
+          target="$(git rev-parse "refs/tags/${INPUT_TAG}^{commit}")"
           # Re-running must fix an existing release instead of dying on it.
           # --draft=false matters: a release whose tag was deleted stays behind
           # as a *draft*, and gh release edit alone would keep it unpublished
           # (the documented idiom for publishing a draft is exactly this flag).
           if gh release view "$INPUT_TAG" >/dev/null 2>&1; then
-            gh release edit "$INPUT_TAG" --target "$INPUT_TAG" --draft=false \
+            gh release edit "$INPUT_TAG" --target "$target" --draft=false \
               --title "Kwal $ver" --notes-file notes.md
           else
-            gh release create "$INPUT_TAG" --target "$INPUT_TAG" \
+            # --verify-tag: the release must attach to the tag that was just
+            # signature-checked, never invent a new one at the target (a typo in
+            # the input would otherwise cut a tag and ship a release from it).
+            gh release create "$INPUT_TAG" --target "$target" --verify-tag \
               --title "Kwal $ver" --notes-file notes.md
           fi
         env:

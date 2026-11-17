@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-17
+
 The Qt 6 / Kirigami rewrite of Kwal, a KDE Plasma utility that
 manages the wallpaper and tints your favorite tools with palettes extracted
 from it.

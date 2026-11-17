@@ -36,6 +36,11 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
     Q_INVOKABLE QString pathAt(int row) const;
+    // Row of `path` in the currently visible (filtered) entries, -1 when the
+    // file is filtered out or not in this folder. The view's cursor must be
+    // derived from the path, never kept as a row number: a filter change
+    // resets the model, and the same number then names a different file.
+    Q_INVOKABLE int rowForPath(const QString &path) const;
     Q_INVOKABLE void setSourceDirectory(const QString &directory);
     Q_INVOKABLE QStringList filePaths() const;
     // Selected color categories; the visible entries must contain all of

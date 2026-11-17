@@ -288,8 +288,20 @@ Kirigami.Page {
                             z: 10
                         }
                     }
-                    onCurrentIndexChanged: page.app.selectWallpaper(
-                        gridView.currentIndex >= 0 ? page.app.wallpaperModel.pathAt(gridView.currentIndex) : "")
+                    onCurrentIndexChanged: {
+                        // The selection is the wallpaper path, never the row
+                        // number. An index with no row behind it (the selection
+                        // filtered out, a folder switch, an empty result) keeps
+                        // the selection untouched: the drawer, the header title
+                        // and the dot choice belong to that wallpaper, and
+                        // dropping them on a keystroke would throw away work in
+                        // progress.
+                        const path = gridView.currentIndex >= 0
+                            ? page.app.wallpaperModel.pathAt(gridView.currentIndex)
+                            : ""
+                        if (path !== "")
+                            page.app.selectWallpaper(path)
+                    }
                     Keys.onReturnPressed: function(event) {
                         event.accepted = true
                         page.app.applyWallpaper()
@@ -347,8 +359,9 @@ Kirigami.Page {
     }
 
     // Opens the detail panel (right of the grid); it shows the current
-    // grid selection. A cleared selection (folder switch, or a search
-    // filter matching nothing) closes it again.
+    // selection, which is a path, not a grid row - filtering or switching
+    // folders never clears it. It closes only when the selection itself is
+    // cleared (the file vanished, see AppController::applyWallpaper).
     function openDetail() {
         page.detailOpen = true
     }
@@ -361,11 +374,27 @@ Kirigami.Page {
         }
     }
 
+    // A search string, a color chip or a folder rescan resets the model. The
+    // GridView keeps its numeric cursor across a reset, so the number it holds
+    // suddenly names a different file (or none at all): re-derive it from the
+    // selected path. Without this, clicking a filtered row that happens to carry
+    // the old number leaves currentIndex untouched, so no selection happens -
+    // the cell gains no matugen dots, the drawer keeps describing the previous
+    // wallpaper, and clearing the filter restores the highlight to the old
+    // wallpaper. A selection the filter hides leaves the cursor at -1: no cell
+    // is highlighted, the selection itself stays.
+    Connections {
+        target: page.app.wallpaperModel
+        function onModelReset() {
+            gridView.currentIndex = page.app.wallpaperModel.rowForPath(page.app.selectedWallpaper)
+        }
+    }
+
     Component.onCompleted: {
         // Reopen the grid positioned at the wallpaper applied last
         // ([Wallpapers] currentWallpaper in kwalrc), when it is in this
         // folder; setting currentIndex also selects it.
-        const index = page.app.wallpaperModel.filePaths().indexOf(page.app.currentWallpaper)
+        const index = page.app.wallpaperModel.rowForPath(page.app.currentWallpaper)
         if (index >= 0) {
             gridView.currentIndex = index
             gridView.positionViewAtIndex(index, GridView.Center)

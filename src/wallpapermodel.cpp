@@ -105,6 +105,19 @@ QString WallpaperModel::pathAt(int row) const
     return m_entries.at(row).path;
 }
 
+int WallpaperModel::rowForPath(const QString &path) const
+{
+    if (path.isEmpty()) {
+        return -1;
+    }
+    for (int row = 0; row < m_entries.size(); ++row) {
+        if (m_entries.at(row).path == path) {
+            return row;
+        }
+    }
+    return -1;
+}
+
 QStringList WallpaperModel::filePaths() const
 {
     QStringList paths;

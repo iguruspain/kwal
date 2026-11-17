@@ -85,6 +85,28 @@ void tst_AppController::testWallpaperModel()
     QCOMPARE(model->data(index, WallpaperModel::NameRole).toString(), QStringLiteral("alpha.png"));
     QVERIFY(!model->data(index, WallpaperModel::ThumbnailRole).toUrl().isEmpty());
     QCOMPARE(model->data(index, WallpaperModel::ExtensionRole).toString(), QStringLiteral("png"));
+
+    // Filtering resets the model, so a row number the grid holds across the
+    // change names a different file. The page re-derives its cursor from the
+    // selected path; that lookup must follow the visible entries (and report -1
+    // for a file the filter hides), otherwise clicking a filtered row is a
+    // no-op and the previous wallpaper stays selected.
+    const QString alphaPath = model->pathAt(0);
+    const QString betaPath = model->pathAt(1);
+    QSignalSpy resetSpy(model, &QAbstractItemModel::modelReset);
+
+    model->setFilterText(QStringLiteral("lph"));
+    QCOMPARE(resetSpy.count(), 1);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(model->rowForPath(alphaPath), 0);
+    QCOMPARE(model->rowForPath(betaPath), -1);
+
+    model->setFilterText(QString());
+    QCOMPARE(model->rowCount(), 2);
+    QCOMPARE(model->rowForPath(alphaPath), 0);
+    QCOMPARE(model->rowForPath(betaPath), 1);
+    QCOMPARE(model->rowForPath(QStringLiteral("/does/not/exist.png")), -1);
+    QCOMPARE(model->rowForPath(QString()), -1);
 }
 
 void tst_AppController::testAutoRefresh()

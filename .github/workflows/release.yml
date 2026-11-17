@@ -5,17 +5,15 @@ name: Release
 # the main ref** and type the tag in the input. It checks the tag matches
 # project(VERSION) and that the tag is **signed and trusted by the key shipped
 # in docs/kwal_signers**, then writes the notes itself: the tag message as the
-# intro, every commit between the previous tag and this one grouped by
-# conventional-commit type (on the first release there is nothing to diff
-# against, so the tag message is the note), and the tail from
-# docs/RELEASE_TEMPLATE.md **as it exists on the dispatched branch** (reading it
-# from the tagged tree publishes stale wording forever — that is how the first
-# v0.1.0 notes came out wrong). No builds here, and no
+# intro (the default "Kwal X.Y.Z" one-liner is skipped, the release title
+# already says that) and every commit between the previous tag and this one,
+# grouped by conventional-commit type. On the first release there is nothing to
+# diff against, so the note is just the tag message. No builds here, and no
 # checksum asset on purpose: an unsigned sha256 next to the file it hashes
 # proves nothing (whoever could swap the tarball could rewrite the sums), and
 # GitHub generates the archive tarballs on the fly, so pinning their hash is a
 # time bomb (GitHub changed gzip behaviour in Feb 2023 and mass-broke pinned
-# hashes). Provenance is the signed tag: the notes tell users to clone and
+# hashes). Provenance is the signed tag: the README tells users to clone and
 # `git verify-tag`.
 #
 # Publish is a two-step gate: run with publish=false, read the rendered body in
@@ -89,12 +87,6 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          # The tail is read from the dispatched branch, not the tagged tree
-          # (see header): a wording fix on main must reach a tag already cut.
-          # Full depth on purpose: a --depth=1 fetch makes the clone shallow
-          # and then `git describe`/`git log prev..tag` below see no history.
-          git fetch --no-tags origin "refs/heads/${NOTES_REF}" \
-            || { echo "::error::notes ref ${NOTES_REF} is not a branch: dispatch this workflow from main and put the tag in the tag input"; exit 1; }
           : > notes.md
           # 1. The intro is the signed tag message. `%(contents)` would carry
           #    the signature block, so subject+body is what is wanted (the
@@ -131,11 +123,6 @@ jobs:
           else
             printf 'first release: no tag before %s, the tag message is the note\n' "$INPUT_TAG" >&2
           fi
-          # 3. The tail is version-neutral source; stamp the tag into it. Its
-          #    own leading comment block is instructions for us, not text.
-          git show FETCH_HEAD:docs/RELEASE_TEMPLATE.md \
-            | awk '/^<!--/{c=1} c{if ($0 ~ /^-->/) c=0; next} {print}' \
-            | sed "s/X\.Y\.Z/$ver/g" >> notes.md
           cat notes.md
           # The review gate: the run page renders exactly the body a publish
           # run would ship (same markdown as the release page).
@@ -144,7 +131,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
         env:
           INPUT_TAG: ${{ inputs.tag }}
-          NOTES_REF: ${{ github.ref_name }}
 
       - name: Create release
         if: inputs.publish

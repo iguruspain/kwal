@@ -87,20 +87,28 @@ cmake --install build                     # prefix = CMake default
 cmake --install build --prefix ~/.local   # per-user instead
 ```
 
-To uninstall a manual install, remove exactly what `cmake --install` copied
-using its manifest (run it before cleaning the build dir, or keep the
-manifest):
+To uninstall a manual install, remove exactly what `cmake --install` copied.
+CMake records those paths in `build/install_manifest.txt`, but that file lives
+in the build tree — it is gone as soon as the tree is cleaned, and
+`xargs -r rm < …` then does nothing at all. Do not depend on it; the install set
+is fixed (the `install()` rules at the bottom of `CMakeLists.txt`):
 
 ```sh
-xargs -r rm < build/install_manifest.txt              # per-user install
-sudo xargs -r rm < build/install_manifest.txt         # system install
+PREFIX=~/.local   # the --prefix you installed with; /usr if you used no --prefix
+rm    -f "$PREFIX"/bin/kwal "$PREFIX"/bin/kwal-transition \
+         "$PREFIX"/share/applications/org.kde.kwal.desktop \
+         "$PREFIX"/share/icons/hicolor/scalable/apps/kwal.svg
+sudo rm -f /usr/bin/kwal /usr/bin/kwal-transition \
+           /usr/share/applications/org.kde.kwal.desktop \
+           /usr/share/icons/hicolor/scalable/apps/kwal.svg
 ```
 
 Distro packages uninstall through their package manager as usual. Uninstalling
 never removes user state: `~/.config/kwalrc` (settings),
 `~/.config/kwal/templates` (bundled tool templates),
 `~/.cache/kwal/` (thumbnails, video frames and resizes, index) and the Plasma
-configuration the app applied stay untouched by design.
+configuration the app applied stay untouched by design. Drop those too if you
+want a clean slate: `rm -rf ~/.config/kwalrc ~/.config/kwal ~/.cache/kwal`.
 
 > On systems where Qt 5 and Qt 6 coexist, `/usr/bin/qml` and
 > `/usr/bin/qmllint` may be Qt 5. Use `qml6` and the Qt 6 `qmllint` (or the

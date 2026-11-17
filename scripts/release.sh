@@ -23,12 +23,18 @@
 # Publishing stays a human gate: this script starts release.yml with
 # publish=false (guards + signature check + the exact notes rendered in the run
 # summary); read that summary, then re-run the workflow with publish=true.
+#
+# There is no hand-written changelog: release.yml builds the notes from the
+# commits the tag adds over the previous tag. The signed tag message is the
+# release intro — keep the default "Kwal X.Y.Z" when the commit list says it
+# all, and write prose into the tag (`git tag -s -a -F notes.txt`) for a release
+# that needs explaining.
 
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
-usage() { sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
 
 dry=0 push=1 release=1 fullcheck=0 version=''
@@ -65,7 +71,6 @@ aboutdata="$(sed -nE 's/.*"Version": "([^"]+)".*/\1/p' aboutdata.json)"
     || die "CMakeLists VERSION ($current) != aboutdata.json Version ($aboutdata)"
 grep -qE "^pkgver=$current$" packaging/aur/PKGBUILD \
     || die "packaging/aur/PKGBUILD pkgver is not $current"
-grep -qE "^## \[$version\]" CHANGELOG.md && die "CHANGELOG.md already documents [$version]"
 
 # Tag signing must be configured *and* the key must be the one the tree trusts,
 # otherwise the release would be cut unsigned or unverifiable — fail before
@@ -87,13 +92,8 @@ trap 'rm -rf "$tmp"' EXIT
 sed -E "s|^ VERSION $current\$| VERSION $version|" CMakeLists.txt > "$tmp/CMakeLists.txt"
 sed -E "s|(\"Version\": \")$current(\")|\1$version\2|" aboutdata.json > "$tmp/aboutdata.json"
 sed -E "s|^pkgver=$current\$|pkgver=$version|" packaging/aur/PKGBUILD > "$tmp/PKGBUILD"
-awk -v v="$version" -v d="$(date +%F)" '
-    !stamped && /^## \[Unreleased\]$/ { print "## [Unreleased]"; print ""; print "## [" v "] - " d; stamped = 1; next }
-    { print }
-' CHANGELOG.md > "$tmp/CHANGELOG.md"
-grep -qE "^## \[$version\] - " "$tmp/CHANGELOG.md" || die "CHANGELOG.md has no '## [Unreleased]' header to rename"
 
-for f in CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD CHANGELOG.md; do
+for f in CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD; do
     diff -u -- "$f" "$tmp/${f##*/}" | sed "1,2d" || true
 done
 
@@ -106,11 +106,10 @@ fi
 cp -- "$tmp/CMakeLists.txt" CMakeLists.txt
 cp -- "$tmp/aboutdata.json" aboutdata.json
 cp -- "$tmp/PKGBUILD" packaging/aur/PKGBUILD
-cp -- "$tmp/CHANGELOG.md" CHANGELOG.md
 
 # CMake's own guard: aboutdata.json must agree with project(VERSION).
 cmake --preset default > "$tmp/configure.log" 2>&1 \
-    || die "configure failed with the new version (see $tmp/configure.log); revert with: git checkout -- CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD CHANGELOG.md"
+    || die "configure failed with the new version (see $tmp/configure.log); revert with: git checkout -- CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD"
 grep -iE '^CMake Warning|deprecat' "$tmp/configure.log" && die "configure emitted warnings for the new version"
 
 if ((fullcheck)); then
@@ -131,8 +130,8 @@ else
     printf 'release: makepkg not found: packaging/aur/.SRCINFO left as is\n' >&2
 fi
 
-git add CMakeLists.txt aboutdata.json "${aurfiles[@]}" CHANGELOG.md
-git commit -m "chore(release): $version" -m "Bumps project(VERSION), aboutdata.json and the AUR pkgver/.SRCINFO; CHANGELOG [Unreleased] becomes [$version]."
+git add CMakeLists.txt aboutdata.json "${aurfiles[@]}"
+git commit -m "chore(release): $version" -m "Bumps project(VERSION), aboutdata.json and the AUR pkgver/.SRCINFO. The release notes are the commits between $tag and the previous tag, composed by release.yml."
 
 git tag -s -a "$tag" -m "Kwal $version"
 # Verify our own tag with the key the tree publishes: catches a signing

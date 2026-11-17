@@ -4,10 +4,13 @@ name: Release
 # arrive with AUR/OBS in Fase 2): run this workflow from the Actions tab **on
 # the main ref** and type the tag in the input. It checks the tag matches
 # project(VERSION) and that the tag is **signed and trusted by the key shipped
-# in docs/kwal_signers**, then creates the release with notes built from the
-# CHANGELOG section + docs/RELEASE_TEMPLATE.md **as they exist on the dispatched
-# branch** (reading them from the tagged tree publishes stale wording forever —
-# that is how the first v0.1.0 notes came out wrong). No builds here, and no
+# in docs/kwal_signers**, then writes the notes itself: the tag message as the
+# intro, every commit between the previous tag and this one grouped by
+# conventional-commit type (on the first release there is nothing to diff
+# against, so the tag message is the note), and the tail from
+# docs/RELEASE_TEMPLATE.md **as it exists on the dispatched branch** (reading it
+# from the tagged tree publishes stale wording forever — that is how the first
+# v0.1.0 notes came out wrong). No builds here, and no
 # checksum asset on purpose: an unsigned sha256 next to the file it hashes
 # proves nothing (whoever could swap the tarball could rewrite the sums), and
 # GitHub generates the archive tarballs on the fly, so pinning their hash is a
@@ -48,6 +51,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
+          # The notes list the commits between the previous tag and this one,
+          # so the history has to be there (the default depth 1 has none).
+          fetch-depth: 0
 
       - name: Version guard (tag must match project(VERSION))
         run: |
@@ -80,16 +86,43 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          # Read from the dispatched branch, not the tagged tree (see header).
+          # The tail is read from the dispatched branch, not the tagged tree
+          # (see header): a wording fix on main must reach a tag already cut.
           git fetch --no-tags --depth=1 origin "refs/heads/${NOTES_REF}" \
             || { echo "::error::notes ref ${NOTES_REF} is not a branch: dispatch this workflow from main and put the tag in the tag input"; exit 1; }
-          git show FETCH_HEAD:CHANGELOG.md | awk -v v="$ver" '
-            $0 ~ "^## \\[" v "\\]" { insec = 1 }
-            insec && /^## \[/ && $0 !~ "^## \\[" v "\\]" { exit }
-            insec { print }
-          ' > notes.md
-          # The tail is version-neutral source; stamp the tag into it. Its own
-          # leading comment block is instructions for us, not release text.
+          : > notes.md
+          # 1. The intro is the signed tag message. The default one-liner
+          #    "Kwal X.Y.Z" repeats the release title, so it is left out.
+          intro="$(git for-each-ref --format='%(contents:body)' "refs/tags/${INPUT_TAG}" | sed -e '/./,$!d')"
+          if [ -n "$intro" ] && [ "$intro" != "Kwal $ver" ]; then
+            printf '%s\n\n' "$intro" >> notes.md
+          fi
+          # 2. The changes: every commit between the previous tag and this one,
+          #    grouped by conventional-commit type. With no tag before it this
+          #    is the first release: there is nothing to diff against, and the
+          #    intro above is the whole note.
+          if prev="$(git describe --tags --abbrev=0 --exclude "$INPUT_TAG" "${INPUT_TAG}^" 2>/dev/null)"; then
+            git log --no-merges --reverse --format='%s%x09%h' "${prev}..${INPUT_TAG}" \
+              | { grep -v '^chore(release):' || true; } \
+              | awk -F '\t' '
+                  {
+                    subject = $1; hash = $2
+                    if (match(subject, "^[a-zA-Z]+(\\([^)]*\\))?!?:")) type = substr(subject, 1, index(subject, ":"))
+                    else type = "other"
+                    sub(/\\(.*/, "", type); sub(/!?:$/, "", type)
+                    group = (type == "feat") ? "Added" : (type == "fix") ? "Fixed" : "Other"
+                    lines[group] = lines[group] sprintf("- %s (%s)\n", subject, hash)
+                    seen[group] = 1
+                  }
+                  END {
+                    n = split("Added Fixed Other", names)
+                    for (i = 1; i <= n; i++) if (seen[names[i]]) printf "### %s\n\n%s\n", names[i], lines[names[i]]
+                  }' >> notes.md
+          else
+            printf 'first release: no tag before %s, the tag message is the note\n' "$INPUT_TAG" >&2
+          fi
+          # 3. The tail is version-neutral source; stamp the tag into it. Its
+          #    own leading comment block is instructions for us, not text.
           git show FETCH_HEAD:docs/RELEASE_TEMPLATE.md \
             | awk '/^<!--/{c=1} c{if ($0 ~ /^-->/) c=0; next} {print}' \
             | sed "s/X\.Y\.Z/$ver/g" >> notes.md

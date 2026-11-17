@@ -69,7 +69,8 @@ jobs:
             insec && /^## \[/ && $0 !~ "^## \\[" v "\\]" { exit }
             insec { print }
           ' CHANGELOG.md > notes.md
-          cat docs/RELEASE_TEMPLATE.md >> notes.md
+          # The tail is version-neutral source; stamp the tag into it.
+          sed "s/X\.Y\.Z/$ver/g" docs/RELEASE_TEMPLATE.md >> notes.md
           cat notes.md
         env:
           INPUT_TAG: ${{ inputs.tag }}
@@ -79,8 +80,15 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          gh release create "$INPUT_TAG" sha256sums.txt \
-            --title "Kwal $ver" --notes-file notes.md
+          # Re-running the workflow must fix an existing release instead of
+          # dying on it: notes and asset get rewritten, the tag is untouched.
+          if gh release view "$INPUT_TAG" >/dev/null 2>&1; then
+            gh release edit "$INPUT_TAG" --title "Kwal $ver" --notes-file notes.md
+            gh release upload "$INPUT_TAG" sha256sums.txt --clobber
+          else
+            gh release create "$INPUT_TAG" sha256sums.txt \
+              --title "Kwal $ver" --notes-file notes.md
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}

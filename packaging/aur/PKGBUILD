@@ -2,8 +2,8 @@
 # it goes live with the first push to ssh://aur@aur.archlinux.org/kwal.git, which
 # is blocked only on the maintainer's SSH key being registered at AUR (measured
 # 2026-11-17: Permission denied for the local id_ed25519). Until then the README
-# ("Arch package") documents building this file with makepkg — verified to build
-# kwal-0.1.0-1-x86_64.pkg.tar.zst with zero warnings.
+# ("Installation", Option A) documents building this file in the tree with
+# makepkg — verified to build kwal-0.1.0-1-x86_64.pkg.tar.zst with zero warnings.
 #
 # Publishing is automated by scripts/release.sh <version>: it sets pkgver from
 # project(VERSION), signs the tag and regenerates .SRCINFO with

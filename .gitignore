@@ -6,3 +6,12 @@ CMakeFiles/
 .omp/*
 distribucion.md
 revision_protocolos.md
+
+# makepkg artifacts from building the PKGBUILD inside the checkout (README
+# Option A): src/, pkg/, the built archive, the downloaded dependency tarballs
+# and the bare git mirror makepkg keeps as its source cache.
+packaging/aur/src/
+packaging/aur/pkg/
+packaging/aur/kwal/
+packaging/aur/*.pkg.tar.zst
+packaging/aur/*.tar.gz

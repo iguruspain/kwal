@@ -52,7 +52,10 @@ packaged builds, point `FETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS` and
 `-DFETCHCONTENT_FULLY_DISCONNECTED=ON`; the patch is applied to a pristine
 tree automatically.
 
-## Getting a release
+## Installation
+
+Both options build the same signed source, so start by cloning the tag you want
+and checking its signature:
 
 ```sh
 git clone --branch v0.1.0 https://github.com/iguruspain/kwal.git   # the tag you want
@@ -67,7 +70,34 @@ on a release page are the same tree without the signature — convenient, not
 verifiable, and their bytes are GitHub's gzip output, which is why no checksum
 for them is published anywhere.
 
-## Build
+### Option A — Arch: `makepkg` with the PKGBUILD in the tree
+
+Still inside the clone from above:
+
+```sh
+cd packaging/aur
+makepkg -si
+```
+
+That registers `kwal` with pacman — `usr/bin/kwal`, `usr/bin/kwal-transition`,
+`usr/share/applications/org.kde.kwal.desktop` and the hicolor icon — pulling the
+dependencies the PKGBUILD declares along the way (the `-i` step asks for sudo).
+Remove it again with `sudo pacman -Rns kwal`.
+
+**There is no `kwal` package on the AUR yet**, so `yay -S kwal` / `paru -S kwal`
+do not resolve today; that line will replace this section when the AUR repo
+exists. Building here is the verified path: measured 2026-11-17 on x86_64 from a
+fresh clone, the build finishes with zero warnings and leaves
+`kwal-0.1.0-1-x86_64.pkg.tar.zst` in `packaging/aur/`. The downloaded tarballs,
+the git mirror and the archive also land there — all git-ignored, so the tree
+stays clean (`makepkg -oc` clears `src/` and `pkg/`).
+
+The PKGBUILD source is `git+…#tag=v${pkgver}`, so it checks out the signed tag by
+itself: the signature check above is the meaningful verification, not a checksum
+(the git source is `SKIP` on purpose; the two build-time dependency tarballs are
+content-pinned).
+
+### Option B — any distro: build with CMake
 
 ```sh
 cmake --preset default          # Ninja, Debug, compile_commands.json
@@ -113,30 +143,6 @@ want a clean slate: `rm -rf ~/.config/kwalrc ~/.config/kwal ~/.cache/kwal`.
 > On systems where Qt 5 and Qt 6 coexist, `/usr/bin/qml` and
 > `/usr/bin/qmllint` may be Qt 5. Use `qml6` and the Qt 6 `qmllint` (or the
 > built binary) for QML tooling.
-
-## Arch package
-
-`packaging/aur/PKGBUILD` is ready, but the package is **not published on the AUR
-yet**, so build it from the repository instead. Run it outside the source tree so
-`makepkg`'s `src/`, `pkg/` and the built archive stay out of the checkout:
-
-```sh
-mkdir -p ~/build/kwal
-cp packaging/aur/PKGBUILD ~/build/kwal/
-cd ~/build/kwal
-makepkg -si                     # builds, then installs through pacman (asks for sudo)
-```
-
-The source line is `git+…#tag=v${pkgver}`, so this installs exactly the signed
-release tag the PKGBUILD names — the archives fetched for the two build-time
-dependencies are content-pinned, the git source is not (`SKIP`), which is why the
-`verify-tag` command above is the check that matters, not a checksum. Remove it
-again with `sudo pacman -Rns kwal`.
-
-Verified 2026-11-17 on x86_64: this produces `kwal-0.1.0-1-x86_64.pkg.tar.zst`
-containing `usr/bin/kwal`, `usr/bin/kwal-transition`,
-`usr/share/applications/org.kde.kwal.desktop` and the hicolor icon. Once the
-package exists on the AUR, `yay -S kwal` replaces all of the above.
 
 ## Configuration
 

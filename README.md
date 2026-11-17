@@ -114,6 +114,30 @@ want a clean slate: `rm -rf ~/.config/kwalrc ~/.config/kwal ~/.cache/kwal`.
 > `/usr/bin/qmllint` may be Qt 5. Use `qml6` and the Qt 6 `qmllint` (or the
 > built binary) for QML tooling.
 
+## Arch package
+
+`packaging/aur/PKGBUILD` is ready, but the package is **not published on the AUR
+yet**, so build it from the repository instead. Run it outside the source tree so
+`makepkg`'s `src/`, `pkg/` and the built archive stay out of the checkout:
+
+```sh
+mkdir -p ~/build/kwal
+cp packaging/aur/PKGBUILD ~/build/kwal/
+cd ~/build/kwal
+makepkg -si                     # builds, then installs through pacman (asks for sudo)
+```
+
+The source line is `git+…#tag=v${pkgver}`, so this installs exactly the signed
+release tag the PKGBUILD names — the archives fetched for the two build-time
+dependencies are content-pinned, the git source is not (`SKIP`), which is why the
+`verify-tag` command above is the check that matters, not a checksum. Remove it
+again with `sudo pacman -Rns kwal`.
+
+Verified 2026-11-17 on x86_64: this produces `kwal-0.1.0-1-x86_64.pkg.tar.zst`
+containing `usr/bin/kwal`, `usr/bin/kwal-transition`,
+`usr/share/applications/org.kde.kwal.desktop` and the hicolor icon. Once the
+package exists on the AUR, `yay -S kwal` replaces all of the above.
+
 ## Configuration
 
 Settings are stored by KConfig in `~/.config/kwalrc` (`KConfig::SimpleConfig`,

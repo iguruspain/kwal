@@ -142,8 +142,11 @@ jobs:
           set -euo pipefail
           ver="${INPUT_TAG#v}"
           # Re-running must fix an existing release instead of dying on it.
+          # --draft=false matters: a release whose tag was deleted stays behind
+          # as a *draft*, and gh release edit alone would keep it unpublished
+          # (the documented idiom for publishing a draft is exactly this flag).
           if gh release view "$INPUT_TAG" >/dev/null 2>&1; then
-            gh release edit "$INPUT_TAG" --target "$INPUT_TAG" \
+            gh release edit "$INPUT_TAG" --target "$INPUT_TAG" --draft=false \
               --title "Kwal $ver" --notes-file notes.md
           else
             gh release create "$INPUT_TAG" --target "$INPUT_TAG" \

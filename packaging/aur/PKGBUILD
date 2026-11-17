@@ -89,7 +89,7 @@ source=(
     "https://github.com/material-foundation/material-color-utilities/archive/bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3.tar.gz"
 )
 sha256sums=(
-    'TBD_FILL_AFTER_FIRST_TAG'
+    'd156069d27b71bbbd350d18c9af2d77c939be1cbaa71911a6cd2213338843016'
     '8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155'
     '176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78'
 )

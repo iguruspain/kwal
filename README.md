@@ -70,32 +70,15 @@ on a release page are the same tree without the signature — convenient, not
 verifiable, and their bytes are GitHub's gzip output, which is why no checksum
 for them is published anywhere.
 
-### Option A — Arch: `makepkg` with the PKGBUILD in the tree
-
-Still inside the clone from above:
+### Option A — Arch Linux
 
 ```sh
 cd packaging/aur
 makepkg -si
 ```
 
-That registers `kwal` with pacman — `usr/bin/kwal`, `usr/bin/kwal-transition`,
-`usr/share/applications/org.kde.kwal.desktop` and the hicolor icon — pulling the
-dependencies the PKGBUILD declares along the way (the `-i` step asks for sudo).
-Remove it again with `sudo pacman -Rns kwal`.
-
-**There is no `kwal` package on the AUR yet**, so `yay -S kwal` / `paru -S kwal`
-do not resolve today; that line will replace this section when the AUR repo
-exists. Building here is the verified path: measured 2026-11-17 on x86_64 from a
-fresh clone, the build finishes with zero warnings and leaves
-`kwal-0.1.0-1-x86_64.pkg.tar.zst` in `packaging/aur/`. The downloaded tarballs,
-the git mirror and the archive also land there — all git-ignored, so the tree
-stays clean (`makepkg -oc` clears `src/` and `pkg/`).
-
-The PKGBUILD source is `git+…#tag=v${pkgver}`, so it checks out the signed tag by
-itself: the signature check above is the meaningful verification, not a checksum
-(the git source is `SKIP` on purpose; the two build-time dependency tarballs are
-content-pinned).
+*(Installs `kwal` and `kwal-transition`, the desktop entry and the icon through
+pacman; remove with `sudo pacman -Rns kwal`.)*
 
 ### Option B — any distro: build with CMake
 

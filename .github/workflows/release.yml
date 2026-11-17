@@ -73,7 +73,10 @@ jobs:
           # The one authenticity check in this chain. The signer identity and
           # the public key come from the tagged tree itself, so a release can
           # only be cut from a tag that the repo says is signed by that key.
-          git fetch --no-tags --depth=1 \
+          # No --depth here: a shallow fetch grafts the fetched tip and cuts
+          # the history the notes step needs below (measured: after a
+          # --depth=1 fetch, `git log` on the local repo reported one commit).
+          git fetch --no-tags \
             origin "refs/tags/${INPUT_TAG}:refs/tags/${INPUT_TAG}"
           if ! git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag "$INPUT_TAG"; then
             echo "::error::$INPUT_TAG is not a signed tag trusted by docs/kwal_signers — cut it with scripts/release.sh (git tag -s)"
@@ -88,12 +91,17 @@ jobs:
           ver="${INPUT_TAG#v}"
           # The tail is read from the dispatched branch, not the tagged tree
           # (see header): a wording fix on main must reach a tag already cut.
-          git fetch --no-tags --depth=1 origin "refs/heads/${NOTES_REF}" \
+          # Full depth on purpose: a --depth=1 fetch makes the clone shallow
+          # and then `git describe`/`git log prev..tag` below see no history.
+          git fetch --no-tags origin "refs/heads/${NOTES_REF}" \
             || { echo "::error::notes ref ${NOTES_REF} is not a branch: dispatch this workflow from main and put the tag in the tag input"; exit 1; }
           : > notes.md
-          # 1. The intro is the signed tag message. The default one-liner
-          #    "Kwal X.Y.Z" repeats the release title, so it is left out.
-          intro="$(git for-each-ref --format='%(contents:body)' "refs/tags/${INPUT_TAG}" | sed -e '/./,$!d')"
+          # 1. The intro is the signed tag message. `%(contents)` would carry
+          #    the signature block, so subject+body is what is wanted (the
+          #    command substitution trims the trailing blank lines of a
+          #    one-liner). The default "Kwal X.Y.Z" repeats the release title,
+          #    so it is left out.
+          intro="$(git for-each-ref --format='%(contents:subject)%0a%(contents:body)' "refs/tags/${INPUT_TAG}")"
           if [ -n "$intro" ] && [ "$intro" != "Kwal $ver" ]; then
             printf '%s\n\n' "$intro" >> notes.md
           fi
@@ -101,23 +109,25 @@ jobs:
           #    grouped by conventional-commit type. With no tag before it this
           #    is the first release: there is nothing to diff against, and the
           #    intro above is the whole note.
-          if prev="$(git describe --tags --abbrev=0 --exclude "$INPUT_TAG" "${INPUT_TAG}^" 2>/dev/null)"; then
-            git log --no-merges --reverse --format='%s%x09%h' "${prev}..${INPUT_TAG}" \
-              | { grep -v '^chore(release):' || true; } \
-              | awk -F '\t' '
-                  {
-                    subject = $1; hash = $2
-                    if (match(subject, "^[a-zA-Z]+(\\([^)]*\\))?!?:")) type = substr(subject, 1, index(subject, ":"))
-                    else type = "other"
-                    sub(/\\(.*/, "", type); sub(/!?:$/, "", type)
-                    group = (type == "feat") ? "Added" : (type == "fix") ? "Fixed" : "Other"
-                    lines[group] = lines[group] sprintf("- %s (%s)\n", subject, hash)
-                    seen[group] = 1
-                  }
-                  END {
-                    n = split("Added Fixed Other", names)
-                    for (i = 1; i <= n; i++) if (seen[names[i]]) printf "### %s\n\n%s\n", names[i], lines[names[i]]
-                  }' >> notes.md
+          # <tag>^ is not a valid revision (a tag is not a commit), so peel it.
+          if prev="$(git describe --tags --abbrev=0 --exclude "$INPUT_TAG" "${INPUT_TAG}^{commit}" 2>/dev/null)"; then
+            # Plain bash, no awk: the runner's awk is mawk, the local one is
+            # gawk, and their regex dialects differ on this splitting.
+            declare -A group_of=([feat]=Added [fix]=Fixed)
+            declare -A body=()
+            while IFS=$'\t' read -r subject hash; do
+              [ -n "$subject" ] || continue
+              type="${subject%%:*}"
+              type="${type%%(*}"
+              type="${type%!}"
+              group="${group_of[$type]-Other}"
+              body[$group]+="- $subject ($hash)"$'\n'
+            done < <(git log --no-merges --reverse --format='%s%x09%h' "${prev}..${INPUT_TAG}" \
+                       | { grep -v '^chore(release):' || true; })
+            for group in Added Fixed Other; do
+              [ -n "${body[$group]-}" ] || continue
+              printf '### %s\n\n%s\n' "$group" "${body[$group]}" >> notes.md
+            done
           else
             printf 'first release: no tag before %s, the tag message is the note\n' "$INPUT_TAG" >&2
           fi

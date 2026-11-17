@@ -42,6 +42,8 @@ private slots:
     void testPreviewHtml();
     void testControllerLoadsAndApplies();
     void testPreviewFollowsPaletteSelection();
+    void testRefreshIfChangedFollowsExternalWrite();
+    void testRefreshIfChangedKeepsTemplateDraft();
 };
 
 void tst_Starship::testExtractPalettes()
@@ -246,6 +248,129 @@ void tst_Starship::testPreviewFollowsPaletteSelection()
 
     QFile::remove(path);
     QFile::remove(path + QStringLiteral(".bak"));
+}
+
+// The tab used to re-read starship.toml only on Reset, so a rewrite by
+// matugen stayed invisible until then.
+void tst_Starship::testRefreshIfChangedFollowsExternalWrite()
+{
+    const QString path = tools::starshipConfigPath();
+    QDir(QFileInfo(path).absolutePath()).mkpath(QStringLiteral("."));
+    writeFile(path, QStringLiteral(
+        "palette=\"Test\"\n"
+        "format=\"$directory\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#111111\"\n"
+        "fg=\"#ffffff\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
+
+    StarshipController controller;
+    QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
+             QStringLiteral("#111111"));
+
+    // An activation that finds the file untouched must not drop the palette
+    // the user is drafting.
+    controller.setColorValue(QStringLiteral("fg"), QStringLiteral("#33aaff"));
+    controller.refreshIfChanged();
+    QCOMPARE(controller.draftColor(), QStringLiteral("#33aaff"));
+    QCOMPARE(controller.paletteValues().at(0).toList().at(1).toString(),
+             QStringLiteral("#33aaff"));
+
+    // An external rewrite is followed on the next activation: the draft now
+    // describes a file that no longer exists, so it is replaced.
+    writeFile(path, QStringLiteral(
+        "palette=\"Test\"\n"
+        "format=\"$directory\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#222222\"\n"
+        "fg=\"#eeeeee\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
+    controller.refreshIfChanged();
+    QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
+             QStringLiteral("#222222"));
+    QCOMPARE(controller.paletteValues().at(0).toList().at(1).toString(),
+             QStringLiteral("#eeeeee"));
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#222222")));
+    QVERIFY(!controller.previewHtml().contains(QStringLiteral("#33aaff")));
+
+    // The re-read re-armed the fingerprint: the next activation is a no-op
+    // and keeps a fresh draft edit.
+    controller.setColorValue(QStringLiteral("bg"), QStringLiteral("#00ff00"));
+    controller.refreshIfChanged();
+    QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
+             QStringLiteral("#00ff00"));
+
+    QFile::remove(path);
+    QFile::remove(path + QStringLiteral(".bak"));
+}
+
+// While a template is being edited, an external rewrite of the applied
+// config must follow the "Current" side only: the template's draft palettes
+// are the work in progress, not the config's.
+void tst_Starship::testRefreshIfChangedKeepsTemplateDraft()
+{
+    const QString path = tools::starshipConfigPath();
+    QDir(QFileInfo(path).absolutePath()).mkpath(QStringLiteral("."));
+    writeFile(path, QStringLiteral(
+        "palette=\"Test\"\n"
+        "format=\"$directory\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#111111\"\n"
+        "fg=\"#ffffff\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
+
+    const QString templateDir = tools::starshipTemplateDir();
+    QDir(templateDir).mkpath(QStringLiteral("."));
+    const QString tmpl = templateDir + QStringLiteral("/Alt.toml");
+    writeFile(tmpl, QStringLiteral(
+        "palette=\"Alt\"\n"
+        "format=\"$directory\"\n"
+        "[palettes.Alt]\n"
+        "bg=\"#777777\"\n"
+        "fg=\"#888888\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
+
+    StarshipController controller;
+    QCOMPARE(controller.templateNames().contains(QStringLiteral("Alt")), true);
+    controller.setTemplateIndex(0);
+    QCOMPARE(controller.selectedTemplate(), QStringLiteral("Alt"));
+    QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
+             QStringLiteral("#777777"));
+
+    controller.setColorValue(QStringLiteral("bg"), QStringLiteral("#00ff00"));
+    const QString currentBefore = controller.currentPreviewHtml();
+    QVERIFY(currentBefore.contains(QStringLiteral("#111111")));
+
+    writeFile(path, QStringLiteral(
+        "palette=\"Test\"\n"
+        "format=\"$directory\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#222222\"\n"
+        "fg=\"#eeeeee\"\n"
+        "[directory]\n"
+        "format=\"[$path]($style)\"\n"
+        "style=\"fg:fg bg:bg\"\n"));
+    controller.refreshIfChanged();
+
+    // The template and its draft colors stay exactly as they were...
+    QCOMPARE(controller.selectedTemplate(), QStringLiteral("Alt"));
+    QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
+             QStringLiteral("#00ff00"));
+    // ...while the applied-config preview follows the rewritten file.
+    QVERIFY(controller.currentPreviewHtml().contains(QStringLiteral("#222222")));
+    QVERIFY(!controller.currentPreviewHtml().contains(QStringLiteral("#111111")));
+
+    QFile::remove(path);
+    QFile::remove(path + QStringLiteral(".bak"));
+    QFile::remove(tmpl);
 }
 
 int main(int argc, char *argv[])

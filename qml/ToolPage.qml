@@ -19,6 +19,12 @@ Kirigami.Page {
     // bind it to the window's controller.
     property AppController app
 
+    // True while this page is the page stack's current item. The PageRow
+    // keeps every pushed page alive and visible, so `visible` never toggles
+    // on a tab switch: this is the flag the tabs use to re-read their tool's
+    // config when the user actually comes back to them (Main.qml binds it).
+    property bool pageActive: true
+
     // Title of the operation-result dialog; set by the subclass.
     property string resultTitle: ""
 

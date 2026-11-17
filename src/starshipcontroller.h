@@ -55,6 +55,11 @@ public:
 public slots:
     // Re-read the current starship.toml and update palettes/preview.
     void refresh();
+    // Refresh only when starship.toml actually changed on disk since the
+    // controller last read it (external tools like matugen rewrite it while
+    // the app is open). While a template is selected the draft being edited
+    // stays untouched: only the applied-config side follows the change.
+    void refreshIfChanged();
     // Load a template by name (from ~/.config/kwal/templates/starship).
     void loadTemplate(const QString &name);
     // Clear template selection, go back to editing the current config.
@@ -94,9 +99,14 @@ private:
     void updateHasBackup();
     void updateHasConfig();
     void loadTemplateList();
+    // Fingerprint of starship.toml as it was when the controller last read
+    // it (refresh() re-arms it), so refreshIfChanged() can tell an external
+    // rewrite from an unchanged file.
+    void armConfigFingerprint();
     tools::PaletteMap draftPalettes() const;
 
     QString m_configPath;
+    QString m_configFingerprint;
     QString m_selectedTemplate;
     int m_templateIndex = -1;           // -1 = current config, >=0 = template index
     QString m_draftColor = QStringLiteral("transparent");

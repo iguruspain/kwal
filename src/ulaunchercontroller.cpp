@@ -1,6 +1,7 @@
 #include "ulaunchercontroller.h"
 
 #include "templateinstaller.h"
+#include "tools/fileutil.h"
 #include "tools/ulauncherpreview.h"
 #include "tools/ulaunchertheme.h"
 
@@ -153,13 +154,7 @@ void UlauncherController::refresh()
     const QString keep = m_selectedPath;
     rebuildThemeEntries();
 
-    int index = -1;
-    if (!keep.isEmpty())
-        for (int i = 0; i < m_entries.size(); ++i)
-            if (m_entries[i].path == keep) {
-                index = i;
-                break;
-            }
+    int index = entryIndexForPath(keep);
     if (index < 0)
         for (int i = 0; i < m_entries.size(); ++i)
             if (m_entries[i].isCurrent) {
@@ -171,6 +166,64 @@ void UlauncherController::refresh()
 
     selectEntry(index);
     regenerateCurrentPreview();
+}
+
+void UlauncherController::refreshIfChanged()
+{
+    if (m_watchFingerprint == tools::contentFingerprint(watchedFiles()))
+        return;
+
+    if (m_selectedFingerprint != tools::contentFingerprint(themeFiles(m_selectedPath))) {
+        // The theme being edited is what changed on disk: reload it, the
+        // colors on screen describe the file that no longer exists.
+        refresh();
+        return;
+    }
+
+    // Only the applied theme (settings.json) or the applied theme's files
+    // moved: follow them, and keep the colors drafted in the selected theme.
+    rebuildThemeEntries();
+    // The rebuilt list may differ in order; pin the selection to the same
+    // directory without re-loading it.
+    const int pinned = entryIndexForPath(m_selectedPath);
+    if (pinned >= 0 && pinned != m_selectedIndex) {
+        m_selectedIndex = pinned;
+        emit selectedThemeIndexChanged();
+    }
+    regenerateCurrentPreview();
+}
+
+QStringList UlauncherController::themeFiles(const QString &themeDir)
+{
+    if (themeDir.isEmpty())
+        return {};
+    const QDir dir(themeDir);
+    return {dir.filePath(QStringLiteral("manifest.json")),
+            dir.filePath(QStringLiteral("theme.css"))};
+}
+
+QStringList UlauncherController::watchedFiles() const
+{
+    QStringList files{tools::ulauncherSettingsPath()};
+    files << themeFiles(m_currentPath) << themeFiles(m_selectedPath);
+    files.removeDuplicates();
+    return files;
+}
+
+void UlauncherController::armFingerprints()
+{
+    m_watchFingerprint = tools::contentFingerprint(watchedFiles());
+    m_selectedFingerprint = tools::contentFingerprint(themeFiles(m_selectedPath));
+}
+
+int UlauncherController::entryIndexForPath(const QString &path) const
+{
+    if (path.isEmpty())
+        return -1;
+    for (int i = 0; i < m_entries.size(); ++i)
+        if (m_entries[i].path == path)
+            return i;
+    return -1;
 }
 
 void UlauncherController::selectTheme(int index)
@@ -489,6 +542,7 @@ void UlauncherController::rebuildThemeEntries()
 
     emit themeEntriesChanged();
     emit currentThemePathChanged();
+    armFingerprints();
 }
 
 void UlauncherController::selectEntry(int index)
@@ -530,8 +584,10 @@ void UlauncherController::loadTheme()
     m_manifestRowKey.clear();
     m_themeColorOrder.clear();
 
-    if (m_selectedPath.isEmpty())
+    if (m_selectedPath.isEmpty()) {
+        armFingerprints();
         return;
+    }
 
     const QDir dir(m_selectedPath);
     QFile cssFile(dir.filePath(QStringLiteral("theme.css")));
@@ -556,6 +612,7 @@ void UlauncherController::loadTheme()
             : QStringLiteral("matched_text_hl_colors_") + row;
 
     m_themeColorOrder = tools::cssColorOrder(m_cssContent);
+    armFingerprints();
 }
 
 void UlauncherController::rebuildSections()

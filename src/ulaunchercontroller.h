@@ -69,6 +69,12 @@ public slots:
     // Re-resolves the active theme, rebuilds the theme list, and keeps the
     // selection (falling back to the current theme, then the first entry).
     void refresh();
+    // Refresh only when the files the tab shows changed on disk since the
+    // controller last read them (settings.json or a theme's manifest.json /
+    // theme.css rewritten by matugen or an editor). Colors the user is
+    // drafting in the selected theme survive unless that theme's own files
+    // are what changed.
+    void refreshIfChanged();
     // Selects the theme at the given list index for editing.
     void selectTheme(int index);
     // Re-selects the currently applied theme (or the first entry).
@@ -124,6 +130,17 @@ private:
     };
 
     void rebuildThemeEntries();
+    // Files whose content the tab shows: Ulauncher's settings.json (the
+    // active-theme marker) plus the manifest/theme.css of the applied and of
+    // the selected theme. themeFiles() is one theme directory's pair.
+    static QStringList themeFiles(const QString &themeDir);
+    QStringList watchedFiles() const;
+    // Re-take the fingerprints of watchedFiles() / the selected theme after
+    // every read or self-write, so refreshIfChanged() only reacts to changes
+    // that came from outside this controller.
+    void armFingerprints();
+    // Index of the listed entry whose directory is path, or -1.
+    int entryIndexForPath(const QString &path) const;
     void selectEntry(int index);
     void selectIndex(int index);
     void loadTheme();
@@ -140,6 +157,10 @@ private:
     int m_selectedIndex = -1;
     QString m_selectedPath;
     QString m_currentPath;
+    // Fingerprint of watchedFiles() and of themeFiles(m_selectedPath) as of
+    // the last read (see armFingerprints).
+    QString m_watchFingerprint;
+    QString m_selectedFingerprint;
     QString m_cssContent;
     QString m_manifestJson;
     QMap<QString, QString> m_themeColors;

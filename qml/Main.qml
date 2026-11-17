@@ -168,11 +168,28 @@ Kirigami.ApplicationWindow {
     Component {
         id: fastfetchPage
         FastfetchPage {
+            id: fastfetchPageInstance
             app: window.app
+            pageActive: window.pageStack.currentItem === fastfetchPageInstance
         }
     }
-    Component { id: starshipPage; StarshipPage { app: window.app } }
-    Component { id: ulauncherPage; UlauncherPage { app: window.app; controller: window.app.ulauncher } }
+    Component {
+        id: starshipPage
+        StarshipPage {
+            id: starshipPageInstance
+            app: window.app
+            pageActive: window.pageStack.currentItem === starshipPageInstance
+        }
+    }
+    Component {
+        id: ulauncherPage
+        UlauncherPage {
+            id: ulauncherPageInstance
+            app: window.app
+            controller: window.app.ulauncher
+            pageActive: window.pageStack.currentItem === ulauncherPageInstance
+        }
+    }
 
     // Created tool pages, keyed by the tab's `page` id. Only the Wallpapers
     // page (index 0) exists at startup; the Fastfetch/Starship/Ulauncher

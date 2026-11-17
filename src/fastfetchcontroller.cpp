@@ -151,9 +151,12 @@ bool FastfetchController::previewBusy() const
     return m_previewRunning;
 }
 
-bool FastfetchController::manuallySelected() const
+bool FastfetchController::previewsVisible() const
 {
-    return m_manuallySelected;
+    // A manual pick always has its own file to show; the auto-adopted config
+    // image duplicates the "Current" preview, so it is only worth showing
+    // once a tint pass for it is running or has produced a file.
+    return m_manuallySelected || m_previewRunning || !m_tintedPreviewPath.isEmpty();
 }
 
 QString FastfetchController::fileUrl(const QString &path) const
@@ -187,10 +190,16 @@ void FastfetchController::adoptConfigImage()
         return;
     }
     if (m_autoSelected || m_selectedFile.isEmpty()) {
+        // Adoption runs on every tab visit (the pages refresh when they
+        // become current): a full-resolution tint pass must not re-run when
+        // the config still points at the current selection and the preview
+        // already holds that selection's tint for the current color.
+        const bool unchanged = detected == m_selectedFile;
         m_autoSelected = true;
         setSelectedFile(detected);
         setManuallySelected(false);
-        generateTintedPreview();
+        if (!unchanged || !m_previewValid)
+            generateTintedPreview();
     }
 }
 
@@ -307,6 +316,7 @@ void FastfetchController::setPreviewBusy(bool value)
         m_previewRunning = value;
         emit previewBusyChanged();
     }
+    notifyPreviewsVisibility();
 }
 
 void FastfetchController::applyOriginalImage()
@@ -427,6 +437,7 @@ void FastfetchController::setTintedPreviewPath(const QString &path)
         m_tintedPreviewPath = path;
         emit tintedPreviewChanged();
     }
+    notifyPreviewsVisibility();
 }
 
 void FastfetchController::setHasBackup(bool has)
@@ -439,9 +450,18 @@ void FastfetchController::setHasBackup(bool has)
 
 void FastfetchController::setManuallySelected(bool manual)
 {
-    if (m_manuallySelected != manual) {
-        m_manuallySelected = manual;
-        emit manuallySelectedChanged();
+    if (m_manuallySelected == manual)
+        return;
+    m_manuallySelected = manual;
+    notifyPreviewsVisibility();
+}
+
+void FastfetchController::notifyPreviewsVisibility()
+{
+    const bool visible = previewsVisible();
+    if (visible != m_previewsVisible) {
+        m_previewsVisible = visible;
+        emit previewsVisibilityChanged();
     }
 }
 

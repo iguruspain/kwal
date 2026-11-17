@@ -76,6 +76,10 @@ bool deleteTheme(const QString &themePath, const QString &activeThemePath);
 // Returns empty string if not found or not configured
 QString resolveActiveThemePath();
 
+// Path of Ulauncher's settings.json (~/.config/ulauncher/settings.json), the
+// file holding theme_name (the active theme marker).
+QString ulauncherSettingsPath();
+
 // Set themePath as the active theme by writing its manifest name (or the
 // directory name as fallback) to theme_name in ulauncher settings.json.
 // Returns empty string on success, error message on failure.

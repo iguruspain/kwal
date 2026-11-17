@@ -18,9 +18,11 @@ class FastfetchController : public QObject
     Q_PROPERTY(QString tintedPreviewPath READ tintedPreviewPath NOTIFY tintedPreviewChanged)
     Q_PROPERTY(QString tintedPreviewUrl READ tintedPreviewUrl NOTIFY tintedPreviewChanged)
     Q_PROPERTY(bool hasBackup READ hasBackup NOTIFY hasBackupChanged)
-    // True only after the user picked an image; false for the auto-adopted
-    // config image. Drives the selected/tinted preview visibility.
-    Q_PROPERTY(bool manuallySelected READ manuallySelected NOTIFY manuallySelectedChanged)
+    // Whether the selected/tinted preview row has anything to show: a manual
+    // pick, or a tint pass running/landed for the auto-adopted config image.
+    // Without the second half, tinting the image fastfetch already points at
+    // ran with the row hidden, so no preview ever appeared.
+    Q_PROPERTY(bool previewsVisible READ previewsVisible NOTIFY previewsVisibilityChanged)
     // True while the apply step (writing the tinted copy / restoring the
     // backup) runs; the QML buttons show a spinner and stay disabled.
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
@@ -42,7 +44,7 @@ public:
     // sources; empty when no preview exists.
     QString tintedPreviewUrl() const;
     bool hasBackup() const;
-    bool manuallySelected() const;
+    bool previewsVisible() const;
     // True while the apply step is running.
     bool busy() const;
     // True while a tinted-preview generation pass runs.
@@ -74,7 +76,7 @@ signals:
     void draftColorChanged();
     void tintedPreviewChanged();
     void hasBackupChanged();
-    void manuallySelectedChanged();
+    void previewsVisibilityChanged();
     void busyChanged();
     void previewBusyChanged();
     void operationResult(bool success, const QString &message);
@@ -91,7 +93,10 @@ private:
     void setSelectedFile(const QString &path);
     void setTintedPreviewPath(const QString &path);
     void setHasBackup(bool has);
+    // Whether the user picked the file (vs. the config image being adopted).
     void setManuallySelected(bool manual);
+    // Emits previewsVisibilityChanged() when previewsVisible() flips.
+    void notifyPreviewsVisibility();
     void finishApply(const QString &appliedPath);
     // Adopt the image the config points at as the selection unless the
     // user picked one manually.
@@ -101,6 +106,8 @@ private:
     QString m_selectedFile;
     bool m_autoSelected = false;
     bool m_manuallySelected = false;
+    // Last value announced through previewsVisibilityChanged().
+    bool m_previewsVisible = false;
     QString m_draftColor = QStringLiteral("transparent");
     QString m_tintedPreviewPath;
     int m_tintedPreviewRevision = 0;

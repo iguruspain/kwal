@@ -65,9 +65,14 @@ ToolPage {
         }
     }
 
-    onVisibleChanged: {
-        if (visible)
-            page.controller.refresh()
+    // The PageRow keeps every pushed page visible, so a tab switch never
+    // toggles `visible`: pageActive is what fires when the user comes back to
+    // this tab. refreshIfChanged() follows settings.json / the applied theme
+    // only when those files really changed (matugen rewrote them), keeping the
+    // colors being drafted in the selected theme.
+    onPageActiveChanged: {
+        if (pageActive)
+            page.controller.refreshIfChanged()
     }
 
     RowLayout {

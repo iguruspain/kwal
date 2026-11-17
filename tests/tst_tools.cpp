@@ -20,6 +20,7 @@ class tst_Tools : public QObject
 private slots:
     void initTestCase();
     void testAtomicWrite();
+    void testContentFingerprint();
     void testBackupRestore();
     void testTintImageTo();
     void testTintAnimatedGif();
@@ -71,6 +72,45 @@ void tst_Tools::testAtomicWrite()
     QCOMPARE(leftovers.isEmpty(), true);
 
     QFile::remove(path);
+}
+
+// The tool tabs decide whether to re-read their config with this value, so it
+// must change exactly when the content does — and must ignore the timestamp
+// (an editor rewriting identical bytes must not trigger a reload).
+void tst_Tools::testContentFingerprint()
+{
+    const QString dir = QDir::tempPath()
+        + QStringLiteral("/kwal-test-fingerprint-%1").arg(QCoreApplication::applicationPid());
+    QDir().mkpath(dir);
+    const QString file = dir + QStringLiteral("/watched.txt");
+
+    // A missing file has its own stable value (the path is part of it), so
+    // the file appearing changes the fingerprint.
+    const QString absent = tools::contentFingerprint({file});
+    QCOMPARE(tools::contentFingerprint({file}), absent);
+
+    writeFile(file, QStringLiteral("ab"));
+    const QString created = tools::contentFingerprint({file});
+    QVERIFY(created != absent);
+
+    // Same length, different bytes: still detected (the size alone is not it).
+    writeFile(file, QStringLiteral("ba"));
+    QVERIFY(tools::contentFingerprint({file}) != created);
+
+    // Rewriting identical content leaves the value alone.
+    const QString same = tools::contentFingerprint({file});
+    writeFile(file, QStringLiteral("ba"));
+    QCOMPARE(tools::contentFingerprint({file}), same);
+
+    // Different length is detected too.
+    writeFile(file, QStringLiteral("longer content"));
+    QVERIFY(tools::contentFingerprint({file}) != same);
+
+    // And the file vanishing changes it again.
+    QFile::remove(file);
+    QCOMPARE(tools::contentFingerprint({file}), absent);
+
+    QDir(dir).removeRecursively();
 }
 
 void tst_Tools::testBackupRestore()

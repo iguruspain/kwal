@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #include <filesystem>
 #include <system_error>
@@ -37,5 +38,12 @@ bool hasBackup(const QString &path);
 
 // Copies path.bak back over path. Returns false when there is no backup.
 bool restoreBackup(const QString &path);
+
+// SHA-1 fingerprint over the contents of the given files (a missing file
+// contributes a marker, so a created/deleted file changes it too). Lets a
+// controller ask whether the on-disk state it last read still stands — an
+// external tool (matugen, an editor) rewriting a config changes the value,
+// while the controller's own writes are covered by re-arming after them.
+QString contentFingerprint(const QStringList &paths);
 
 }

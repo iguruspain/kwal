@@ -62,9 +62,14 @@ ToolPage {
         }
     }
 
-    onVisibleChanged: {
-        if (visible)
-            page.controller.refresh()
+    // The PageRow keeps every pushed page visible, so a tab switch never
+    // toggles `visible`: pageActive is what fires when the user comes back to
+    // this tab. refreshIfChanged() re-reads starship.toml only when it really
+    // changed on disk (matugen or an editor rewrote it), so the palette being
+    // drafted here is never dropped by a tab switch.
+    onPageActiveChanged: {
+        if (pageActive)
+            page.controller.refreshIfChanged()
     }
 
     RowLayout {

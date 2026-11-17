@@ -49,6 +49,24 @@ void writeTheme(const QString &dir)
                              "\"when_selected\": \"#4a90d9\","
                              "\"when_not_selected\": \"#5a6a7a\"}}"));
 }
+
+// Same theme with a unique manifest name (the active-theme marker in
+// settings.json stores the name, so resolution needs it not to collide with
+// the themes other tests leave behind) and a distinct input color.
+void writeNamedTheme(const QString &dir, const QString &name, const QString &accent)
+{
+    QDir(dir).mkpath(QStringLiteral("."));
+    writeFile(dir + QStringLiteral("/theme.css"),
+              QStringLiteral("@define-color bg_color #1a2b3c;\n"
+                             "@define-color window_bg @bg_color;\n"
+                             "@define-color input_color %1;\n").arg(accent));
+    writeFile(dir + QStringLiteral("/manifest.json"),
+              QStringLiteral("{\"name\": \"%1\","
+                             "\"when_selected\": \"#4a90d9\","
+                             "\"matched_text_hl_colors\": {"
+                             "\"when_selected\": \"#4a90d9\","
+                             "\"when_not_selected\": \"#5a6a7a\"}}").arg(name));
+}
 } // namespace
 
 // Index of the theme entry whose path matches, or -1.
@@ -93,6 +111,7 @@ private slots:
     void testControllerSaveWritesFile();
     void testControllerCreateDelete();
     void testControllerApplyToUlauncher();
+    void testControllerRefreshIfChanged();
 };
 
 void tst_Ulauncher::testExtractCssColors()
@@ -646,6 +665,59 @@ void tst_Ulauncher::testControllerApplyToUlauncher()
 
     // The applied theme now drives the "current theme" preview.
     QVERIFY(controller.currentPreviewHtml().contains(QStringLiteral("#1a2b3c")));
+}
+
+// The Ulauncher tab used to re-read its files only on Reset, so matugen
+// rewriting a theme (or Ulauncher switching themes itself) stayed invisible.
+void tst_Ulauncher::testControllerRefreshIfChanged()
+{
+    // Other tests leave themes behind in the sandboxed dirs, so every lookup
+    // here goes by path instead of by list index.
+    const QString applied = tools::userThemesDir() + QStringLiteral("/Refreshed");
+    const QString other = tools::userThemesDir() + QStringLiteral("/RefreshOther");
+    writeNamedTheme(applied, QStringLiteral("Refreshed"), QStringLiteral("#ff8800"));
+    writeNamedTheme(other, QStringLiteral("RefreshOther"), QStringLiteral("#00dd00"));
+    QVERIFY(tools::setActiveThemePath(applied).isEmpty());
+
+    UlauncherController controller;
+    const int appliedIndex = indexOfPath(controller, applied);
+    QVERIFY(appliedIndex >= 0);
+    QCOMPARE(controller.selectedThemeIndex(), appliedIndex);
+    QCOMPARE(controller.currentThemePath(), applied);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#ff8800")));
+
+    // An activation with nothing changed on disk keeps the unsaved draft.
+    controller.setColorValue(QStringLiteral("input_color"), QStringLiteral("#00ff00"));
+    controller.refreshIfChanged();
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#00ff00")));
+
+    // The applied theme was rewritten: its draft described a file that is
+    // gone, so the colors on screen follow the new content.
+    writeFile(applied + QStringLiteral("/theme.css"),
+              QStringLiteral("@define-color bg_color #1a2b3c;\n"
+                             "@define-color window_bg @bg_color;\n"
+                             "@define-color input_color #123456;\n"));
+    controller.refreshIfChanged();
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#123456")));
+    QVERIFY(!controller.previewHtml().contains(QStringLiteral("#00ff00")));
+
+    // Ulauncher switched to another theme (settings.json): the list and the
+    // applied preview follow, while the theme being drafted keeps its unsaved
+    // colors.
+    QVERIFY(tools::setActiveThemePath(other).isEmpty());
+    controller.setColorValue(QStringLiteral("input_color"), QStringLiteral("#00ff00"));
+    controller.refreshIfChanged();
+    QCOMPARE(controller.currentThemePath(), other);
+    QVERIFY(controller.previewHtml().contains(QStringLiteral("#00ff00")));
+    QVERIFY(controller.currentPreviewHtml().contains(QStringLiteral("#00dd00")));
+    const auto entries = controller.themeEntries();
+    QVERIFY(entries.at(indexOfPath(controller, other)).toMap()
+                .value(QStringLiteral("isCurrent")).toBool());
+    QVERIFY(!entries.at(indexOfPath(controller, applied)).toMap()
+                 .value(QStringLiteral("isCurrent")).toBool());
+
+    QDir(applied).removeRecursively();
+    QDir(other).removeRecursively();
 }
 
 int main(int argc, char *argv[])

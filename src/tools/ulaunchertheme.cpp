@@ -377,12 +377,15 @@ static QString findThemeInRoot(const QString &root, const QString &themeName)
     return QString();
 }
 
+QString ulauncherSettingsPath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+        + QStringLiteral("/ulauncher/settings.json");
+}
+
 QString resolveActiveThemePath()
 {
-    QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/ulauncher/settings.json");
-
-    QFile file(settingsPath);
+    QFile file(ulauncherSettingsPath());
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
         return QString();
 
@@ -430,8 +433,7 @@ QString setActiveThemePath(const QString &themePath)
         }
     }
 
-    const QString settingsPath = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-        + QStringLiteral("/ulauncher/settings.json");
+    const QString settingsPath = ulauncherSettingsPath();
     QDir().mkpath(QFileInfo(settingsPath).absolutePath());
 
     QJsonObject settings;

@@ -1,5 +1,6 @@
 #include "starshipcontroller.h"
 
+#include "tools/fileutil.h"
 #include "tools/starshipconfig.h"
 #include "tools/starshippreview.h"
 
@@ -245,6 +246,32 @@ void StarshipController::refresh()
     updateHasConfig();
     regenerateCurrentPreview();
     regeneratePreview();
+    armConfigFingerprint();
+}
+
+void StarshipController::armConfigFingerprint()
+{
+    m_configFingerprint = tools::contentFingerprint({m_configPath});
+}
+
+void StarshipController::refreshIfChanged()
+{
+    if (m_configFingerprint == tools::contentFingerprint({m_configPath}))
+        return;
+
+    if (m_templateIndex >= 0) {
+        // A template is the source of the draft being edited; re-reading the
+        // config as the source (what refresh() does) would replace the draft
+        // palettes. Follow only the applied-config side: status, backup state
+        // and the "Current" preview.
+        m_configValid = tools::readStarshipConfig(m_configPath).valid;
+        updateHasBackup();
+        updateHasConfig();
+        regenerateCurrentPreview();
+        armConfigFingerprint();
+        return;
+    }
+    refresh();
 }
 
 void StarshipController::loadTemplate(const QString &name)

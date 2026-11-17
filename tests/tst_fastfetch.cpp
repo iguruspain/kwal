@@ -72,7 +72,8 @@ private slots:
     void testConfigImageUrlBumpsOnRefresh();
     void testSetDraftColorRegeneratesPreview();
     void testTintedImagePathFor();
-    void testManuallySelectedTracksUserPick();
+    void testPreviewsVisibleTracksSelection();
+    void testTintingAdoptedImageShowsPreviews();
 };
 
 void tst_Fastfetch::testConstructorAdoptsConfigImage()
@@ -400,7 +401,7 @@ void tst_Fastfetch::testTintedImagePathFor()
         QStringLiteral("/home/u/pics/tinted/wall-tinted.jpg"));
 }
 
-void tst_Fastfetch::testManuallySelectedTracksUserPick()
+void tst_Fastfetch::testPreviewsVisibleTracksSelection()
 {
     cleanConfig();
     const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-manual.png");
@@ -408,17 +409,54 @@ void tst_Fastfetch::testManuallySelectedTracksUserPick()
     writeConfig(QStringLiteral("{ \"source\": \"%1\" }\n").arg(img));
 
     FastfetchController controller;
-    // The config image is auto-adopted: not a manual pick.
+    // The config image is auto-adopted: without a tint there is nothing the
+    // selected/tinted row could show that "Current (config)" does not already.
     QVERIFY(!controller.selectedFile().isEmpty());
-    QCOMPARE(controller.manuallySelected(), false);
+    QCOMPARE(controller.previewsVisible(), false);
 
-    // A user pick flips it on.
+    // A user pick always has its own file to show.
     controller.selectFile(img);
-    QCOMPARE(controller.manuallySelected(), true);
+    QCOMPARE(controller.previewsVisible(), true);
 
     // Clearing it flips it back off.
     controller.clearSelection();
-    QCOMPARE(controller.manuallySelected(), false);
+    QCOMPARE(controller.previewsVisible(), false);
+
+    QFile::remove(img);
+    cleanConfig();
+}
+
+// The special case: the user tints the image fastfetch already points at
+// (never picking a file). The tint pass used to run with the selected/tinted
+// previews hidden, so no preview ever appeared.
+void tst_Fastfetch::testTintingAdoptedImageShowsPreviews()
+{
+    if (!hasImageMagick())
+        QSKIP("ImageMagick is not installed");
+    cleanConfig();
+    const QString img = QDir::tempPath() + QStringLiteral("/kwal-test-ff-adopt.png");
+    saveImage(img, Qt::red);
+    writeConfig(QStringLiteral("{ \"source\": \"%1\" }\n").arg(img));
+
+    FastfetchController controller;
+    QVERIFY(!controller.selectedFile().isEmpty());
+    QCOMPARE(controller.previewsVisible(), false);
+
+    QSignalSpy visibilitySpy(&controller, &FastfetchController::previewsVisibilityChanged);
+    QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
+
+    controller.setDraftColor(QStringLiteral("#ff0000"));
+    // The row appears with the running pass, not only once it lands.
+    QCOMPARE(controller.previewsVisible(), true);
+    QCOMPARE(visibilitySpy.count(), 1);
+    QVERIFY(previewSpy.wait(10000));
+    QVERIFY(!controller.tintedPreviewPath().isEmpty());
+    QCOMPARE(controller.previewsVisible(), true);
+
+    // Back to no tint: nothing to show again.
+    controller.setDraftColor(QStringLiteral("transparent"));
+    QCOMPARE(controller.tintedPreviewPath().isEmpty(), true);
+    QCOMPARE(controller.previewsVisible(), false);
 
     QFile::remove(img);
     cleanConfig();

@@ -38,8 +38,12 @@ ToolPage {
         }
     }
 
-    onVisibleChanged: {
-        if (visible)
+    // The PageRow keeps every pushed page visible, so a tab switch never
+    // toggles `visible`: pageActive is what fires when the user comes back to
+    // this tab, and the only moment the fastfetch config can have changed
+    // behind our back gets picked up.
+    onPageActiveChanged: {
+        if (pageActive)
             page.controller.refreshConfigImage()
     }
 
@@ -236,7 +240,7 @@ ToolPage {
                         // frame width at 1280 with a zero height so Qt keeps the
                         // image's aspect ratio (same rule as the wallpaper grid).
                         sourceSize: Qt.size(1280, 0)
-                        playing: page.visible
+                        playing: page.pageActive
                         width: Math.min(configPreviewArea.width, configPreviewArea.height)
                         height: Math.min(configPreviewArea.width, configPreviewArea.height)
                     }
@@ -254,7 +258,7 @@ ToolPage {
                     Layout.fillHeight: true
                     Layout.preferredHeight: 300
                     spacing: Kirigami.Units.largeSpacing
-                    visible: page.controller.manuallySelected
+                    visible: page.controller.previewsVisible
 
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -302,7 +306,7 @@ ToolPage {
                                 asynchronous: true
                                 fillMode: Image.PreserveAspectFit
                                 sourceSize: Qt.size(1280, 0)
-                                playing: page.visible
+                                playing: page.pageActive
                                 width: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                                 height: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                             }
@@ -372,7 +376,7 @@ ToolPage {
                                 // Frame-cache cap, same rule as the grid and the
                                 // other preview areas.
                                 sourceSize: Qt.size(1280, 0)
-                                playing: page.visible
+                                playing: page.pageActive
                                 width: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
                                 height: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
                             }

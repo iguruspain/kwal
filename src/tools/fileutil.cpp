@@ -1,5 +1,6 @@
 #include "tools/fileutil.h"
 
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QTemporaryFile>
@@ -70,6 +71,24 @@ bool restoreBackup(const QString &path)
         return false;
     tmp.close();
     return renameAtomic(tmp.fileName(), path);
+}
+
+QString contentFingerprint(const QStringList &paths)
+{
+    QCryptographicHash hash(QCryptographicHash::Sha1);
+    for (const QString &path : paths) {
+        // The path is hashed too (with the file contents after it), so two
+        // different file sets can never collide by shuffling bytes around.
+        hash.addData(path.toUtf8());
+        hash.addData(QByteArray(1, '\0'));
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            hash.addData(QByteArrayLiteral("<absent>"));
+            continue;
+        }
+        hash.addData(file.readAll());
+    }
+    return QString::fromLatin1(hash.result().toHex());
 }
 
 }

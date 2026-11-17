@@ -13,18 +13,19 @@ with color palettes extracted from the wallpaper.
 
 ## Features
 
-- **Wallpapers**: browse folders, thumbnail grid, images and videos (with
-  inline preview), search by name/tags and by 15 color categories.
-- **Palettes**: Material You color schemes plus ImageMagick accent and unique
-  colors, per wallpaper, in light and dark.
-- **Custom commands**: shell commands run after a wallpaper is applied, with
-  placeholders (`%path%`, `%image%`, `%scolor%`, `%mode%`, `%ccolor%`, …).
-- **Tool tinting**: Fastfetch, Starship and Ulauncher tabs (each appears only
-  when its binary is on `PATH`) recolor those tools with the extracted palette
-  and preview the result.
-- **Wallpaper transitions**: an animated switch over a Wayland layer-shell
-  overlay; falls back to a plain switch when unavailable.
-- **AI tagging**: optional OpenAI-compatible vision endpoint to tag wallpapers.
+### 🎨 Wallpaper Management & Discovery
+- **Smart Browsing:** Browse folders with a thumbnail grid, including images and videos with inline previews.
+- **Advanced Filtering:** Search by name, tags, and 15 distinct color categories.
+- **AI Tagging:** Optional integration with OpenAI-compatible vision endpoints to automatically tag your wallpapers.
+
+### 🎨 Live Customization & Theming
+- **Color Extraction:** Automatically generate palettes from your images/videos using Material You schemes, ImageMagick accents, and unique colors.
+- **Dynamic Tool Tinting:** Real-time recoloring for supported tools (Fastfetch, Starship, and Ulauncher tabs) based on the active palette.
+- **Dual Modes:** Support for both Light and Dark color schemes per wallpaper.
+
+### ⚙️ Automation & Transitions
+- **Custom Commands:** Execute shell commands after applying a wallpaper with dynamic placeholders (e.g., `%path%`, `%scolor%`).
+- **Smooth Transitions:** Animated wallpaper switches via a Wayland layer-shell overlay (with fallback support).
 
 ## Requirements
 

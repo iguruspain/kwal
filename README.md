@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icons/hicolor/scalable/apps/kwal.svg" width="180" alt="Kwal jellyfish logo" loading="lazy">
+  <img src="icons/hicolor/scalable/apps/kwal.svg" width="180" alt="Kwal jellyfish logo">
 </p>
 
 # Kwal
@@ -9,6 +9,10 @@ tools with color palettes extracted from the wallpaper. C++/Qt6/QML
 (Kirigami) rewrite of the original Python app.
 
 App id: `org.kde.kwal`.
+
+<p align="center">
+  <img src="screenshots/kwal-tour.webp" width="600" alt="Animated tour of the kwal interface: wallpaper grid, folder sidebar, wallpaper detail drawer with color categories, tags and custom commands, Fastfetch logo tinting, Starship palette with terminal preview, and the Ulauncher theme with its live preview">
+</p>
 
 ## Features
 

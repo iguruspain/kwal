@@ -25,7 +25,7 @@ set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
 
 include(KDEInstallDirs)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Multimedia Network Qml Quick QuickControls2 Test Widgets WebEngineQuick)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core DBus Gui Multimedia Network Qml Quick QuickControls2 Test Widgets WebEngineQuick)
 find_package(KF6 REQUIRED COMPONENTS Config Kirigami KirigamiPlatform)
 # libavutil: already a runtime dependency of Qt Multimedia's FFmpeg backend;
 # linked only to set the ffmpeg log level in main.cpp.
@@ -370,6 +370,10 @@ Qt6::WebEngineQuick
  kwal_transitions
  tomlplusplus::tomlplusplus
 )
+# project(VERSION) is the single source of truth for the version: the running
+# app reports it through this define instead of a duplicated string literal
+# (scripts/release.sh bumps only CMakeLists.txt, aboutdata.json and the PKGBUILD).
+target_compile_definitions(kwal PRIVATE KWAL_VERSION="${PROJECT_VERSION}")
 
 # Standalone wallpaper transition binary: the app launches it through
 # QProcess when a transition is enabled; it can also be run by hand to

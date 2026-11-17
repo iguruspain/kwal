@@ -34,7 +34,7 @@ jobs:
         run: >
           pacman -Syu --noconfirm --needed
           base-devel git cmake ninja pkgconf
-          qt6-base qt6-declarative qt6-multimedia qt6-webengine qt6-shadertools
+          qt6-base qt6-declarative qt6-multimedia qt6-multimedia-ffmpeg qt6-webengine qt6-shadertools
           qt6-imageformats qt6-svg
           extra-cmake-modules kirigami kconfig qqc2-desktop-style
           wayland wayland-protocols ffmpeg imagemagick

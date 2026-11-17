@@ -2,9 +2,11 @@
 # it goes live with the first tag; until then the install channel is
 # git clone + cmake (README).
 #
-# Before publishing: fill the kwal tarball sha256 once the tag exists
-#   curl -L https://github.com/iguruspain/kwal/archive/v$pkgver.tar.gz | sha256sum
-# then generate .SRCINFO: makepkg --printsrcinfo > .SRCINFO
+# Publishing is automated by scripts/release.sh <version>: it sets pkgver from
+# project(VERSION), and once the tag exists it downloads the GitHub tarball,
+# fills the first sha256sums entry (the kwal source) and regenerates .SRCINFO
+# with `makepkg --printsrcinfo`. The two pinned dependency hashes below are
+# static and never touched by the script.
 #
 # Packaging facts (verified against the project CMakeLists.txt):
 # - Both pinned deps are fed offline via FETCHCONTENT_SOURCE_DIR_* +
@@ -20,6 +22,17 @@
 # - libwayland-client is linked directly (transition overlay); the scanner
 #   (wayland-scanner), the wayland-protocols XMLs (xdg-shell, viewporter,
 #   xdg-output) and the vendored wlr-layer-shell XML cover the rest.
+#   No qt6-wayland: the Wayland platform plugin (plugins/platforms/
+#   libqwayland.so) ships inside qt6-base, and the project uses zero
+#   QtWayland/QWayland symbols (verified with pacman -Qo and a source grep).
+# - The configure hard-requires the 'patch' program (find_program in
+#   CMakeLists.txt) to fix the pristine mcu tarball for GCC 16.
+# - qt6-imageformats/qt6-svg/qt6-multimedia-ffmpeg are separate Arch packages
+#   and nothing depends on them; without the image handlers QImageReader
+#   reports "Unsupported image format" and webp/svg wallpapers silently read
+#   as static with no palette; without the media backend MediaPlayer finds no
+#   plugin and inline video/GIF playback is dead.
+pkgname=kwal
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="KDE Plasma utility to manage the wallpaper and tint tools with palettes from the wallpaper"
@@ -27,14 +40,26 @@ arch=('x86_64')
 url="https://github.com/iguruspain/kwal"
 license=('GPL3')
 depends=(
-    qt6-base          # Core Gui Widgets Network DBus Qml/Quick hosts
+    glibc             # direct link deps (Arch guideline: declare what the
+    libgcc            # binaries name in DT_NEEDED, even when another dep
+    libstdc++         # already pulls them)
+    libglvnd          # Qt Quick's OpenGL path (libGLX, libOpenGL)
+    qt6-base          # Core Gui Widgets Network DBus Qml/Quick hosts, and the
+                      # Wayland platform plugin (plugins/platforms/libqwayland.so)
     qt6-declarative   # QML module, QuickControls2, qmlcachegen
     qt6-multimedia    # inline video/GIF playback in the grid
     qt6-webengine     # Starship terminal preview
     qt6-imageformats  # WebP/TIFF/ICNS image handlers (libqwebp.so is not in qt6-base)
     qt6-svg           # SVG image handler (libqsvg.so) for svg wallpapers
+    qt6-multimedia-ffmpeg # the actual media backend plugin
+                          # (plugins/multimedia/libffmpegmediaplugin.so is owned
+                          # by this package, NOT by qt6-multimedia: without it
+                          # MediaPlayer has no backend and inline video/GIF
+                          # playback in the grid silently fails)
     kirigami          # KF6 Kirigami + KirigamiPlatform
+    qqc2-desktop-style # org.kde.desktop Controls style main.cpp selects on KDE
     kconfig           # kwalrc
+    hicolor-icon-theme # install target of icons/hicolor/scalable/apps/kwal.svg
     wayland           # libwayland-client (transition overlay)
     ffmpeg            # ffmpeg/ffprobe binaries (frames, resizes)
     imagemagick       # magick binary (logo tinting)
@@ -44,7 +69,19 @@ makedepends=(
     extra-cmake-modules
     ninja
     pkgconf
+    patch              # CMake find_program(patch) applies cmake/mcu-gcc16.patch
+                       # to the pristine mcu tarball; configure FATAL_ERRORs
+                       # without it (base-devel usually carries it, declared
+                       # because the build hard-requires it)
     wayland-protocols  # transition overlay protocol XMLs (build only)
+)
+optdepends=(
+    'plasma-workspace: apply the wallpaper through org.kde.PlasmaShell (without it the app edits appletsrc directly)'
+    'plasma-integration: Plasma widget style, color scheme and native dialogs (only used when XDG_CURRENT_DESKTOP=KDE)'
+    'plasma6-wallpapers-smart-video-wallpaper-reborn: videos played in place (without it the cached first frame is applied as an image)'
+    'fastfetch: Fastfetch tab (hidden when the binary is not on PATH)'
+    'starship: Starship tab (hidden when the binary is not on PATH)'
+    'ulauncher: Ulauncher tab (hidden when the binary is not on PATH)'
 )
 source=(
     "https://github.com/iguruspain/kwal/archive/v${pkgver}.tar.gz"

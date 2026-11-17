@@ -5,8 +5,9 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-<!-- On publication (consolidation in main + annotated tag), rename this
-     section to [0.1.0] and stamp the release date. -->
+<!-- scripts/release.sh stamps the [Unreleased] content as [<version>] with the
+     release date and opens a fresh empty [Unreleased] section above it, in the
+     release commit. -->
 
 ## [Unreleased]
 

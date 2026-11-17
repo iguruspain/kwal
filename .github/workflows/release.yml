@@ -7,6 +7,10 @@ name: Release
 # the CHANGELOG section + docs/RELEASE_TEMPLATE.md. No builds here — source
 # only. Per-distro .deb/.rpm download links (OBS/COPR) get pasted into the
 # notes at release time; the AppImage is optional and lives in appimage.yml.
+#
+# Normal entry point: scripts/release.sh <version> bumps the version, commits,
+# tags, pushes, fills the AUR hash/.SRCINFO and starts this workflow with
+# publish=true. Run it by hand only for a re-release of an existing tag.
 on:
   workflow_dispatch:
     inputs:

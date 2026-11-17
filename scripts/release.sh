@@ -67,7 +67,7 @@ sed -E "s|^ VERSION $current\$| VERSION $version|" CMakeLists.txt > "$tmp/CMakeL
 sed -E "s|(\"Version\": \")$current(\")|\1$version\2|" aboutdata.json > "$tmp/aboutdata.json"
 sed -E "s|^pkgver=$current\$|pkgver=$version|" packaging/aur/PKGBUILD > "$tmp/PKGBUILD"
 awk -v v="$version" -v d="$(date +%F)" '
-    !stamped && /^## \[Unreleased\]$/ { print "## [Unreleased]"; print ""; print "## [" v "] - " d; print ""; stamped = 1; next }
+    !stamped && /^## \[Unreleased\]$/ { print "## [Unreleased]"; print ""; print "## [" v "] - " d; stamped = 1; next }
     { print }
 ' CHANGELOG.md > "$tmp/CHANGELOG.md"
 grep -qE "^## \[$version\] - " "$tmp/CHANGELOG.md" || die "CHANGELOG.md has no '## [Unreleased]' header to rename"

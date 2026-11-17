@@ -27,12 +27,26 @@ cmake --preset default     # configure (Ninja, Debug, compile_commands.json)
 cmake --build --preset default
 ctest --test-dir build     # run tests (QtTest + CTest)
 ./build/kwal               # run (or via kwin MCP for headless UI verification)
-./scripts/release.sh -n 0.1.1  # release rehearsal (dry run): bumps CMakeLists VERSION +
-                           # aboutdata.json + AUR pkgver, stamps the CHANGELOG, commits,
-                           # tags v0.1.1, pushes, fills the AUR source hash + .SRCINFO and
-                           # starts .github/workflows/release.yml (publish=true).
-                           # Drop -n to actually release; --check runs the clean build.
+./scripts/release.sh -n 0.1.1  # release rehearsal (dry run): prints the diffs, changes nothing
+                           # Real run (drop -n): bumps CMakeLists VERSION + aboutdata.json +
+                           # AUR pkgver, stamps the CHANGELOG, regenerates .SRCINFO, commits,
+                           # **signs** the tag (git tag -s), pushes, then starts
+                           # .github/workflows/release.yml with publish=false (a dry run whose
+                           # run summary renders the exact notes). Publish by re-running that
+                           # workflow with publish=true. --check runs the clean build first.
 ```
+
+Release provenance is the **signed tag**, not a checksum: `gpg.format=ssh`,
+`user.signingkey=~/.ssh/id_ed25519.pub` and `gpg.ssh.allowedSignersFile=docs/kwal_signers`
+are set in this repo's local config (release.sh refuses to run without them and
+verifies its own tag before pushing). `docs/kwal_signers` publishes the public
+key so anyone can check a tag with the key that came from the repository:
+`git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag vX.Y.Z`. The AUR
+`PKGBUILD` takes its source from that tag (`git+…#tag=v$pkgver`, `sha256sums=('SKIP')`
+for it, real hashes kept for the two vendored FetchContent tarballs); release.yml
+attaches **no** `sha256sums.txt` — GitHub generates release archives on demand, so
+their bytes are not ours to pin, and an unsigned sum beside the file it hashes is
+decoration.
 
 Tests sandbox the user dirs: `tst_appcontroller` sets `HOME`/`XDG_*` to a temp dir *before* constructing `QCoreApplication` so KConfig and QStandardPaths never touch the real home. New tests must keep this.
 ## Build assurance (mandatory)

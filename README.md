@@ -52,6 +52,21 @@ packaged builds, point `FETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS` and
 `-DFETCHCONTENT_FULLY_DISCONNECTED=ON`; the patch is applied to a pristine
 tree automatically.
 
+## Getting a release
+
+```sh
+git clone --branch v0.1.0 https://github.com/iguruspain/kwal.git   # the tag you want
+cd kwal
+git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag v0.1.0
+```
+
+Every release tag is signed with the SSH key published in `docs/kwal_signers`,
+so verification needs nothing but the repository itself: the command above
+prints `Good "git" signature for …`. GitHub's `Source code (zip/tar.gz)` links
+on a release page are the same tree without the signature — convenient, not
+verifiable, and their bytes are GitHub's gzip output, which is why no checksum
+for them is published anywhere.
+
 ## Build
 
 ```sh

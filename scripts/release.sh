@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# One-command release: bump the version everywhere, commit, tag, push, fill the
-# AUR source hash + .SRCINFO, and trigger the GitHub source release.
+# One-command release: bump the version everywhere, commit, sign the tag, push,
+# regenerate the AUR .SRCINFO, and queue the GitHub source release as a DRY RUN.
 #
 #   scripts/release.sh [-n] [-N] [-R] [--check] <version>
 #     -n, --dry-run      compute and print everything, change nothing
-#     -N, --no-push      local commit + tag only (push by hand afterwards)
-#     -R, --no-release   do not trigger the "Release" GitHub workflow
+#     -N, --no-push      local commit + signed tag only (push by hand afterwards)
+#     -R, --no-release   do not start the "Release" GitHub workflow
 #         --check        clean build + ctest before committing (the repo rule)
 #
 # The version is canonical in CMakeLists.txt project(VERSION); aboutdata.json
@@ -13,14 +13,22 @@
 # carries the same pkgver. src/main.cpp gets it from the KWAL_VERSION compile
 # definition, so there is no string literal left to bump.
 #
-# After a real run, the release itself (notes + GitHub release) is produced by
-# .github/workflows/release.yml, which this script starts with publish=true.
+# The tag is SIGNED (gpg.format=ssh + user.signingkey) — that signature is the
+# only authenticity claim this project makes, docs/kwal_signers is what makes it
+# checkable, and release.yml refuses an unsigned tag. Required repo config,
+# verified by the guards below:
+#   git config gpg.format ssh
+#   git config user.signingkey ~/.ssh/id_ed25519.pub
+#
+# Publishing stays a human gate: this script starts release.yml with
+# publish=false (guards + signature check + the exact notes rendered in the run
+# summary); read that summary, then re-run the workflow with publish=true.
 
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
-usage() { sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 die() { printf 'release: %s\n' "$*" >&2; exit 1; }
 
 dry=0 push=1 release=1 fullcheck=0 version=''
@@ -59,6 +67,19 @@ grep -qE "^pkgver=$current$" packaging/aur/PKGBUILD \
     || die "packaging/aur/PKGBUILD pkgver is not $current"
 grep -qE "^## \[$version\]" CHANGELOG.md && die "CHANGELOG.md already documents [$version]"
 
+# Tag signing must be configured *and* the key must be the one the tree trusts,
+# otherwise the release would be cut unsigned or unverifiable — fail before
+# touching any file instead of discovering it in the workflow.
+[[ "$(git config --get gpg.format || true)" == ssh ]] \
+    || die "tag signing not configured: git config gpg.format ssh"
+signingkey="$(git config --get user.signingkey || true)"
+[[ -n "$signingkey" ]] || die "no signing key: git config user.signingkey ~/.ssh/id_ed25519.pub"
+keyfile="${signingkey/#\~/$HOME}"
+[[ -f "$keyfile" ]] || die "signing key '$signingkey' not found"
+keymaterial="$(awk '{print $1, $2}' "$keyfile")"
+grep -qF "$keymaterial" docs/kwal_signers \
+    || die "the key in $keyfile is not listed in docs/kwal_signers: its tags could never be verified"
+
 # --- compute the new file contents ----------------------------------------
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -77,7 +98,7 @@ for f in CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD CHANGELOG.md; do
 done
 
 if ((dry)); then
-    printf '\ndry run: nothing written. Tag would be %s, then origin push, AUR hash fill and the Release workflow.\n' "$tag"
+    printf '\ndry run: nothing written. Tag would be the signed %s, pushed with the .SRCINFO, then a DRY-RUN Release workflow from main.\n' "$tag"
     exit 0
 fi
 
@@ -99,10 +120,26 @@ if ((fullcheck)); then
     ctest --test-dir build
 fi
 
-git add CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD CHANGELOG.md
-git commit -m "chore(release): $version" -m "Bumps project(VERSION), aboutdata.json and the AUR pkgver; CHANGELOG [Unreleased] becomes [$version]."
-git tag -a "$tag" -m "Kwal $version"
-printf 'committed and tagged %s locally\n' "$tag"
+# The AUR metadata for this exact pkgver belongs in the release commit; it
+# depends only on these files, so it is regenerated here rather than after the
+# push (nothing about the tag is needed for it any more).
+aurfiles=(packaging/aur/PKGBUILD)
+if command -v makepkg >/dev/null; then
+    (cd packaging/aur && makepkg --printsrcinfo > .SRCINFO)
+    aurfiles+=(packaging/aur/.SRCINFO)
+else
+    printf 'release: makepkg not found: packaging/aur/.SRCINFO left as is\n' >&2
+fi
+
+git add CMakeLists.txt aboutdata.json "${aurfiles[@]}" CHANGELOG.md
+git commit -m "chore(release): $version" -m "Bumps project(VERSION), aboutdata.json and the AUR pkgver/.SRCINFO; CHANGELOG [Unreleased] becomes [$version]."
+
+git tag -s -a "$tag" -m "Kwal $version"
+# Verify our own tag with the key the tree publishes: catches a signing
+# misconfiguration before anything is public.
+git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag "$tag" \
+    || die "$tag is not verifiable against docs/kwal_signers: fix the signing setup and delete the tag"
+printf 'committed and signed-tagged %s locally\n' "$tag"
 
 if ((push == 0)); then
     printf 'not pushed (asked with -N). Later: git push origin HEAD --follow-tags\n'
@@ -110,38 +147,15 @@ if ((push == 0)); then
 fi
 git push origin HEAD --follow-tags
 
-# --- AUR: the source hash only exists once the tag is on the remote -------
-pkgbuild=packaging/aur/PKGBUILD
-url="$(sed -nE 's|^url="([^"]+)".*|\1|p' "$pkgbuild")/archive/refs/tags/$tag.tar.gz"
-hash="$(curl -fsSL "$url" | sha256sum | cut -d' ' -f1)"
-[[ -n "$hash" ]] || die "no sha256 for $url (GitHub has not produced the tarball yet; rerun the AUR part later)"
-
-awk -v h="$hash" '
-    BEGIN { q = sprintf("%c", 39) }
-    inblk { print "    " q h q; inblk = 0; next }
-    /^sha256sums=\(/ { print; inblk = 1; next }
-    { print }
-' "$pkgbuild" > "$tmp/pkgbuild.filled"
-cmp -s "$tmp/pkgbuild.filled" "$pkgbuild" || cp -- "$tmp/pkgbuild.filled" "$pkgbuild"
-grep -qF "'$hash'" "$pkgbuild" || die "could not write the sha256 into $pkgbuild"
-
-if command -v makepkg >/dev/null; then
-    (cd packaging/aur && makepkg --printsrcinfo > .SRCINFO)
-else
-    printf 'release: makepkg not found: packaging/aur/.SRCINFO not generated\n' >&2
-fi
-
-git add "$pkgbuild" packaging/aur/.SRCINFO
-git diff --cached --quiet || { git commit -m "chore(aur): source hash and .SRCINFO for $tag"; git push origin HEAD; }
-
 # --- the GitHub release itself --------------------------------------------
 if ((release)); then
     if command -v gh >/dev/null; then
-        gh workflow run release.yml --ref "$tag" -f "tag=$tag" -f publish=true
-        printf 'Release workflow started for %s (watch: gh run watch)\n' "$tag"
+        gh workflow run release.yml --ref main -f "tag=$tag" -f publish=false
+        printf 'DRY-RUN Release workflow started for %s (watch: gh run watch)\n' "$tag"
+        printf 'read the rendered notes in the run summary, then re-run that workflow with publish=true\n'
     else
-        printf 'no gh CLI: run the "Release" workflow by hand with tag=%s, publish=true\n' "$tag"
+        printf 'no gh CLI: run the "Release" workflow by hand from main with tag=%s, publish=false\n' "$tag"
     fi
 else
-    printf 'Release workflow not triggered (--no-release): run it by hand with tag=%s\n' "$tag"
+    printf 'Release workflow not triggered (--no-release): run it by hand from main with tag=%s\n' "$tag"
 fi

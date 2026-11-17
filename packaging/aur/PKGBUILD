@@ -3,10 +3,20 @@
 # git clone + cmake (README).
 #
 # Publishing is automated by scripts/release.sh <version>: it sets pkgver from
-# project(VERSION), and once the tag exists it downloads the GitHub tarball,
-# fills the first sha256sums entry (the kwal source) and regenerates .SRCINFO
-# with `makepkg --printsrcinfo`. The two pinned dependency hashes below are
-# static and never touched by the script.
+# project(VERSION), signs the tag and regenerates .SRCINFO with
+# `makepkg --printsrcinfo`. The source is the **signed tag** over git, not a
+# GitHub archive URL: GitHub builds those archives on request and its gzip
+# output is not fixed (in Feb 2023 a change mass-broke pinned archive hashes
+# across AUR), so a sha256 of one is a time bomb — and an unsigned sum next to
+# the file it hashes is theatre anyway. The pinned dependency hashes below are
+# real content pins (they are build inputs) and are never touched by the
+# script.
+#
+# Authenticity for the user: the tag is signed (see docs/kwal_signers). makepkg
+# rejects a tag that points at another tag, but it does NOT notice a tag moved
+# by a force-push — the signature is what pins the meaning of the name, so
+# verify it with:
+#   git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag v<pkgver>
 #
 # Packaging facts (verified against the project CMakeLists.txt):
 # - Both pinned deps are fed offline via FETCHCONTENT_SOURCE_DIR_* +
@@ -69,6 +79,7 @@ makedepends=(
     extra-cmake-modules
     ninja
     pkgconf
+    git                # the source is a git tag (see the header)
     patch              # CMake find_program(patch) applies cmake/mcu-gcc16.patch
                        # to the pristine mcu tarball; configure FATAL_ERRORs
                        # without it (base-devel usually carries it, declared
@@ -83,19 +94,23 @@ optdepends=(
     'starship: Starship tab (hidden when the binary is not on PATH)'
     'ulauncher: Ulauncher tab (hidden when the binary is not on PATH)'
 )
+# The signed tag over git, not a GitHub archive URL: those archives are
+# generated on demand (their bytes are not ours to pin) and an unsigned sum
+# next to the file it hashes proves nothing — see the header. makepkg clones
+# the repo and checks out v${pkgver} into $srcdir/kwal.
 source=(
-    "https://github.com/iguruspain/kwal/archive/v${pkgver}.tar.gz"
+    "git+https://github.com/iguruspain/kwal.git#tag=v${pkgver}"
     "https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz"
     "https://github.com/material-foundation/material-color-utilities/archive/bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3.tar.gz"
 )
 sha256sums=(
-    'd156069d27b71bbbd350d18c9af2d77c939be1cbaa71911a6cd2213338843016'
+    'SKIP'  # the git tag; verify its signature instead (docs/kwal_signers)
     '8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155'
     '176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78'
 )
 
 build() {
-    cmake -B build -S "kwal-${pkgver}" \
+    cmake -B build -S kwal \
         -DCMAKE_BUILD_TYPE=Release \
         -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
         -DFETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS="$srcdir/tomlplusplus-3.4.0" \

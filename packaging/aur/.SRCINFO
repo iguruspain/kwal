@@ -9,6 +9,7 @@ pkgbase = kwal
 	makedepends = extra-cmake-modules
 	makedepends = ninja
 	makedepends = pkgconf
+	makedepends = git
 	makedepends = patch
 	makedepends = wayland-protocols
 	depends = glibc
@@ -35,10 +36,10 @@ pkgbase = kwal
 	optdepends = fastfetch: Fastfetch tab (hidden when the binary is not on PATH)
 	optdepends = starship: Starship tab (hidden when the binary is not on PATH)
 	optdepends = ulauncher: Ulauncher tab (hidden when the binary is not on PATH)
-	source = https://github.com/iguruspain/kwal/archive/v0.1.0.tar.gz
+	source = git+https://github.com/iguruspain/kwal.git#tag=v0.1.0
 	source = https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
 	source = https://github.com/material-foundation/material-color-utilities/archive/bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3.tar.gz
-	sha256sums = d156069d27b71bbbd350d18c9af2d77c939be1cbaa71911a6cd2213338843016
+	sha256sums = SKIP
 	sha256sums = 8517f65938a4faae9ccf8ebb36631a38c1cadfb5efa85d9a72e15b9e97d25155
 	sha256sums = 176330652129f9af18b864f0df2af8c4bbb9b3c68642d236bdd54a4daa5d9f78
 

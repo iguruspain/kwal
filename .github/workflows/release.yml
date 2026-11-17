@@ -1,16 +1,27 @@
 name: Release
 
-# Manual by design for now (the first install channel is git clone + cmake;
-# packages arrive with OBS/AUR in Fase 2): run this workflow from the Actions
-# tab and type the tag. It verifies the tag matches project(VERSION), sums
-# the GitHub source tarball, and creates the release with notes built from
-# the CHANGELOG section + docs/RELEASE_TEMPLATE.md. No builds here — source
-# only. Per-distro .deb/.rpm download links (OBS/COPR) get pasted into the
-# notes at release time; the AppImage is optional and lives in appimage.yml.
+# Manual by design (the install channel today is git clone + cmake; packages
+# arrive with AUR/OBS in Fase 2): run this workflow from the Actions tab **on
+# the main ref** and type the tag in the input. It checks the tag matches
+# project(VERSION) and that the tag is **signed and trusted by the key shipped
+# in docs/kwal_signers**, then creates the release with notes built from the
+# CHANGELOG section + docs/RELEASE_TEMPLATE.md **as they exist on the dispatched
+# branch** (reading them from the tagged tree publishes stale wording forever —
+# that is how the first v0.1.0 notes came out wrong). No builds here, and no
+# checksum asset on purpose: an unsigned sha256 next to the file it hashes
+# proves nothing (whoever could swap the tarball could rewrite the sums), and
+# GitHub generates the archive tarballs on the fly, so pinning their hash is a
+# time bomb (GitHub changed gzip behaviour in Feb 2023 and mass-broke pinned
+# hashes). Provenance is the signed tag: the notes tell users to clone and
+# `git verify-tag`.
+#
+# Publish is a two-step gate: run with publish=false, read the rendered body in
+# the run summary (the "Build release notes" step), then re-run the same
+# workflow with publish=true.
 #
 # Normal entry point: scripts/release.sh <version> bumps the version, commits,
-# tags, pushes, fills the AUR hash/.SRCINFO and starts this workflow with
-# publish=true. Run it by hand only for a re-release of an existing tag.
+# signs the tag, pushes and regenerates the AUR .SRCINFO. Run this workflow by
+# hand for the publish step (or when there is no gh CLI).
 on:
   workflow_dispatch:
     inputs:
@@ -18,7 +29,7 @@ on:
         description: 'Tag to release (e.g. v0.1.0)'
         required: true
       publish:
-        description: 'Actually create the release (unchecked = dry run: guard + sums + notes printed only)'
+        description: 'Actually create the release (unchecked = dry run: guard + signature check + the exact notes rendered in the run summary)'
         type: boolean
         required: false
         default: false
@@ -50,13 +61,18 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
 
-      - name: Source checksums
+      - name: Signature guard (the tag must be signed by the repo's key)
         run: |
           set -euo pipefail
-          tarball="kwal-${INPUT_TAG#v}.tar.gz"
-          curl -fsSL "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${INPUT_TAG}.tar.gz" -o "$tarball"
-          sha256sum "$tarball" > sha256sums.txt
-          cat sha256sums.txt
+          # The one authenticity check in this chain. The signer identity and
+          # the public key come from the tagged tree itself, so a release can
+          # only be cut from a tag that the repo says is signed by that key.
+          git fetch --no-tags --depth=1 \
+            origin "refs/tags/${INPUT_TAG}:refs/tags/${INPUT_TAG}"
+          if ! git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag "$INPUT_TAG"; then
+            echo "::error::$INPUT_TAG is not a signed tag trusted by docs/kwal_signers — cut it with scripts/release.sh (git tag -s)"
+            exit 1
+          fi
         env:
           INPUT_TAG: ${{ inputs.tag }}
 
@@ -64,29 +80,38 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          awk -v v="$ver" '
+          # Read from the dispatched branch, not the tagged tree (see header).
+          git fetch --no-tags --depth=1 origin "refs/heads/${NOTES_REF}" \
+            || { echo "::error::notes ref ${NOTES_REF} is not a branch: dispatch this workflow from main and put the tag in the tag input"; exit 1; }
+          git show FETCH_HEAD:CHANGELOG.md | awk -v v="$ver" '
             $0 ~ "^## \\[" v "\\]" { insec = 1 }
             insec && /^## \[/ && $0 !~ "^## \\[" v "\\]" { exit }
             insec { print }
-          ' CHANGELOG.md > notes.md
+          ' > notes.md
           # The tail is version-neutral source; stamp the tag into it.
-          sed "s/X\.Y\.Z/$ver/g" docs/RELEASE_TEMPLATE.md >> notes.md
+          git show FETCH_HEAD:docs/RELEASE_TEMPLATE.md \
+            | sed "s/X\.Y\.Z/$ver/g" >> notes.md
           cat notes.md
+          # The review gate: the run page renders exactly the body a publish
+          # run would ship (same markdown as the release page).
+          { printf '## Release notes a publish run would ship for %s\n\n' "$INPUT_TAG"
+            cat notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          NOTES_REF: ${{ github.ref_name }}
 
       - name: Create release
         if: inputs.publish
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          # Re-running the workflow must fix an existing release instead of
-          # dying on it: notes and asset get rewritten, the tag is untouched.
+          # Re-running must fix an existing release instead of dying on it.
           if gh release view "$INPUT_TAG" >/dev/null 2>&1; then
-            gh release edit "$INPUT_TAG" --title "Kwal $ver" --notes-file notes.md
-            gh release upload "$INPUT_TAG" sha256sums.txt --clobber
+            gh release edit "$INPUT_TAG" --target "$INPUT_TAG" \
+              --title "Kwal $ver" --notes-file notes.md
           else
-            gh release create "$INPUT_TAG" sha256sums.txt \
+            gh release create "$INPUT_TAG" --target "$INPUT_TAG" \
               --title "Kwal $ver" --notes-file notes.md
           fi
         env:

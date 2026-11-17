@@ -222,30 +222,38 @@ target_link_libraries(kwal_transitions
  PkgConfig::WAYLAND_CLIENT
 )
 set(_kwal_transition_generated)
+# wayland-scanner writes its outputs into this build-tree subdirectory. The
+# Ninja generator creates parent directories of custom-command outputs by
+# itself; the Unix Makefiles generator does not — a plain `cmake -B build`
+# (what the AUR PKGBUILD and anyone building without CMakePresets runs) died
+# at 0% with "Could not open output file: No such file or directory". Making
+# the directory at configure time is the generator-independent fix.
+set(_kwal_transition_gendir "${CMAKE_BINARY_DIR}/transitions")
+file(MAKE_DIRECTORY "${_kwal_transition_gendir}")
 foreach(_entry IN LISTS _kwal_transition_protocols)
     string(REPLACE " " ";" _parts "${_entry}")
     list(GET _parts 0 _xml)
     list(GET _parts 1 _base)
     set(_xml_path "${_xml}")
-add_custom_command(
-    OUTPUT "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
-    COMMAND ${WAYLAND_SCANNER} client-header "${_xml_path}" "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
-    DEPENDS "${_xml_path}"
-    COMMENT "Generating ${_base} client header"
-)
     add_custom_command(
-        OUTPUT "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.c"
-        COMMAND ${WAYLAND_SCANNER} private-code "${_xml_path}" "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.c"
+        OUTPUT "${_kwal_transition_gendir}/${_base}-client-protocol.h"
+        COMMAND ${WAYLAND_SCANNER} client-header "${_xml_path}" "${_kwal_transition_gendir}/${_base}-client-protocol.h"
+        DEPENDS "${_xml_path}"
+        COMMENT "Generating ${_base} client header"
+    )
+    add_custom_command(
+        OUTPUT "${_kwal_transition_gendir}/${_base}-client-protocol.c"
+        COMMAND ${WAYLAND_SCANNER} private-code "${_xml_path}" "${_kwal_transition_gendir}/${_base}-client-protocol.c"
         DEPENDS "${_xml_path}"
         COMMENT "Generating ${_base} client protocol"
     )
     list(APPEND _kwal_transition_generated
-        "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.h"
-        "${CMAKE_BINARY_DIR}/transitions/${_base}-client-protocol.c"
+        "${_kwal_transition_gendir}/${_base}-client-protocol.h"
+        "${_kwal_transition_gendir}/${_base}-client-protocol.c"
     )
 endforeach()
 target_sources(kwal_transitions PRIVATE ${_kwal_transition_generated})
-target_include_directories(kwal_transitions PUBLIC "${CMAKE_BINARY_DIR}/transitions")
+target_include_directories(kwal_transitions PUBLIC "${_kwal_transition_gendir}")
 
 qt_standard_project_setup(REQUIRES 6.8)
 

@@ -113,7 +113,11 @@ jobs:
               type="${type%%(*}"
               type="${type%!}"
               group="${group_of[$type]-Other}"
-              body[$group]+="- $subject ($hash)"$'\n'
+              # Markdown link: a bare short hash is not autolinked in a release
+              # body, so the id has to carry its own URL. GITHUB_SERVER_URL and
+              # GITHUB_REPOSITORY come from the runner (no owner hardcoded).
+              link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${hash}"
+              body[$group]+="- $subject ([${hash}](${link}))"$'\n'
             done < <(git log --no-merges --reverse --format='%s%x09%h' "${prev}..${INPUT_TAG}" \
                        | { grep -v '^chore(release):' || true; })
             for group in Added Fixed Other; do

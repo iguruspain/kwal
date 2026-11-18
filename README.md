@@ -4,12 +4,7 @@
 
 # Kwal
 
-KDE Plasma utility to manage the desktop wallpaper and to tint supported tools
-with color palettes extracted from the wallpaper.
-
-<p align="center">
-  <img src="screenshots/kwal-tour.webp" width="600" alt="Animated tour of the kwal interface: wallpaper grid, folder sidebar, wallpaper detail drawer with color categories, tags and custom commands, Fastfetch logo tinting, Starship palette with terminal preview, and the Ulauncher theme with its live preview">
-</p>
+KDE Plasma utility to manage your desktop wallpapers and customize supported tools.
 
 ## Features
 
@@ -19,13 +14,14 @@ with color palettes extracted from the wallpaper.
 - **AI Tagging:** Optional integration with OpenAI-compatible vision endpoints to automatically tag your wallpapers.
 
 ### 🎨 Live Customization & Theming
-- **Color Extraction:** Automatically generate palettes from your images/videos using Material You schemes, ImageMagick accents, and unique colors.
-- **Dynamic Tool Tinting:** Real-time recoloring for supported tools (Fastfetch, Starship, and Ulauncher tabs) based on the active palette.
-- **Dual Modes:** Support for both Light and Dark color schemes per wallpaper.
+- **Color Extraction:** Get palettes from your images/videos using Material You schemes, ImageMagick accents, and unique colors.
+- **Dynamic Tool Customization:** Real-time theming for supported tools (Fastfetch, Starship, and Ulauncher tabs).
 
 ### ⚙️ Automation & Transitions
-- **Custom Commands:** Execute shell commands after applying a wallpaper with dynamic placeholders (e.g., `%path%`, `%scolor%`).
-- **Smooth Transitions:** Animated wallpaper switches via a Wayland layer-shell overlay (with fallback support).
+- **Custom Commands:** Execute shell commands after applying a wallpaper with dynamic placeholders (e.g., `%path%`, `%scolor%`). Matugen ready.
+- **Smooth Transitions:** Animated wallpaper switches via a Wayland layer-shell overlay like awww (with fallback support).
+
+<video src="screenshots/kwal_features.mp4" controls autoplay loop muted playsinline></video>
 
 ## Requirements
 
@@ -39,9 +35,6 @@ with color palettes extracted from the wallpaper.
   `wayland-scanner`) and `wayland-protocols` ≥ 1.24
 
 CMake fetches `tomlplusplus` and `material-color-utilities` with `FetchContent`.
-For an offline or packaged build, point `FETCHCONTENT_SOURCE_DIR_TOMLPLUSPLUS`
-and `FETCHCONTENT_SOURCE_DIR_MCU` at prepared source trees and configure with
-`-DFETCHCONTENT_FULLY_DISCONNECTED=ON`.
 
 ## Installation
 
@@ -91,7 +84,7 @@ Settings live in `~/.config/kwalrc`, the tool templates in
 resizes) in `~/.cache/kwal/`. Removing the app leaves those alone; delete them
 for a clean slate.
 
-## Acknowledgements
+## Thank you
 
 - [awww](https://codeberg.org/LGFae/awww) — the animated wallpaper switch of
   `kwal-transition` is a C++ port of its transition renderer (via the

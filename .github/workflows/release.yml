@@ -68,11 +68,15 @@ jobs:
           set -euo pipefail
           ver="${INPUT_TAG#v}"
           : > notes.md
-          # 1. The intro is the tag message: subject+body (the command
-          #    substitution trims the trailing blank lines of a
-          #    one-liner). The default "Kwal X.Y.Z" repeats the release title,
-          #    so it is left out.
-          intro="$(git for-each-ref --format='%(contents:subject)%0a%(contents:body)' "refs/tags/${INPUT_TAG}")"
+          # 1. The intro is the tag message body when there is one (the prose
+          #    intro written with `git tag -a -F notes.txt`; the command
+          #    substitution trims the trailing blank lines), else its subject
+          #    line. The default one-liner "Kwal X.Y.Z" repeats the release
+          #    title, so it is left out.
+          intro="$(git for-each-ref --format='%(contents:body)' "refs/tags/${INPUT_TAG}")"
+          if [ -z "$intro" ]; then
+            intro="$(git for-each-ref --format='%(contents:subject)' "refs/tags/${INPUT_TAG}")"
+          fi
           if [ -n "$intro" ] && [ "$intro" != "Kwal $ver" ]; then
             printf '%s\n\n' "$intro" >> notes.md
           fi

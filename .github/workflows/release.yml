@@ -1,26 +1,12 @@
 name: Release
 
-# Manual by design (the install channel today is git clone + cmake; packages
-# arrive with AUR/OBS in Fase 2): run this workflow from the Actions tab **on
-# the main ref** and type the tag in the input. It checks the tag matches
-# project(VERSION), then writes the notes itself: the tag message as the
-# intro (the default "Kwal X.Y.Z" one-liner is skipped, the release title
-# already says that) and every commit between the previous tag and this one,
-# grouped by conventional-commit type. On the first release there is nothing to
-# diff against, so the note is just the tag message. No builds here, and no
-# checksum asset on purpose: an unsigned sha256 next to the file it hashes
-# proves nothing (whoever could swap the tarball could rewrite the sums), and
-# GitHub generates the archive tarballs on the fly, so pinning their hash is a
-# time bomb (GitHub changed gzip behaviour in Feb 2023 and mass-broke pinned
-# hashes).
-#
-# Publish is a two-step gate: run with publish=false, read the rendered body in
-# the run summary (the "Build release notes" step), then re-run the same
-# workflow with publish=true.
-#
-# Normal entry point: scripts/release.sh <version> bumps the version, commits,
-# tags, pushes and regenerates the AUR .SRCINFO. Run this workflow by
-# hand for the publish step (or when there is no gh CLI).
+# Manual by design: run it from the Actions tab on the main ref and type the
+# tag. It guards that the tag matches project(VERSION), builds the notes from
+# the tag message plus the commits since the previous tag, shows them in the
+# run summary, and only publishes with publish=true. The normal entry point is
+# scripts/release.sh (bump, commit, tag, push); this workflow is the publish
+# step. No builds, and no checksum asset: GitHub's source archives are
+# generated on demand, so their bytes are not ours to pin.
 on:
   workflow_dispatch:
     inputs:
@@ -36,19 +22,15 @@ on:
 jobs:
   source-release:
     runs-on: ubuntu-latest
-    # The GITHUB_TOKEN otherwise carries only the repo's default (read for
-    # contents). Creating a release needs push access — REST releases docs:
-    # "Users with push access to the repository can create a release" — and the
-    # first run of this workflow died exactly there (all read-only steps green,
-    # `gh release create` exit 1). Write is scoped to this job only.
+    # Creating a release needs push access; the token is read-only by default.
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
-          # The notes list the commits between the previous tag and this one,
-          # so the history has to be there (the default depth 1 has none).
+          # The notes diff against the previous tag; the default depth 1 has
+          # no history.
           fetch-depth: 0
 
       - name: Version guard (tag must match project(VERSION))
@@ -68,11 +50,7 @@ jobs:
           set -euo pipefail
           ver="${INPUT_TAG#v}"
           : > notes.md
-          # 1. The intro is the tag message body when there is one (the prose
-          #    intro written with `git tag -a -F notes.txt`; the command
-          #    substitution trims the trailing blank lines), else its subject
-          #    line. The default one-liner "Kwal X.Y.Z" repeats the release
-          #    title, so it is left out.
+          # Intro: the tag body, else its subject; "Kwal X.Y.Z" repeats the title.
           intro="$(git for-each-ref --format='%(contents:body)' "refs/tags/${INPUT_TAG}")"
           if [ -z "$intro" ]; then
             intro="$(git for-each-ref --format='%(contents:subject)' "refs/tags/${INPUT_TAG}")"
@@ -80,14 +58,11 @@ jobs:
           if [ -n "$intro" ] && [ "$intro" != "Kwal $ver" ]; then
             printf '%s\n\n' "$intro" >> notes.md
           fi
-          # 2. The changes: every commit between the previous tag and this one,
-          #    grouped by conventional-commit type. With no tag before it this
-          #    is the first release: there is nothing to diff against, and the
-          #    intro above is the whole note.
+          # Changes: commits since the previous tag, grouped by
+          # conventional-commit type; a first release has none.
           # <tag>^ is not a valid revision (a tag is not a commit), so peel it.
           if prev="$(git describe --tags --abbrev=0 --exclude "$INPUT_TAG" "${INPUT_TAG}^{commit}" 2>/dev/null)"; then
-            # Plain bash, no awk: the runner's awk is mawk, the local one is
-            # gawk, and their regex dialects differ on this splitting.
+            # Plain bash: the runner's mawk and the local gawk disagree on this regex.
             declare -A group_of=([feat]=Added [fix]=Fixed)
             declare -A body=()
             while IFS=$'\t' read -r subject hash; do
@@ -96,9 +71,7 @@ jobs:
               type="${type%%(*}"
               type="${type%!}"
               group="${group_of[$type]-Other}"
-              # Markdown link: a bare short hash is not autolinked in a release
-              # body, so the id has to carry its own URL. GITHUB_SERVER_URL and
-              # GITHUB_REPOSITORY come from the runner (no owner hardcoded).
+              # Release bodies don't autolink bare hashes.
               link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${hash}"
               body[$group]+="- $subject ([${hash}](${link}))"$'\n'
             done < <(git log --no-merges --reverse --format='%s%x09%h' "${prev}..${INPUT_TAG}" \
@@ -111,8 +84,7 @@ jobs:
             printf 'first release: no tag before %s, the tag message is the note\n' "$INPUT_TAG" >&2
           fi
           cat notes.md
-          # The review gate: the run page renders exactly the body a publish
-          # run would ship (same markdown as the release page).
+          # Review gate for publish=false: the exact body a publish run ships.
           { printf '## Release notes a publish run would ship for %s\n\n' "$INPUT_TAG"
             cat notes.md
           } >> "$GITHUB_STEP_SUMMARY"
@@ -124,30 +96,15 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          # No --target at all. The tag already exists (--verify-tag below) and
-          # GitHub always attaches the release to the tag's own commit;
-          # target_commitish only names where a *new* tag would be cut, which
-          # never happens here. Passing it is actively harmful: the tag *name*
-          # died with HTTP 422 "Release.target_commitish is invalid" (first
-          # publish run), and the tag's *commit SHA* dies with HTTP 403 "Resource
-          # not accessible by integration" — since the Nov-2023 "enforcing
-          # workflow scope when creating a release" change, a target commit
-          # behind the default branch's HEAD makes GitHub audit the target..HEAD
-          # range, and if it touches .github/workflows/ it demands the
-          # workflows:write permission, which a GITHUB_TOKEN can never hold (the
-          # v0.1.1 publish run died exactly there: the workflow fix between the
-          # tag and main's HEAD was in that range).
-          # Re-running must fix an existing release instead of dying on it.
-          # --draft=false matters: a release whose tag was deleted stays behind
-          # as a *draft*, and gh release edit alone would keep it unpublished
-          # (the documented idiom for publishing a draft is exactly this flag).
+          # No --target: the release attaches to the existing tag anyway, and
+          # an old target commit triggers GitHub's release workflow-scope audit
+          # (403: GITHUB_TOKEN can never hold workflows:write).
+          # Re-runs edit instead of dying; --draft=false publishes a leftover draft.
           if gh release view "$INPUT_TAG" >/dev/null 2>&1; then
             gh release edit "$INPUT_TAG" --draft=false \
               --title "Kwal $ver" --notes-file notes.md
           else
-            # --verify-tag: the release must attach to a tag that already
-            # exists, never invent a new one (a typo in the input would
-            # otherwise cut a tag at the default branch and ship from it).
+            # --verify-tag: never invent a tag from a typo'd input.
             gh release create "$INPUT_TAG" --verify-tag \
               --title "Kwal $ver" --notes-file notes.md
           fi

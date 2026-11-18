@@ -78,7 +78,6 @@ void tst_WallpapersInfo::initTestCase()
 {
     WallpapersInfo::initialize(QCoreApplication::instance());
     QVERIFY(WallpapersInfo::instance() != nullptr);
-    // Init creates the cache directories.
     QVERIFY(QDir(cacheRoot() + QStringLiteral("/video_frames")).exists());
 }
 
@@ -96,7 +95,6 @@ void tst_WallpapersInfo::testRoundTrip()
     QCOMPARE(entry.type, QStringLiteral("image"));
     QVERIFY(entry.firstFrame.isEmpty());
 
-    // The index is persisted as JSON next to the cache dirs.
     const QString json = cacheRoot() + QStringLiteral("/wallpapers_info.json");
     QVERIFY(QFileInfo(json).exists());
     QFile file(json);
@@ -112,7 +110,6 @@ void tst_WallpapersInfo::testRoundTrip()
     WallpapersInfo::instance()->refreshFile(path, QStringLiteral("image"));
     QTRY_VERIFY_WITH_TIMEOUT(WallpapersInfo::instance()->entryFor(path).lastModified != firstModified, 30000);
 
-    // A fresh instance loads the same index from disk.
     WallpapersInfo::initialize(QCoreApplication::instance());
     QCOMPARE(WallpapersInfo::instance()->entryFor(path).type, QStringLiteral("image"));
     QVERIFY(WallpapersInfo::instance()->entryFor(path).lastModified != firstModified);
@@ -126,7 +123,6 @@ void tst_WallpapersInfo::testCorruptJson()
     WallpapersInfo::initialize(QCoreApplication::instance());
     QCOMPARE(WallpapersInfo::instance()->entryFor(QStringLiteral("/nonexistent")).lastModified, 0.0);
 
-    // The corrupt file was rewritten as a valid empty index.
     QFile file(json);
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
@@ -168,7 +164,6 @@ void tst_WallpapersInfo::testFirstFrame()
     QVERIFY(QFileInfo(frame).size() > 0);
     // The frame is named after the MD5 of the video content.
     QCOMPARE(QFileInfo(frame).baseName(), contentMd5(video));
-    // The extracted frame is a decodable PNG with the source resolution.
     QCOMPARE(QImageReader(frame).size(), QSize(128, 72));
 }
 
@@ -199,12 +194,10 @@ void tst_WallpapersInfo::testVideoResize()
     QVERIFY(process.waitForFinished(60000));
     QCOMPARE(process.exitCode(), 0);
 
-    // The scan no longer auto-generates resizes: refresh the entry first
-    // (first frame), then run an explicit "generate resizes" batch.
+    // The scan no longer auto-generates resizes: explicit "generate resizes" batch only.
     info->refreshFile(video, QStringLiteral("video"));
     QTRY_VERIFY_WITH_TIMEOUT(!info->entryFor(video).firstFrame.isEmpty(), 60000);
 
-    // Generate (360 -> 240, fps kept) stores the cache copy path.
     info->setResizeParameters(240, 0);
     info->beginResizeBatch(1);
     info->planResize(video);
@@ -213,8 +206,7 @@ void tst_WallpapersInfo::testVideoResize()
     QCOMPARE(QFileInfo(resized).fileName(), contentMd5(video) + QStringLiteral("_240p30.mp4"));
     QVERIFY(QFileInfo(resized).size() > 0);
 
-    // A re-plan with settings that need no filter clears the cache copy
-    // (the original is used).
+    // Re-plan needing no filter clears the stored copy (original used).
     info->setResizeParameters(1080, 0);
     info->beginResizeBatch(1);
     info->planResize(video);
@@ -259,8 +251,7 @@ void tst_WallpapersInfo::testEnsureResizedCopy()
     QSignalSpy started(info, &WallpapersInfo::resizeCopyStarted);
     QSignalSpy finished(info, &WallpapersInfo::resizeCopyFinished);
 
-    // No cached copy yet: the copy is generated, returned, and stored in
-    // the entry (blocking call, no batch involved).
+    // Blocking call, no batch: the copy is generated, returned, and stored in the entry.
     info->setResizeParameters(240, 0);
     const QString copy = info->ensureResizedCopy(video);
     QCOMPARE(QFileInfo(copy).fileName(), contentMd5(video) + QStringLiteral("_240p30.mp4"));
@@ -280,8 +271,7 @@ void tst_WallpapersInfo::testEnsureResizedCopy()
     QCOMPARE(finished.count(), 2);
     QCOMPARE(finished.at(1).at(1).toBool(), true);
 
-    // Settings that call for no filter return "" and clear the stored
-    // copy (the original is applied as-is), like the batch job.
+    // No-filter settings return "" and clear the stored copy, like the batch job.
     info->setResizeParameters(1080, 0);
     const QString none = info->ensureResizedCopy(video);
     QVERIFY(none.isEmpty());
@@ -292,7 +282,6 @@ void tst_WallpapersInfo::testEnsureResizedCopy()
 
 void tst_WallpapersInfo::testColorCategory()
 {
-    // D4: black/white/gray + 12 hue sectors with the plan's boundaries.
     const auto argb = [](const QString &hex) {
         return static_cast<quint32>(0xFF000000) | static_cast<quint32>(hex.mid(1).toUInt(nullptr, 16));
     };
@@ -366,9 +355,8 @@ void tst_WallpapersInfo::testMatugenUpToDate()
 
     const double mtime = QFileInfo(path).lastModified().toMSecsSinceEpoch() / 1000.0;
 
-    // Index where matugen already ran for this file and the palette came out
-    // empty: with a matching mtime the entry is up to date and must not be
-    // re-processed on the next refresh.
+    // matugen_done with a matching mtime (even with an empty stored palette):
+    // up to date, must not be re-processed on refresh.
     QJsonObject obj;
     obj[QStringLiteral("file")] = path;
     obj[QStringLiteral("type")] = QStringLiteral("image");
@@ -443,7 +431,6 @@ void tst_WallpapersInfo::testCategoryFilter()
     model.setCategoryFilter(QStringList());
     QCOMPARE(model.rowCount(), 2);
 
-    // The text filter still applies on top of the category filter.
     model.setFilterText(QStringLiteral("green"));
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.pathAt(0), greenPath);
@@ -462,9 +449,6 @@ void tst_WallpapersInfo::testSweep()
     writeFile(keptPath, QByteArray(100, 'k'));
     writeFile(videoPath, QByteArray(100, 'v'));
 
-    // Fixture index: a live image, a live video referencing its cached
-    // frame and resize copy, and a dead video. Stray frame and resize
-    // files sit in the cache dirs alongside the referenced ones.
     const QString liveFrame = cacheRoot() + QStringLiteral("/video_frames/live.png");
     const QString orphanFrame = cacheRoot() + QStringLiteral("/video_frames/orphan.png");
     const QString deadFrame = cacheRoot() + QStringLiteral("/video_frames/dead.png");
@@ -508,21 +492,17 @@ void tst_WallpapersInfo::testSweep()
     info->sweep();
     QCOMPARE(purged.count(), 1);
 
-    // The dead entry is gone from the index; the live entries survive with
-    // their cache references intact.
     QCOMPARE(info->entryFor(deadPath).lastModified, 0.0);
     QVERIFY(info->entryFor(keptPath).lastModified > 0);
     const WallpapersInfo::Entry live = info->entryFor(videoPath);
     QCOMPARE(live.firstFrame, liveFrame);
     QCOMPARE(live.resized, liveResize);
-    // The orphan frame and resize copy are deleted, as is the frame of the
-    // dead entry; the referenced frame and resize stay.
+    // Orphans and the dead entry's caches are deleted; referenced files stay.
     QVERIFY(!QFileInfo(orphanFrame).exists());
     QVERIFY(!QFileInfo(deadFrame).exists());
     QVERIFY(QFileInfo(liveFrame).exists());
     QVERIFY(!QFileInfo(orphanResize).exists());
     QVERIFY(QFileInfo(liveResize).exists());
-    // The JSON no longer lists the dead file.
     const QString json = cacheRoot() + QStringLiteral("/wallpapers_info.json");
     QFile file(json);
     QVERIFY(file.open(QIODevice::ReadOnly));
@@ -545,17 +525,15 @@ void tst_WallpapersInfo::testRecalculateCategories()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     const QString path = dir.path() + QStringLiteral("/solid.png");
-    writeImage(path, QColor(0, 0, 255)); // -> "blue"
+    writeImage(path, QColor(0, 0, 255));
 
     info->refreshFile(path, QStringLiteral("image"));
     QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path) == QStringList{QStringLiteral("blue")}, 30000);
 
-    // A manual override replaces the automatic categories...
     info->setCategories(path, QStringList{QStringLiteral("rose")});
     QCOMPARE(info->entryFor(path).categoriesManual, true);
     QCOMPARE(info->colorCategoriesFor(path), QStringList{QStringLiteral("rose")});
 
-    // ...and recalculateCategories restores the computed ones, clearing the flag.
     QSignalSpy changed(info, &WallpapersInfo::entryChanged);
     info->recalculateCategories(path);
     QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path) == QStringList{QStringLiteral("blue")}, 30000);
@@ -566,8 +544,7 @@ void tst_WallpapersInfo::testRecalculateCategories()
     info->recalculateCategories(QStringLiteral("/nonexistent/missing.png"));
     QCOMPARE(changed.count(), 1);
 
-    // The recalculated entry is up to date again: a rescan keeps the
-    // automatic categories without reprocessing.
+    // A recalculated entry is up to date: a rescan does not reprocess.
     QSignalSpy rescan(info, &WallpapersInfo::entryChanged);
     info->refreshFile(path, QStringLiteral("image"));
     QTRY_VERIFY_WITH_TIMEOUT(info->colorCategoriesFor(path) == QStringList{QStringLiteral("blue")}, 30000);
@@ -580,8 +557,7 @@ void tst_WallpapersInfo::testAutoCategoryCap()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     const QString path = dir.path() + QStringLiteral("/stripes.png");
-    // Eight solid stripes in eight different categories: the top-8 colors
-    // are all distinct, so the automatic categories hit the cap (5).
+    // Eight distinct stripe colors: auto categories hit the cap of 5.
     QImage image(80, 20, QImage::Format_RGB32);
     const QList<QColor> stripes = {
         QColor(200, 0, 0),
@@ -622,13 +598,11 @@ void tst_WallpapersInfo::testMergeTags()
     QCOMPARE(info->tagsFor(path), QStringList{QStringLiteral("landscape")});
     QCOMPARE(info->entryFor(path).tagsManual, true);
 
-    // Existing tags survive; duplicates are dropped case-insensitively and
-    // the existing order is kept.
+    // Duplicates dropped case-insensitively; existing order kept.
     info->mergeTags(path, {QStringLiteral("LANDSCAPE"), QStringLiteral("sunflower"), QStringLiteral("photo")});
     QCOMPARE(info->tagsFor(path),
              (QStringList{QStringLiteral("landscape"), QStringLiteral("sunflower"), QStringLiteral("photo")}));
 
-    // A second merge adds only what is new.
     info->mergeTags(path, {QStringLiteral("sunflower"), QStringLiteral("clouds")});
     QCOMPARE(info->tagsFor(path),
              (QStringList{QStringLiteral("landscape"), QStringLiteral("sunflower"),
@@ -653,7 +627,6 @@ void tst_WallpapersInfo::testClearAllResizes()
     writeFile(copy, QByteArray("resize"));
     writeFile(otherCopy, QByteArray("otherresize"));
 
-    // Two videos with cache copies plus an image without one.
     QJsonObject root;
     root[QStringLiteral("version")] = 2;
     root[QStringLiteral("files")] = QJsonArray{
@@ -686,10 +659,8 @@ void tst_WallpapersInfo::testClearAllResizes()
     QVERIFY(changedPaths.contains(video));
     QVERIFY(changedPaths.contains(other));
 
-    // The references are gone from memory and from the persisted index.
     QVERIFY(info->entryFor(video).resized.isEmpty());
     QVERIFY(info->entryFor(other).resized.isEmpty());
-    // The cache copies are deleted on disk.
     QVERIFY(!QFileInfo(copy).exists());
     QVERIFY(!QFileInfo(otherCopy).exists());
     QFile file(cacheRoot() + QStringLiteral("/wallpapers_info.json"));
@@ -729,7 +700,6 @@ void tst_WallpapersInfo::testClearAllTags()
     QCOMPARE(info->entryFor(clean).tagsManual, false);
     QCOMPARE(changed.count(), 2);
 
-    // Persisted: the cleared tags and manual flag are in the JSON.
     QFile file(cacheRoot() + QStringLiteral("/wallpapers_info.json"));
     QVERIFY(file.open(QIODevice::ReadOnly));
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
@@ -757,14 +727,12 @@ void tst_WallpapersInfo::testAnimatedProbe()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    // A still image is never an animation.
     const QString png = dir.path() + QStringLiteral("/still.png");
     writeImage(png, Qt::red);
     info->refreshFile(png, QStringLiteral("image"));
     QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(png).animated == 0, 30000);
     QVERIFY(!info->isAnimatedFor(png));
 
-    // A multi-frame GIF (ffmpeg's gif encoder) is a real animation.
     const QString gif = dir.path() + QStringLiteral("/anim.gif");
     QProcess process;
     process.start(QStringLiteral("ffmpeg"),
@@ -778,9 +746,8 @@ void tst_WallpapersInfo::testAnimatedProbe()
     QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(gif).animated == 1, 30000);
     QVERIFY(info->isAnimatedFor(gif));
 
-    // A single-frame GIF is detected as static even though its extension
-    // says otherwise (the gif handler's supportsAnimation() is only a
-    // format capability — this is why the probe uses imageCount()).
+    // Single-frame GIF reads as static: supportsAnimation() is a format capability,
+    // so the probe counts frames via imageCount().
     const QString stillGif = dir.path() + QStringLiteral("/still.gif");
     process.start(QStringLiteral("ffmpeg"),
                   {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-y"),
@@ -794,14 +761,8 @@ void tst_WallpapersInfo::testAnimatedProbe()
     QTRY_VERIFY_WITH_TIMEOUT(info->entryFor(stillGif).animated == 0, 30000);
     QVERIFY(!info->isAnimatedFor(stillGif));
 
-    // Animated and still WebP behave the same way (the WebP-heavy folders
-    // never pay the QMovie path unless the file really animates). Reading a
-    // WebP needs the WebP image-format plugin, which is not part of QtGui
-    // (Arch ships libqwebp.so in the separate qt6-imageformats package, listed
-    // in the app's dependencies): with no handler QImageReader cannot read the
-    // fixture at all, and the probe would answer "static" for a reason that
-    // has nothing to do with the probe. Report the available formats and run
-    // only the rest of the test in that case.
+    // WebP needs the separate qt6-imageformats plugin (libqwebp.so): with no handler
+    // QImageReader can't read the fixture and the probe would falsely answer "static".
     QStringList formats;
     for (const QByteArray &format : QImageReader::supportedImageFormats()) {
         formats << QString::fromLatin1(format);
@@ -819,9 +780,8 @@ void tst_WallpapersInfo::testAnimatedProbe()
                        webp});
         QVERIFY(process.waitForFinished(60000));
         QVERIFY2(process.exitCode() == 0, qPrintable(QString::fromUtf8(process.readAllStandardError())));
-        // The fixture itself must be a multi-frame WebP before the pipeline can
-        // be expected to see one (an ffmpeg build without libwebp animation
-        // support writes a still and exits 0).
+        // ffmpeg without libwebp animation support writes a still and exits 0:
+        // check the fixture itself is multi-frame first.
         QImageReader fixture(webp);
         QVERIFY2(fixture.imageCount() > 1,
                  qPrintable(QStringLiteral("ffmpeg wrote a %1-frame WebP; this ffmpeg cannot animate WebP")
@@ -844,14 +804,12 @@ void tst_WallpapersInfo::testAnimatedProbe()
         QVERIFY(!info->isAnimatedFor(stillWebp));
     }
 
-    // The flag survives the JSON round-trip.
     WallpapersInfo::initialize(QCoreApplication::instance());
     QCOMPARE(WallpapersInfo::instance()->entryFor(gif).animated, 1);
     QCOMPARE(WallpapersInfo::instance()->entryFor(stillGif).animated, 0);
 
-    // An entry from an older index (no "animated" key): unknown on load, so
-    // isAnimatedFor falls back to the extension rule; the next refresh (the
-    // entry is up to date) fills just the probe without a full reprocess.
+    // Older index without "animated": loads as -1, isAnimatedFor falls back to the
+    // extension rule; refreshing an up-to-date entry probes just the flag.
     const QString json = cacheRoot() + QStringLiteral("/wallpapers_info.json");
     {
         QFile file(json);
@@ -870,19 +828,16 @@ void tst_WallpapersInfo::testAnimatedProbe()
     }
     WallpapersInfo::initialize(QCoreApplication::instance());
     QCOMPARE(WallpapersInfo::instance()->entryFor(gif).animated, -1);
-    // Extension fallback while unprobed: gif is a maybe, png is not.
     QVERIFY(WallpapersInfo::instance()->isAnimatedFor(gif));
     WallpapersInfo::instance()->refreshFile(gif, QStringLiteral("image"));
     QTRY_VERIFY_WITH_TIMEOUT(WallpapersInfo::instance()->entryFor(gif).animated == 1, 30000);
-    // Unknown paths keep the extension rule.
     QVERIFY(WallpapersInfo::instance()->isAnimatedFor(QStringLiteral("/nowhere/movie.gif")));
     QVERIFY(!WallpapersInfo::instance()->isAnimatedFor(QStringLiteral("/nowhere/still.png")));
 }
 
 int main(int argc, char *argv[])
 {
-    // Sandboxed XDG locations: set before the QCoreApplication is constructed so
-    // QStandardPaths never touches the real home directory.
+    // Sandboxed XDG locations, set before the app: QStandardPaths never touches real home.
     const QString base = QDir::tempPath() + QStringLiteral("/kwal-test-wallpapersinfo-")
         + QString::number(QCoreApplication::applicationPid());
     qputenv("HOME", base.toUtf8());

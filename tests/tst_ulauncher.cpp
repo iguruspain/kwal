@@ -33,8 +33,7 @@ QString readFile(const QString &path)
     return QString::fromUtf8(file.readAll());
 }
 
-// A minimal valid Ulauncher theme: theme.css colors plus manifest highlight
-// colors, mirroring the bundled theme_template.
+// A minimal valid Ulauncher theme: both theme.css and manifest.json are required.
 void writeTheme(const QString &dir)
 {
     QDir(dir).mkpath(QStringLiteral("."));
@@ -50,9 +49,8 @@ void writeTheme(const QString &dir)
                              "\"when_not_selected\": \"#5a6a7a\"}}"));
 }
 
-// Same theme with a unique manifest name (the active-theme marker in
-// settings.json stores the name, so resolution needs it not to collide with
-// the themes other tests leave behind) and a distinct input color.
+// Same theme with a unique manifest name (the active-theme marker in settings.json
+// stores the name; it must not collide with themes other tests leave behind).
 void writeNamedTheme(const QString &dir, const QString &name, const QString &accent)
 {
     QDir(dir).mkpath(QStringLiteral("."));
@@ -69,7 +67,6 @@ void writeNamedTheme(const QString &dir, const QString &name, const QString &acc
 }
 } // namespace
 
-// Index of the theme entry whose path matches, or -1.
 int indexOfPath(const UlauncherController &controller, const QString &path)
 {
     const auto entries = controller.themeEntries();
@@ -170,7 +167,6 @@ void tst_Ulauncher::testListThemeDirs()
 {
     QTemporaryDir tmp;
     QVERIFY(tmp.isValid());
-    // Only sub-directories with a manifest.json are listed, sorted by name.
     writeTheme(tmp.path() + QStringLiteral("/b"));
     writeTheme(tmp.path() + QStringLiteral("/a"));
     QDir(tmp.path()).mkpath(QStringLiteral("/empty"));
@@ -213,7 +209,6 @@ void tst_Ulauncher::testPreviewResolvesReferences()
     QVERIFY(tmp.isValid());
     const QString dir = tmp.path();
     writeTheme(dir);
-    // window_bg references bg_color; the preview must resolve the reference.
 
     const QString html = tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString());
     QVERIFY(html.contains(QStringLiteral("#1a2b3c")));
@@ -225,7 +220,6 @@ void tst_Ulauncher::testStripCssComments()
         "@define-color a #111111;\n"
         "/* @define-color a #222222; */\n"
         ".foo { color: @a; }\n");
-    // Commented-out declarations must not be parsed.
     const auto colors = tools::extractCssColors(css);
     QCOMPARE(colors.size(), 1);
     QCOMPARE(colors.value("a"), QStringLiteral("#111111"));
@@ -248,9 +242,6 @@ void tst_Ulauncher::testPreviewInjectsThemeCss()
     writeFile(dir + QStringLiteral("/manifest.json"), QStringLiteral("{}"));
 
     const QString html = tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString());
-    // The real theme CSS is injected: the selected-row gradient survives,
-    // the translucent window background (rgba) passes through, and the
-    // window shadow is drawn over a transparent page background.
     QVERIFY(html.contains(QStringLiteral("linear-gradient")));
     QVERIFY(html.contains(QStringLiteral("rgba(1, 2, 3, 0.5)")));
     QVERIFY(html.contains(QStringLiteral("background:transparent")));
@@ -260,10 +251,8 @@ void tst_Ulauncher::testPreviewInjectsThemeCss()
 
 void tst_Ulauncher::testPreviewThemeCssCannotEscapeStyle()
 {
-    // A hostile third-party theme (user-themes are downloaded from the
-    // community and previewed automatically) must not be able to close
-    // the mockup document's <style> element: the page runs with file://
-    // access, so markup in the CSS would read local files.
+    // Hostile third-party themes (downloaded, previewed automatically) must not close
+    // the <style> element: the page runs with file:// access, markup could read local files.
     QTemporaryDir tmp;
     QVERIFY(tmp.isValid());
     const QString dir = tmp.path();
@@ -274,11 +263,9 @@ void tst_Ulauncher::testPreviewThemeCssCannotEscapeStyle()
     writeFile(dir + QStringLiteral("/manifest.json"), QStringLiteral("{}"));
 
     const QString html = tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString());
-    // Exactly the template's own style element remains, and no script.
     QCOMPARE(html.count(QStringLiteral("</style>")), 1);
     QVERIFY(!html.contains(QStringLiteral("<script")));
-    // The legitimate styling survives: values and rules are intact,
-    // only `<` is stripped.
+    // Legitimate styling survives; only `<` is stripped.
     QVERIFY(html.contains(QStringLiteral("rgba(1, 2, 3, 0.5)")));
     QVERIFY(html.contains(QStringLiteral("background-color: red")));
 }
@@ -299,19 +286,16 @@ void tst_Ulauncher::testPreviewRows()
     const QString html =
         tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString(), rows,
                                     QStringLiteral("sptf"));
-    // Fuzzy-match highlighting, per selection state, of the typed query's
-    // characters inside each name.
+    // Fuzzy-match highlight spans, per selection state, inside each name.
     QVERIFY(html.contains(QStringLiteral(
         "<span class=\"hl-s\">S</span><span class=\"hl-s\">p</span>o"
         "<span class=\"hl-s\">t</span>i<span class=\"hl-s\">f</span>y")));
     QVERIFY(html.contains(QStringLiteral(
         "<span class=\"hl-n\">S</span><span class=\"hl-n\">p</span>ec"
         "<span class=\"hl-n\">t</span>acle")));
-    // The input shows the typed query; shortcuts are rendered.
     QVERIFY(html.contains(QStringLiteral(">sptf<span class=\"caret\">")));
     QVERIFY(html.contains(QStringLiteral(">Alt+1<")));
     QVERIFY(html.contains(QStringLiteral(">Alt+2<")));
-    // Unknown icons fall back to the placeholder.
     QVERIFY(html.contains(QStringLiteral("item-icon-svg")));
 }
 
@@ -322,7 +306,6 @@ void tst_Ulauncher::testPreviewIconFilePath()
     const QString dir = tmp.path();
     writeTheme(dir);
 
-    // An existing file path is used verbatim as the icon source.
     const QString iconPath = dir + QStringLiteral("/icon.png");
     {
         QFile f(iconPath);
@@ -338,8 +321,7 @@ void tst_Ulauncher::testPreviewIconFilePath()
     QVERIFY(html.contains(QStringLiteral("<img class=\"item-icon\" src=\"")
                           + QUrl::fromLocalFile(iconPath).toString(QUrl::FullyEncoded)
                           + QStringLiteral("\">")));
-    // No placeholder markup for the resolved icon (the class name itself
-    // still appears in the CSS rules).
+    // Placeholder check is markup-scoped: the class name also occurs in CSS rules.
     QVERIFY(!html.contains(QStringLiteral("<svg class=\"item-icon-svg\"")));
 }
 
@@ -348,8 +330,6 @@ void tst_Ulauncher::testPreviewEmptyUsesDefaults()
     const QString html = tools::ulauncherPreviewHtml(QString(), {}, 0.75, 0, QString(), QString());
     QVERIFY(html.contains(QStringLiteral("<!DOCTYPE html>")));
     QVERIFY(html.contains(QStringLiteral("#2b2b2b"))); // default window background
-    // The built-in sample: firefox/filelight rows and the "fir" query, with
-    // the matched characters wrapped in highlight spans.
     QVERIFY(html.contains(QStringLiteral(
         "<span class=\"hl-s\">F</span><span class=\"hl-s\">i</span>"
         "<span class=\"hl-s\">r</span>efox")));
@@ -406,10 +386,9 @@ void tst_Ulauncher::testCreateAndDeleteTheme()
     QVERIFY(readFile(newPath + QStringLiteral("/manifest.json"))
                 .contains(QStringLiteral("\"name\": \"Copy\"")));
 
-    // Duplicate names are rejected.
+    // The active theme cannot be deleted.
     QVERIFY(tools::createTheme(source, QStringLiteral("Copy")).isEmpty());
 
-    // The active theme cannot be deleted.
     QVERIFY(!tools::deleteTheme(newPath, newPath));
     QVERIFY(tools::deleteTheme(newPath, source));
     QVERIFY(!QDir(newPath).exists());
@@ -429,7 +408,6 @@ void tst_Ulauncher::testSetActiveAndResolveTheme()
     QVERIFY(error.isEmpty());
     QCOMPARE(tools::resolveActiveThemePath(), themeDir);
 
-    // Clean up shared state for the following tests.
     QDir(themeDir).removeRecursively();
     QFile::remove(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
                   + QStringLiteral("/ulauncher/settings.json"));
@@ -462,7 +440,7 @@ void tst_Ulauncher::testControllerLoadsSections()
     QCOMPARE(theme.value(QStringLiteral("title")).toString(),
              QStringLiteral("Theme Colors"));
     const auto themeRows = theme.value(QStringLiteral("colors")).toList();
-    QCOMPARE(themeRows.size(), 3); // bg_color, window_bg, input_color
+    QCOMPARE(themeRows.size(), 3);
     QCOMPARE(themeRows.at(0).toMap().value(QStringLiteral("key")).toString(),
              QStringLiteral("bg_color"));
     // window_bg references bg_color; the swatch shows the resolved value.
@@ -475,8 +453,7 @@ void tst_Ulauncher::testControllerLoadsSections()
 
 void tst_Ulauncher::testControllerThemeEntries()
 {
-    // Templates from the installed template dir, user themes from the
-    // Ulauncher config location; both are sandboxed via XDG_CONFIG_HOME.
+    // Template dir and user-theme dir are both sandboxed via XDG_CONFIG_HOME.
     const QString templateTheme =
         tools::templateDir() + QStringLiteral("/ulauncher/Maugen");
     writeTheme(templateTheme);
@@ -559,7 +536,6 @@ void tst_Ulauncher::testControllerWindowWidth()
     controller.setPreviewWindowWidth(800);
     QCOMPARE(controller.previewWindowWidth(), 800);
     QVERIFY(controller.previewHtml().contains(QStringLiteral("width:800px")));
-    // Out-of-range values are clamped.
     controller.setPreviewWindowWidth(100);
     QCOMPARE(controller.previewWindowWidth(), 400);
     QVERIFY(controller.previewHtml().contains(QStringLiteral("width:400px")));
@@ -576,7 +552,6 @@ void tst_Ulauncher::testControllerPreviewSettings()
     KConfig config(file, KConfig::SimpleConfig);
     UlauncherController controller(config.group(QStringLiteral("Ulauncher")));
 
-    // Fresh config: the preview settings fall back to the built-in defaults.
     QCOMPARE(controller.previewWindowWidth(), 900);
     QCOMPARE(controller.previewQuery(), QStringLiteral("fir"));
     QCOMPARE(controller.sampleRows().size(), 2);
@@ -593,16 +568,13 @@ void tst_Ulauncher::testControllerPreviewSettings()
     controller.removeSampleRow(2);
     QCOMPARE(controller.sampleRows().size(), 2);
 
-    // The preview reflects the typed query and the edited row. The name
-    // "Vim" is fully fuzzy-matched by "vim", so it renders as highlighted
-    // characters, not a plain word.
+    // "Vim" fully fuzzy-matched by "vim": every character is a highlight span.
     QVERIFY(controller.previewHtml().contains(QStringLiteral(">vim<span class=\"caret\">")));
     QVERIFY(controller.previewHtml().contains(
         QStringLiteral("<span class=\"hl-s\">V</span><span class=\"hl-s\">i</span>"
                        "<span class=\"hl-s\">m</span>")));
     QVERIFY(controller.previewHtml().contains(QStringLiteral("F1")));
 
-    // The edits are persisted and survive a reload.
     UlauncherController reloaded(config.group(QStringLiteral("Ulauncher")));
     QCOMPARE(reloaded.previewWindowWidth(), 1050);
     QCOMPARE(reloaded.previewQuery(), QStringLiteral("vim"));
@@ -697,8 +669,7 @@ void tst_Ulauncher::testControllerApplyToUlauncher()
 // rewriting a theme (or Ulauncher switching themes itself) stayed invisible.
 void tst_Ulauncher::testControllerRefreshIfChanged()
 {
-    // Other tests leave themes behind in the sandboxed dirs, so every lookup
-    // here goes by path instead of by list index.
+    // Other tests leave themes in the sandboxed dirs: lookups go by path, not index.
     const QString applied = tools::userThemesDir() + QStringLiteral("/Refreshed");
     const QString other = tools::userThemesDir() + QStringLiteral("/RefreshOther");
     writeNamedTheme(applied, QStringLiteral("Refreshed"), QStringLiteral("#ff8800"));
@@ -717,8 +688,7 @@ void tst_Ulauncher::testControllerRefreshIfChanged()
     controller.refreshIfChanged();
     QVERIFY(controller.previewHtml().contains(QStringLiteral("#00ff00")));
 
-    // The applied theme was rewritten: its draft described a file that is
-    // gone, so the colors on screen follow the new content.
+    // The applied theme was rewritten: the stale draft gives way to the new content.
     writeFile(applied + QStringLiteral("/theme.css"),
               QStringLiteral("@define-color bg_color #1a2b3c;\n"
                              "@define-color window_bg @bg_color;\n"
@@ -727,9 +697,8 @@ void tst_Ulauncher::testControllerRefreshIfChanged()
     QVERIFY(controller.previewHtml().contains(QStringLiteral("#123456")));
     QVERIFY(!controller.previewHtml().contains(QStringLiteral("#00ff00")));
 
-    // Ulauncher switched to another theme (settings.json): the list and the
-    // applied preview follow, while the theme being drafted keeps its unsaved
-    // colors.
+    // Ulauncher switched themes (settings.json): list and applied preview follow;
+    // the theme being drafted keeps its unsaved colors.
     QVERIFY(tools::setActiveThemePath(other).isEmpty());
     controller.setColorValue(QStringLiteral("input_color"), QStringLiteral("#00ff00"));
     controller.refreshIfChanged();
@@ -748,8 +717,7 @@ void tst_Ulauncher::testControllerRefreshIfChanged()
 
 int main(int argc, char *argv[])
 {
-    // Sandbox user dirs so resolveActiveThemePath / QStandardPaths never touch
-    // the real home directory.
+    // Sandboxed user dirs: QStandardPaths never touch the real home directory.
     const QString base = QDir::tempPath() + QStringLiteral("/kwal-tst-ulauncher-") +
                          QString::number(QCoreApplication::applicationPid());
     qputenv("HOME", base.toUtf8());

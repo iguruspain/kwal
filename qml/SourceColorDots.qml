@@ -4,11 +4,7 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// The matugen source-color dots overlaid at the bottom-left of a wallpaper's
-// media — used by both the grid's selected cell and the detail drawer. The
-// selected dot feeds the %scolor%/%sc% placeholders of the custom commands.
-// The caller sets placement (anchors) and `visible` (the grid additionally
-// gates on selection); only `dotSize` differs between the two surfaces.
+// Shared by the grid's selected cell and the detail drawer; the selected dot feeds the %scolor%/%sc% placeholders.
 Rectangle {
     id: root
 
@@ -36,8 +32,7 @@ Rectangle {
                 dotSize: root.dotSize
                 color: sourceDot.modelData
                 selected: root.app.selectedSourceColorIndex === sourceDot.index
-                // Mouse-operated only: the dots stay out of the Tab chain so
-                // it never walks them and the keyboard stays with the grid.
+                // Not tab stops: the keyboard stays with the grid.
                 activeFocusOnTab: false
                 onClicked: root.app.selectedSourceColorIndex = sourceDot.index
             }

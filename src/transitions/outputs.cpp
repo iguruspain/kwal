@@ -96,19 +96,14 @@ struct OutputInfo {
 
 struct OutputCollect {
     struct zxdg_output_manager_v1 *manager = nullptr;
-    // Bound wl_output proxies, in announcement order (one per infos entry).
+    // Bound proxies in announcement order, one per infos entry.
     std::vector<wl_output *> outputs;
-    // Deque: wayland listener `user_data` points at an element, and the
-    // addresses must stay stable across emplace_back (a vector would
-    // reallocate, leaving earlier listeners with a dangling pointer).
+    // Deque: listener `user_data` points into it; vector reallocation would dangle.
     std::deque<OutputInfo> infos;
 };
 
-// The C client stores the raw listener-array pointer in the proxy (no
-// copy), so every struct registered below must outlive the proxies it
-// binds: those stay alive on the display until disconnect, far past this
-// function's stack frame. Stack locals here dangle (SIGSEGV in the libffi
-// dispatch once the compositor reuses the freed frame).
+// The C client stores the listener-array pointer without copying, so these structs
+// must outlive the proxies (stack locals dangle: SIGSEGV on dispatch after return).
 const struct wl_output_listener kOutputListener = {
     +[](void *userData, struct wl_output *, int32_t x, int32_t y, int32_t, int32_t,
         int32_t, const char *, const char *, int32_t) {
@@ -119,8 +114,7 @@ const struct wl_output_listener kOutputListener = {
     },
     +[](void *userData, struct wl_output *, uint32_t flags, int32_t width, int32_t height,
         int32_t) {
-        // Pixel size comes from the current mode (geometry
-        // only has physical mm dimensions).
+        // Pixel size from the current mode (geometry is physical mm).
         if (flags & WL_OUTPUT_MODE_CURRENT) {
             auto *info = static_cast<OutputInfo *>(userData);
             info->width = std::max(width, 1);
@@ -144,7 +138,6 @@ const struct wl_output_listener kOutputListener = {
     },
 };
 
-// wayland-scanner generates raw-parameter listeners (no event structs).
 const struct zxdg_output_v1_listener kXdgOutputListener = {
     +[](void *data, struct zxdg_output_v1 *, int32_t x, int32_t y) {
         auto *info = static_cast<OutputInfo *>(data);
@@ -185,9 +178,7 @@ std::vector<Output> listOutputs(struct wl_display *display)
     wl_registry_add_listener(registry, &kRegistryListener, &collect);
     wl_display_roundtrip(display);
 
-    // Ask xdg-output (when offered) for each output's *logical* position;
-    // `wl_output.geometry` is not reliable for that (wlroots always reports
-    // 0,0). The roundtrip delivers its events.
+    // xdg-output gives the logical position (wl_output.geometry: wlroots reports 0,0).
     if (collect.manager) {
         for (size_t i = 0; i < collect.outputs.size(); ++i) {
             zxdg_output_v1 *zo =
@@ -197,11 +188,8 @@ std::vector<Output> listOutputs(struct wl_display *display)
         wl_display_roundtrip(display);
     }
 
-    // Process events until every wl_output reports done (capped so we
-    // cannot hang if an output never completes). wl_display_flush returns
-    // the number of bytes it sent (0 when nothing was pending), so only
-    // < 0 is an error — the bind requests queued during the registry
-    // round-trip are exactly that pending data here.
+    // Poll until every wl_output is done, capped against one that never completes.
+    // wl_display_flush returns bytes sent, not status: only < 0 is an error.
     for (int i = 0; i < 100; ++i) {
         if (wl_display_flush(display) < 0) {
             break;
@@ -221,9 +209,8 @@ std::vector<Output> listOutputs(struct wl_display *display)
     std::vector<Output> mons;
     mons.reserve(collect.infos.size());
     for (const auto &info : collect.infos) {
-        // An output without a current mode (a connected but inactive
-        // monitor) has no Plasma screen and cannot hold a plane: keeping
-        // it would skew the id matching in assignPlasmaIds.
+        // No current mode (inactive monitor) → no Plasma screen; keeping it
+        // would skew the id matching in assignPlasmaIds.
         if (info.width <= 0 || info.height <= 0) {
             qWarning("transition: skipping output %s with no current mode",
                      info.name.toUtf8().constData());

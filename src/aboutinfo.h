@@ -6,10 +6,7 @@
 #include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
-// About data for the settings window's About page (Kirigami.AboutPage).
-// Loaded once at startup from the bundled aboutdata.json (the typical KDE
-// layout): edit that file to change the name, version, description,
-// homepage, license, copyright and authors.
+// About page data, loaded once from the bundled aboutdata.json; edit that file to change it.
 class AboutInfo : public QObject
 {
     Q_OBJECT
@@ -17,11 +14,9 @@ class AboutInfo : public QObject
     QML_SINGLETON
     QML_UNCREATABLE("Provided by C++")
 public:
-    // Creates (or replaces) the singleton.
     static void initialize(QObject *parent);
     static AboutInfo *instance();
-    // The KAboutData-shaped object consumed by Kirigami.AboutPage::aboutData
-    // (QML auto-converts the map and its nested lists/maps to JS values).
+    // KAboutData-shaped map for Kirigami.AboutPage::aboutData.
     Q_INVOKABLE QVariantMap aboutData() const;
 
 private:

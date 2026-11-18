@@ -6,16 +6,12 @@
 #include <filesystem>
 #include <system_error>
 
-// Plain file helpers shared by the tool integrations (fastfetch, starship,
-// ulauncher): atomic writes and .bak backups next to the original file.
+// Atomic writes and .bak backups next to the original file.
 namespace tools
 {
 
-// Replaces target with source atomically via POSIX rename(2): on the same
-// filesystem the target is swapped in a single step, so a crash between a
-// remove and the rename can never leave the destination missing (unlike
-// QFile::rename, which refuses to replace an existing target). source and
-// target must live on the same filesystem. Returns false on failure.
+// rename(2) is a single-step swap but needs source and target on the same
+// filesystem; QFile::rename refuses to replace an existing target.
 inline bool renameAtomic(const QString &source, const QString &target)
 {
     std::error_code ec;
@@ -23,27 +19,20 @@ inline bool renameAtomic(const QString &source, const QString &target)
     return !ec;
 }
 
-// Writes content to path atomically (temp file in the same directory, then
-// rename). Returns false on failure.
+// Writes via temp file in the same directory + rename (rename needs a same-fs target).
 bool writeFileAtomic(const QString &path, const QString &content);
 
-// Creates path.bak as a copy of the current path, refreshing it on every
-// call so the backup always holds the state right before the next
-// modification. Returns the backup path on success, or an empty string
-// when path does not exist or the copy failed.
+// Refreshes path.bak so it always holds the state right before the modification;
+// empty string when path is missing or the copy failed.
 QString backupFile(const QString &path);
 
-// Whether a .bak backup for path exists.
 bool hasBackup(const QString &path);
 
-// Copies path.bak back over path. Returns false when there is no backup.
 bool restoreBackup(const QString &path);
 
-// SHA-1 fingerprint over the contents of the given files (a missing file
-// contributes a marker, so a created/deleted file changes it too). Lets a
-// controller ask whether the on-disk state it last read still stands — an
-// external tool (matugen, an editor) rewriting a config changes the value,
-// while the controller's own writes are covered by re-arming after them.
+// SHA-1 over the given files' contents; missing files hash a marker so
+// creation/deletion counts too. External rewrites change the value; the
+// caller re-arms after its own writes.
 QString contentFingerprint(const QStringList &paths);
 
 }

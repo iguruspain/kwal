@@ -65,7 +65,6 @@ ThemeData parseTheme(const QString &themePath)
     if (!dir.exists())
         return data;
 
-    // Read manifest.json
     QFile manifestFile(dir.filePath(QStringLiteral("manifest.json")));
     if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         data.manifestJson = QString::fromUtf8(manifestFile.readAll());
@@ -75,7 +74,6 @@ ThemeData parseTheme(const QString &themePath)
         QJsonDocument doc = QJsonDocument::fromJson(data.manifestJson.toUtf8(), &error);
         if (!error.error && doc.isObject()) {
             QJsonObject obj = doc.object();
-            // Extract color-related keys from manifest
             auto extractColors = [&](const QJsonValue &val, const QString &prefix) {
                 if (val.isObject()) {
                     QJsonObject colorObj = val.toObject();
@@ -85,21 +83,17 @@ ThemeData parseTheme(const QString &themePath)
                 }
             };
 
-            // Root level colors
             if (obj.contains(QStringLiteral("when_selected")))
                 data.manifestColors[QStringLiteral("when_selected")] = obj[QStringLiteral("when_selected")].toString();
             if (obj.contains(QStringLiteral("when_not_selected")))
                 data.manifestColors[QStringLiteral("when_not_selected")] = obj[QStringLiteral("when_not_selected")].toString();
 
-            // colors object
             extractColors(obj[QStringLiteral("colors")], QStringLiteral("colors_"));
 
-            // matched_text_hl_colors object
             extractColors(obj[QStringLiteral("matched_text_hl_colors")], QStringLiteral("matched_text_hl_colors_"));
         }
     }
 
-    // Read theme.css
     QFile cssFile(dir.filePath(QStringLiteral("theme.css")));
     if (cssFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         data.cssContent = QString::fromUtf8(cssFile.readAll());
@@ -114,7 +108,6 @@ ThemeData parseTheme(const QString &themePath)
 ColorMap extractCssColors(const QString &cssContent)
 {
     ColorMap colors;
-    // Match @define-color name value;
     QRegularExpression re(QStringLiteral("@define-color\\s+([\\w-]+)\\s+([^;]+);"));
     QRegularExpressionMatchIterator it = re.globalMatch(stripCssComments(cssContent));
     while (it.hasNext()) {
@@ -159,12 +152,10 @@ ColorMap parseManifestColors(const QString &manifestJson)
 QString replaceCssColors(const QString &cssContent, const ColorMap &newColors)
 {
     QString result = cssContent;
-    // Replace each @define-color entry
     for (auto it = newColors.constBegin(); it != newColors.constEnd(); ++it) {
         const QString &name = it.key();
         const QString &value = it.value();
 
-        // Escape for regex
         QString escapedName = QRegularExpression::escape(name);
         QRegularExpression re(QStringLiteral("@define-color\\s+") + escapedName + QStringLiteral("\\s+[^;]+;"));
         result.replace(re, QStringLiteral("@define-color %1 %2;").arg(name, value));
@@ -181,13 +172,11 @@ QString updateManifestColors(const QString &manifestJson, const ColorMap &newCol
 
     QJsonObject obj = doc.object();
 
-    // Root level
     if (newColors.contains(QStringLiteral("when_selected")))
         obj[QStringLiteral("when_selected")] = newColors[QStringLiteral("when_selected")];
     if (newColors.contains(QStringLiteral("when_not_selected")))
         obj[QStringLiteral("when_not_selected")] = newColors[QStringLiteral("when_not_selected")];
 
-    // colors object
     QJsonObject colorsObj;
     if (obj.contains(QStringLiteral("colors")) && obj[QStringLiteral("colors")].isObject())
         colorsObj = obj[QStringLiteral("colors")].toObject();
@@ -200,7 +189,6 @@ QString updateManifestColors(const QString &manifestJson, const ColorMap &newCol
     if (!colorsObj.isEmpty())
         obj[QStringLiteral("colors")] = colorsObj;
 
-    // matched_text_hl_colors object
     QJsonObject hlColorsObj;
     if (obj.contains(QStringLiteral("matched_text_hl_colors")) && obj[QStringLiteral("matched_text_hl_colors")].isObject())
         hlColorsObj = obj[QStringLiteral("matched_text_hl_colors")].toObject();
@@ -222,7 +210,6 @@ QString applyTheme(const QString &themePath, const ColorMap &manifestColors, con
     if (!dir.exists())
         return QStringLiteral("Theme directory does not exist: %1").arg(themePath);
 
-    // Read original files
     QString manifestPath = dir.filePath(QStringLiteral("manifest.json"));
     QString cssPath = dir.filePath(QStringLiteral("theme.css"));
 
@@ -238,21 +225,17 @@ QString applyTheme(const QString &themePath, const ColorMap &manifestColors, con
         cssFile.close();
     }
 
-    // Back up the current files before overwriting them
     backupFile(manifestPath);
     backupFile(cssPath);
 
-    // Update manifest
     QString newManifest = updateManifestColors(originalManifest, manifestColors);
     if (newManifest.isEmpty())
         return QStringLiteral("Failed to update manifest.json");
 
-    // Update CSS
     QString newCss = replaceCssColors(originalCss, themeColors);
     if (newCss.isEmpty())
         return QStringLiteral("Failed to update theme.css");
 
-    // Write atomically
     if (!writeFileAtomic(manifestPath, newManifest))
         return QStringLiteral("Failed to write manifest.json");
 
@@ -297,7 +280,6 @@ QString createTheme(const QString &sourcePath, const QString &newName)
     if (!QDir().mkpath(destPath))
         return QString();
 
-    // Copy all files except .bak
     QStringList files = srcDir.entryList(QDir::Files | QDir::NoDotAndDotDot);
     for (const QString &file : files) {
         if (file.endsWith(QStringLiteral(".bak")))
@@ -305,7 +287,6 @@ QString createTheme(const QString &sourcePath, const QString &newName)
         QFile::copy(srcDir.filePath(file), destDir.filePath(file));
     }
 
-    // Update manifest.json name and display_name
     QString manifestPath = destDir.filePath(QStringLiteral("manifest.json"));
     QFile mf(manifestPath);
     if (mf.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -324,7 +305,7 @@ QString createTheme(const QString &sourcePath, const QString &newName)
         }
     }
 
-    // If manifest update failed, clean up
+    // Roll back: a copy still naming the source theme would collide in lookups.
     QDir(destPath).removeRecursively();
     return QString();
 }
@@ -335,13 +316,11 @@ bool deleteTheme(const QString &themePath, const QString &activeThemePath)
     if (!dir.exists())
         return false;
 
-    // Safety: cannot delete active theme
     QFileInfo themeInfo(themePath);
     QFileInfo activeInfo(activeThemePath);
     if (activeInfo.exists() && themeInfo.absoluteFilePath() == activeInfo.absoluteFilePath())
         return false;
 
-    // Safety: cannot delete templates (must be under user-themes)
     QString userThemes = userThemesDir();
     QFileInfo userThemesInfo(userThemes);
     if (userThemesInfo.exists() && !themeInfo.absoluteFilePath().startsWith(userThemesInfo.absoluteFilePath() + QLatin1Char('/')))
@@ -350,8 +329,7 @@ bool deleteTheme(const QString &themePath, const QString &activeThemePath)
     return dir.removeRecursively();
 }
 
-// Find the theme directory under root whose manifest name or directory
-// name matches themeName. Manifest names win over directory names.
+// Manifest names win over directory names.
 static QString findThemeInRoot(const QString &root, const QString &themeName)
 {
     QDir dir(root);
@@ -399,7 +377,7 @@ QString resolveActiveThemePath()
     if (themeName.isEmpty())
         return QString();
 
-    // Search in user themes first, then in system locations.
+    // User themes first: they shadow system themes.
     const QStringList roots = {
         userThemesDir(),
         QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/ulauncher/themes"),
@@ -419,7 +397,6 @@ QString setActiveThemePath(const QString &themePath)
     if (!QFileInfo(themePath).isDir())
         return QStringLiteral("Theme directory does not exist: %1").arg(themePath);
 
-    // Prefer the manifest name; fall back to the directory name.
     QString themeName = QFileInfo(themePath).fileName();
     QFile manifestFile(QDir(themePath).filePath(QStringLiteral("manifest.json")));
     if (manifestFile.open(QIODevice::ReadOnly | QIODevice::Text)) {

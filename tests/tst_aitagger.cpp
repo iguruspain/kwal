@@ -115,7 +115,6 @@ void tst_AiTagger::testParseModels()
     const QStringList legacyModels{QStringLiteral("m1"), QStringLiteral("m2")};
     QCOMPARE(aitagger::parseModels(QJsonDocument::fromJson(legacy.toUtf8())), legacyModels);
 
-    // No models -> empty (the caller raises the error).
     const QString none = R"({"data": [{"id": "t", "architecture": {"input_modalities": ["text"]}}]})";
     QVERIFY(aitagger::parseModels(QJsonDocument::fromJson(none.toUtf8())).isEmpty());
 }
@@ -125,15 +124,13 @@ void tst_AiTagger::testResizedJpeg()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
 
-    // Large image -> resized, aspect kept, JPEG bytes.
     QImage large(2000, 1500, QImage::Format_RGB32);
     large.fill(Qt::red);
     const QString largePath = dir.filePath(QStringLiteral("large.png"));
     QVERIFY(large.save(largePath));
     const QByteArray largeJpeg = aitagger::resizedJpeg(largePath, 1024, 85);
     QVERIFY(!largeJpeg.isEmpty());
-    // Decode through a file: this Qt build cannot sniff image formats from
-    // raw byte data (the app only ever decodes from disk).
+    // Decode from a file: this Qt build cannot sniff image formats from raw bytes.
     const QString largeJpegPath = dir.filePath(QStringLiteral("large.jpg"));
     QFile largeJpegFile(largeJpegPath);
     QVERIFY(largeJpegFile.open(QIODevice::WriteOnly));
@@ -145,7 +142,6 @@ void tst_AiTagger::testResizedJpeg()
     QCOMPARE(decoded.width(), 1024);
     QCOMPARE(decoded.height(), 768);
 
-    // Small image -> not upscaled.
     QImage small(100, 50, QImage::Format_RGB32);
     small.fill(Qt::blue);
     const QString smallPath = dir.filePath(QStringLiteral("small.png"));
@@ -161,7 +157,6 @@ void tst_AiTagger::testResizedJpeg()
     QCOMPARE(smallDecoded.width(), 100);
     QCOMPARE(smallDecoded.height(), 50);
 
-    // Missing file -> empty.
     QVERIFY(aitagger::resizedJpeg(dir.filePath(QStringLiteral("missing.png")), 1024, 85).isEmpty());
 }
 

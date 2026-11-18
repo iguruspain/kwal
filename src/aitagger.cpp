@@ -119,8 +119,7 @@ QStringList parseModels(const QJsonDocument &doc)
             }
         }
         if (input.isEmpty()) {
-            // The server does not report modalities; the model might still
-            // be vision-capable, so keep it.
+            // No modalities reported: keep, it might still be vision-capable.
             ids.append(model.value(QStringLiteral("id")).toString());
             continue;
         }
@@ -141,8 +140,6 @@ QStringList parseModels(const QJsonDocument &doc)
 }
 
 namespace {
-// Strips surrounding quotes, leftover brackets from broken JSON, a leading
-// bullet dash and a trailing dot that models like to add around tags.
 QString cleanTag(QString tag)
 {
     tag = tag.trimmed();
@@ -181,7 +178,6 @@ QStringList parseTags(const QString &content)
         return {};
     }
     QStringList raw;
-    // Preferred shape: a JSON array, whole response or embedded in prose.
     const int open = text.indexOf(QLatin1Char('['));
     const int close = text.lastIndexOf(QLatin1Char(']'));
     if (open >= 0 && close > open) {
@@ -197,7 +193,6 @@ QStringList parseTags(const QString &content)
         }
     }
     if (raw.isEmpty()) {
-        // Fallback: plain comma/semicolon/newline-separated text.
         const QStringView view = text;
         for (const QStringView token : view.split(QRegularExpression(QStringLiteral("[,;\\n]")))) {
             raw.append(token.toString());
@@ -225,15 +220,10 @@ QStringList parseTags(const QString &content)
 } // namespace aitagger
 
 namespace {
-// Longest side of the image sent to the model. Vision encoders resize the
-// input to roughly this range anyway, so the original 4K bytes (and the
-// multi-megabyte JSON body) buy nothing.
+// Vision encoders downscale to ~this anyway; larger uploads buy nothing.
 constexpr int kMaxRequestSide = 1024;
 constexpr int kJpegQuality = 85;
 } // namespace
-
-// ---------------------------------------------------------------------------
-// AiTagger
 
 class AiTagger::RequestJob : public QRunnable
 {
@@ -249,7 +239,6 @@ public:
 
     void run() override
     {
-        // Video wallpapers are tagged from the cached first frame.
         const bool video = WallpaperModel::isVideo(m_path);
         QString source = m_path;
         if (video && WallpapersInfo::instance() != nullptr) {
@@ -258,7 +247,6 @@ public:
         QByteArray imageData = aitagger::resizedJpeg(source, kMaxRequestSide, kJpegQuality);
         QString mimeType = QStringLiteral("image/jpeg");
         if (imageData.isEmpty() && !source.isEmpty()) {
-            // Undecodable source format: fall back to the raw file.
             QFile file(source);
             if (file.open(QIODevice::ReadOnly)) {
                 imageData = file.readAll();
@@ -432,8 +420,6 @@ void AiTagger::fetchModels()
         QStringList names;
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (reply->error() == QNetworkReply::NoError && status >= 200 && status < 300) {
-            // Only models accepting image input are listed (servers that do
-            // not report modalities keep every model).
             names = aitagger::parseModels(QJsonDocument::fromJson(reply->readAll()));
             if (names.isEmpty()) {
                 m_modelsError = QStringLiteral("No vision-capable models found on this endpoint.");
@@ -512,8 +498,6 @@ void AiTagger::startNext()
     const QString path = m_queue.takeFirst();
     m_tagging = true;
     emit taggingChanged();
-    // Image resolution, resize and body building run off the GUI thread;
-    // only the (small) reply is handled here.
     m_pool.start(new RequestJob(this, path, m_model, m_systemPrompt));
 }
 
@@ -522,8 +506,7 @@ void AiTagger::sendRequest(const QString &path, const QByteArray &body)
     const QString base = aitagger::normalizeBase(m_endpoint);
     QNetworkRequest request(QUrl(base + QStringLiteral("/chat/completions")));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    // Local models can be slow on CPU; the transfer timeout is the
-    // inactivity window between response bytes (default is 30 s).
+    // Local CPU models are slow; the timeout is a between-bytes inactivity window.
     request.setTransferTimeout(600000);
     QNetworkReply *reply = m_nam->post(request, body);
     connect(reply, &QNetworkReply::finished, this, [this, reply, path]() {
@@ -546,8 +529,7 @@ void AiTagger::sendRequest(const QString &path, const QByteArray &body)
             } else if (WallpapersInfo::instance() == nullptr) {
                 message = QStringLiteral("The wallpaper index is unavailable.");
             } else {
-                // Merged into the existing tags (duplicates dropped); the
-                // manual flag keeps them across folder rescans.
+                // mergeTags keeps the manual flag: tags survive folder rescans.
                 WallpapersInfo::instance()->mergeTags(path, tags);
             }
         } else {

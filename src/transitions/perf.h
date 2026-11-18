@@ -1,5 +1,4 @@
-// TEMPORARY perf tracing for the transition-open latency diagnosis.
-// Remove this header and its call sites once the breakdown is known.
+// TEMPORARY transition-open latency tracing; remove once the breakdown is known.
 #pragma once
 
 #include <chrono>

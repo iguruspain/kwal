@@ -12,8 +12,6 @@ ToolPage {
 
     readonly property StarshipController controller: StarshipController {}
 
-    // Rows of the palette being edited (draft): one {key, display} map per
-    // color key, in the order stored in the config file.
     readonly property var paletteRows: {
         const index = page.controller.draftPaletteIndex
         const keys = page.controller.paletteKeys
@@ -30,7 +28,6 @@ ToolPage {
         return rows
     }
 
-    // Status line under "Status:", mirroring the old app's mode labels.
     readonly property string statusText: {
         const c = page.controller
         if (c.selectedTemplate !== "")
@@ -40,11 +37,9 @@ ToolPage {
         return qsTr("No current starship.toml")
     }
 
-    // The palette section starts expanded, as in the old app.
     property bool paletteExpanded: true
 
-    // Scale that fits the natural-size terminal (800x200) into the current
-    // config preview area; the same formula the original app used.
+    // 800x200 is the terminal's natural size; fit it into the preview area with 0.9 slack.
     readonly property real previewScale: {
         if (currentPreviewArea.width <= 0 || currentPreviewArea.height <= 0)
             return 0.9
@@ -62,11 +57,8 @@ ToolPage {
         }
     }
 
-    // The PageRow keeps every pushed page visible, so a tab switch never
-    // toggles `visible`: pageActive is what fires when the user comes back to
-    // this tab. refreshIfChanged() re-reads starship.toml only when it really
-    // changed on disk (matugen or an editor rewrote it), so the palette being
-    // drafted here is never dropped by a tab switch.
+    // pageActive, not visible: the PageRow keeps pushed pages visible.
+    // refreshIfChanged() re-reads starship.toml only when it changed on disk, so the palette being drafted here survives a tab switch.
     onPageActiveChanged: {
         if (pageActive)
             page.controller.refreshIfChanged()
@@ -77,7 +69,6 @@ ToolPage {
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
-        // --- Left pane: settings ---
         Rectangle {
             id: leftPane
             Layout.preferredWidth: 300
@@ -224,7 +215,6 @@ ToolPage {
             }
         }
 
-        // --- Right pane: previews ---
         Rectangle {
             id: rightPane
             Layout.fillWidth: true

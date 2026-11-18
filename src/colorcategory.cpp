@@ -15,13 +15,8 @@ namespace {
 using material_color_utilities::Argb;
 using material_color_utilities::Hct;
 
-// Chromatic categories walking the OKLCH hue wheel clockwise, starting at
-// red. kBoundaries[i] is where category i begins on the hue wheel (rose
-// wraps past 0).
-//
-// 1:1 port of the original app's table (color_extractor.py
-// get_color_category): midpoints between the pure-color hue anchors on the
-// OKLCH hue wheel.
+// kBoundaries[i] = OKLCH hue where kChromatic[i] starts, clockwise from red
+// (rose wraps past 0); 1:1 port of color_extractor.py get_color_category.
 constexpr std::array<const char *, 12> kChromatic = {{
     "red", "orange", "yellow", "yellow-green", "green", "cyan-green",
     "cyan", "blue-cyan", "blue", "violet", "magenta", "rose",
@@ -61,7 +56,7 @@ QString colorCategory(quint32 argb)
     const Hct hct(argb);
     const double tone = hct.get_tone();
     const double chroma = hct.get_chroma();
-    // Achromatic colors first (HCT space, the original app's thresholds).
+    // achromatic before hue.
     if (tone < 20.0) {
         return QStringLiteral("black");
     }

@@ -8,8 +8,7 @@
 
 namespace {
 
-// One person from the "Authors"/"Credits" arrays of aboutdata.json, in the
-// shape Kirigami.AboutItem's person delegate reads; missing fields stay empty.
+// Kirigami.AboutItem person shape; missing aboutdata.json fields stay empty.
 QVariantMap person(const QJsonObject &obj)
 {
     return {
@@ -32,8 +31,7 @@ QVariantList people(const QJsonValue &value)
     return list;
 }
 
-// The "License" field is a plain string (an SPDX identifier) or an object
-// with a "Type" member; both map to the display name.
+// aboutdata.json "License": SPDX string or object with "Type"; both -> display name.
 QString licenseType(const QJsonValue &value)
 {
     if (value.isObject()) {

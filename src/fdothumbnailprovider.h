@@ -8,9 +8,8 @@
 
 class QImage;
 
-// FreeDesktop-standard wallpaper thumbnails (mirrors the legacy app's provider):
-// cache hit -> cached PNG; miss -> downscale the original to max 256 px and store it.
-// Loading runs on the global thread pool, off the UI thread.
+// FreeDesktop-standard thumbnails: cache hit -> cached PNG; miss -> downscale the
+// original to max 256 px and store. Loading runs on the global thread pool.
 class FdoThumbnailProvider : public QQuickAsyncImageProvider
 {
     Q_OBJECT
@@ -41,7 +40,7 @@ private:
     QString m_id;
     QQuickTextureFactory *m_textureFactory = nullptr;
     QString m_error;
-    // cancel() runs on the GUI thread, loadAndFinish() reads it on the pool:
-    // a plain (even volatile) bool is a data race.
+    // cancel() runs on the GUI thread while the pool reads: a plain
+    // (even volatile) bool would be a data race.
     std::atomic<bool> m_canceled{false};
 };

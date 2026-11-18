@@ -57,10 +57,8 @@ QImage FdoThumbnailProvider::thumbnailImage(const QString &path)
         return image;
     }
 
-    // Cache miss: downscale the original (bounded memory) and populate the cache.
-    // QImageReader::setScaledSize() only keeps the aspect ratio when a single
-    // dimension is set; setting both (256x256) stretches to fill. Compute the
-    // fitted size ourselves; sources smaller than 256 px are not upscaled.
+    // QImageReader::setScaledSize() keeps the aspect ratio only for a single
+    // dimension; setting both stretches. Compute the fitted size; no upscaling.
     QImageReader reader(path);
     const QSize sourceSize = reader.size();
     if (sourceSize.isValid()) {
@@ -73,9 +71,8 @@ QImage FdoThumbnailProvider::thumbnailImage(const QString &path)
 
     const QDir cacheDir = QFileInfo(thumbnailPath).absoluteDir();
     if (cacheDir.mkpath(QStringLiteral("."))) {
-        // Write to a uniquely-named temp file + atomic rename: two
-        // concurrent requests for the same source must not share a tmp
-        // name nor interleave into a corrupt PNG.
+        // Unique tmp + atomic rename: concurrent requests must not interleave
+        // into a corrupt PNG.
         QTemporaryFile tmpFile;
         tmpFile.setAutoRemove(false);
         tmpFile.setFileTemplate(cacheDir.filePath(

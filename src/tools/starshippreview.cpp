@@ -20,11 +20,9 @@ namespace tools
 namespace
 {
 
-// ---------------------------------------------------------------------------
-// Constants (port of the original app's starship_preview.py)
-// ---------------------------------------------------------------------------
+// --- Constants ---
 
-// Fallback ANSI colors (Gruvbox-style) for the preview.
+// Gruvbox-style fallback ANSI palette.
 const QMap<QString, QString> STANDARD_COLORS = {
     {"black", "#000000"},
     {"red", "#cc241d"},
@@ -39,39 +37,32 @@ const QMap<QString, QString> STANDARD_COLORS = {
     {"grey", "#928374"},
 };
 
-// Font family of the rendered terminal.
 const char *const CSS_FONT_FAMILY = "'CaskaydiaCove Nerd Font', monospace";
 
-// Nerd Font powerline connectors, built from code points so no editor or
-// formatter can drop the private-use-area characters.
+// PUA code points spelled numerically so editors/formatters can't drop them.
 const QSet<QChar> POWERLINE_GLYPHS = {
     QChar(0xE0B0), QChar(0xE0B2), QChar(0xE0B4), QChar(0xE0B6), QChar(0xE0BC), QChar(0xE0BE),
 };
 
-// Triangle connectors get the `glyph2` CSS class for independent styling.
 const QSet<QChar> TRIANGLE_CONNECTORS = {QChar(0xE0B0), QChar(0xE0B2)};
 
-// The git status symbol shown in the demo context.
 const QChar GIT_STATUS_SYMBOL = QChar(0xF42E);
 
-// Modules that may be expanded when encountered as $module_name in a format string.
+// $name expands as a module only for these.
 const QSet<QString> WHITELIST_MODULES = {
     "os", "username", "directory", "python", "time", "git_branch", "git_status", "character",
 };
 
-// Default format templates per module when the format key is absent.
 const QMap<QString, QString> DEFAULT_MODULE_FORMATS = {
     {"os", "[$symbol]($style)"},
     {"character", "$symbol"},
 };
 const QString DEFAULT_FORMAT_FALLBACK = "$symbol$version";
 
-// Python version the original app ran on; kept for the venv cleanup patterns.
+// Baked into the venv cleanup patterns below; bump both together.
 const QString PYTHON_VERSION = "v3.14";
 
-// ---------------------------------------------------------------------------
-// Regexes (port of the original app)
-// ---------------------------------------------------------------------------
+// --- Regexes ---
 
 const QRegularExpression RE_UNRESOLVED_VAR("\\$[a-zA-Z_0-9]+");
 const QRegularExpression RE_UNRESOLVED_VAR_BRACE("\\$\\{[a-zA-Z_0-9]+\\}");
@@ -84,9 +75,7 @@ const QRegularExpression RE_FG_COLOR("fg:([a-zA-Z0-9_#]+)");
 const QRegularExpression RE_BG_COLOR("bg:([a-zA-Z0-9_#]+)");
 const QRegularExpression RE_VAR_NAME("\\$([a-zA-Z0-9_]+)");
 
-// ---------------------------------------------------------------------------
-// Color resolution
-// ---------------------------------------------------------------------------
+// --- Color resolution ---
 
 QString formatCssColor(const QString &value)
 {
@@ -94,9 +83,7 @@ QString formatCssColor(const QString &value)
     return v.isEmpty() ? QStringLiteral("inherit") : v;
 }
 
-// The preview document is generated from data (starship.toml text, style
-// values) and loaded with file:// access — every string entering the HTML
-// must be escaped or markup in the config becomes script.
+// Config text lands in file://-loaded HTML: escape everything, or config markup becomes script.
 QString escapeHtmlText(const QString &text)
 {
     QString out = text;
@@ -156,15 +143,13 @@ QStringList buildElementCss(const QString &style, const std::map<QString, QStrin
     return css;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt document model and parsing
-// ---------------------------------------------------------------------------
+// --- Prompt document model and parsing ---
 
 struct Element
 {
     enum Type { Text, LineBreak } type = Text;
     QString style;
-    QString content; // Text: already cleaned; LineBreak: unused
+    QString content; // Text: already cleaned
 };
 
 struct Segment
@@ -184,8 +169,7 @@ struct Block
     int end = 0; // index just past the closing bracket
 };
 
-// Matches [content] or [content](style) starting at text[i] == '['.
-// Returns the parsed block and the index just past the closing bracket.
+// Parses [content] or [content](style); caller guarantees text[i] == '['.
 Block findBlock(const QString &text, int i)
 {
     Block block;
@@ -208,7 +192,6 @@ Block findBlock(const QString &text, int i)
     const QString content = text.mid(i + 1, j - i - 1);
     int styleEnd = j + 1;
 
-    // Optional (style) part after the closing bracket.
     if (j + 1 < text.length() && text.at(j + 1) == QChar('(')) {
         int k = j + 1;
         while (k < text.length() && text.at(k) != QChar(')'))
@@ -225,7 +208,7 @@ Block findBlock(const QString &text, int i)
     return block;
 }
 
-// The $name starting at text[i] (caller must check text[i] == '$').
+// Caller must have text[i] == '$'.
 bool findVariable(const QString &text, int i, QString &name, int &end)
 {
     const QRegularExpressionMatch m = RE_VAR_NAME.match(text, i);
@@ -236,7 +219,6 @@ bool findVariable(const QString &text, int i, QString &name, int &end)
     return true;
 }
 
-// Splits a format string into [blocks], $line_break and $variables.
 std::vector<Segment> getSegments(const QString &text)
 {
     std::vector<Segment> segments;
@@ -284,9 +266,7 @@ std::vector<Segment> getSegments(const QString &text)
     return segments;
 }
 
-// ---------------------------------------------------------------------------
-// Content cleaning
-// ---------------------------------------------------------------------------
+// --- Content cleaning ---
 
 QString removeUnresolvedVars(const QString &text)
 {
@@ -307,8 +287,7 @@ QString unescapeStarship(const QString &text)
     return out;
 }
 
-// Removes empty optional groups and the venv/git-status artifacts that result
-// from them (port of _strip_empty_optional_groups).
+// Repeated passes for nested groups; also repairs venv/git-status artifacts left by emptied ones.
 QString stripEmptyOptionalGroups(const QString &text)
 {
     QString out = text;
@@ -340,17 +319,15 @@ QString cleanFinalContent(const QString &text)
     return out.trimmed();
 }
 
-// True when a text run is insignificant and should produce no element.
+// A lone space is significant: it must survive as an element to keep spacing.
 bool isInsufficientText(const QString &content)
 {
     return content.trimmed().isEmpty() && content != QStringLiteral(" ");
 }
 
-// ---------------------------------------------------------------------------
-// Module format resolution
-// ---------------------------------------------------------------------------
+// --- Module format resolution ---
 
-// Substitutes $name / ${name} tokens in one pass (port of substituteVariables).
+// Single pass: substituted values are never re-scanned for tokens.
 QString substituteVariables(const QString &text, const QHash<QString, QString> &values)
 {
     auto isNameChar = [](QChar c) {
@@ -391,8 +368,6 @@ QString substituteVariables(const QString &text, const QHash<QString, QString> &
     return out;
 }
 
-// Collapses optional groups whose content is only variables (port of
-// _evaluate_optional_groups): a group with no static text disappears.
 QString evaluateOptionalGroups(const QString &text)
 {
     QString out = text;
@@ -422,12 +397,9 @@ QString evaluateOptionalGroups(const QString &text)
     return out;
 }
 
-// ---------------------------------------------------------------------------
-// Runtime context
-// ---------------------------------------------------------------------------
+// --- Runtime context ---
 
-// Build the runtime context for the preview (port of _build_context): a fixed
-// demo environment plus user overrides.
+// Fixed demo environment; user overrides win.
 QMap<QString, QString> buildContext(const std::map<QString, QString> &overrides)
 {
     QMap<QString, QString> context;
@@ -450,11 +422,8 @@ QMap<QString, QString> buildContext(const std::map<QString, QString> &overrides)
     return context;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt renderer
-// ---------------------------------------------------------------------------
+// --- Prompt renderer ---
 
-// Helpers defined below, used by PromptRenderer::toHtml().
 QString classifyContentClass(const QString &content);
 QString buildHtmlWrapper(const QString &innerHtml, double scale, int width);
 class PromptRenderer
@@ -552,7 +521,6 @@ private:
     QHash<QString, QString> buildModuleSubstitutions(const QString &name,
                                                      const toml::table &cfg) const
     {
-        // Base: every scalar key of the module configuration.
         QHash<QString, QString> subs;
         for (const auto &[key, val] : cfg) {
             const QString k = QString::fromStdString(std::string(key));
@@ -567,7 +535,7 @@ private:
                 subs.insert(k, QString::number(val.as_floating_point()->get()));
         }
 
-        // Fallback for a missing style key (username uses style_user).
+        // The username module spells its style key `style_user`.
         if (!subs.contains(QStringLiteral("style"))) {
             QString style;
             if (name == QStringLiteral("username") && cfg.contains("style_user")
@@ -576,8 +544,7 @@ private:
             subs.insert(QStringLiteral("style"), style);
         }
 
-        // Runtime values derived from the demo context; these override any
-        // scalars of the same name.
+        // After the base pass on purpose: these overwrite same-named config scalars.
         QString version = m_context.value(name);
         if (name == QStringLiteral("os"))
             version.clear(); // do not leak the OS name as a version
@@ -592,7 +559,6 @@ private:
         subs.insert(QStringLiteral("ahead_behind"), QString());
         subs.insert(QStringLiteral("virtualenv"), QString());
 
-        // Module-specific symbol resolution.
         if (name == QStringLiteral("character")) {
             QString symbol = QStringLiteral("❯");
             if (cfg.contains("success_symbol") && cfg["success_symbol"].is_string())
@@ -628,15 +594,13 @@ private:
                 continue;
 
             const QStringList css = buildElementCss(el.style, m_palette);
-            // Escape first, then protect the spaces: escaping the
-            // &nbsp; entities afterward would double-encode them.
+            // Escape first: escaping after the &nbsp; swap would double-encode the entity.
             QString escaped = escapeHtmlText(el.content);
             escaped.replace(QStringLiteral(" "), QStringLiteral("&nbsp;"));
             inner += QStringLiteral("<span class=\"%1\" style=\"%2\">%3</span>")
                 .arg(classifyContentClass(el.content),
                      escapeHtmlAttr(css.join(QStringLiteral("; "))), escaped);
         }
-        // The terminal cursor blinks at the very end of the prompt.
         inner += QStringLiteral("<span class=\"caret\"></span>");
         return buildHtmlWrapper(inner, m_scale, m_width);
     }
@@ -664,9 +628,7 @@ QString classifyContentClass(const QString &content)
     return hasTriangle ? QStringLiteral("glyph glyph2") : QStringLiteral("glyph");
 }
 
-// ---------------------------------------------------------------------------
-// HTML wrapper
-// ---------------------------------------------------------------------------
+// --- HTML wrapper ---
 
 QString buildPreviewCss(double scale, int width)
 {
@@ -739,8 +701,6 @@ QString buildHtmlWrapper(const QString &innerHtml, double scale, int width)
         + QStringLiteral("</div></div></div></body></html>");
 }
 
-// Resolves the palette to use for the preview: the palette table at the given
-// index, or the document's active `palette` when the index is negative.
 std::map<QString, QString> resolveActivePalette(const toml::table &doc, int paletteIndex)
 {
     std::map<QString, QString> palette;

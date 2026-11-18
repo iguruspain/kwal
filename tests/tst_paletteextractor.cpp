@@ -31,7 +31,6 @@ private:
     }
     static QImage triColorImage()
     {
-        // Four distinct quadrants: red, green, blue, orange.
         QImage image(128, 128, QImage::Format_RGB32);
         image.fill(QColor(Qt::black));
         QPainter painter(&image);
@@ -46,8 +45,7 @@ private:
 void tst_PaletteExtractor::testMaterialYouFromImage()
 {
     const PaletteExtractor::MaterialYouResult first = PaletteExtractor::materialYouFromImage(triColorImage(), false);
-    // 16 swatches in the M3 order: bg, primary 80/70, secondary 70/60,
-    // tertiary 60/50, on-bg, neutral 50, containers, surface, on-surface.
+    // 16 swatches in M3 order; 0 = background, 7 = on-background, and those two must differ.
     QCOMPARE(first.colors.size(), 16);
     for (const QString &hex : std::as_const(first.colors)) {
         QVERIFY(isValidHex(hex));
@@ -58,16 +56,13 @@ void tst_PaletteExtractor::testMaterialYouFromImage()
     }
     QVERIFY(isValidHex(first.seed));
     QCOMPARE(first.seed, first.accents.first());
-    // Background (0) and on-background (7) must be distinguishable.
     QVERIFY(first.colors.first() != first.colors.at(7));
 
-    // Deterministic for the same input.
     const PaletteExtractor::MaterialYouResult second = PaletteExtractor::materialYouFromImage(triColorImage(), false);
     QCOMPARE(second.colors, first.colors);
     QCOMPARE(second.accents, first.accents);
     QCOMPARE(second.seed, first.seed);
 
-    // Dark and light schemes differ in background/foreground.
     const PaletteExtractor::MaterialYouResult dark = PaletteExtractor::materialYouFromImage(triColorImage(), true);
     QVERIFY(dark.colors.size() == 16);
     QVERIFY(dark.colors.first() != first.colors.first());
@@ -102,7 +97,6 @@ void tst_PaletteExtractor::testMaterialYouSchemes()
             anyDifferent = true;
         }
     }
-    // At least one scheme must differ from Tonal Spot on this fixture.
     QVERIFY(anyDifferent);
     // Unknown scheme names fall back to Tonal Spot.
     const PaletteExtractor::MaterialYouResult unknown =
@@ -123,9 +117,7 @@ void tst_PaletteExtractor::testSchemeSwitchIsCached()
     const QStringList spotColors = ready.takeFirst().at(1).toStringList();
     QVERIFY(!spotColors.isEmpty());
 
-    // A scheme switch after the first extraction is answered from the
-    // cache: the emission is synchronous, so the signal arrives before
-    // extract() returns (no re-run of the extraction).
+    // A scheme switch after the first extraction is served from cache, emitting synchronously before extract() returns.
     extractor.extract(path, QStringLiteral("materialyou"), false, QStringLiteral("Neutral"));
     QCOMPARE(ready.count(), 1);
     const QStringList neutralColors = ready.takeFirst().at(1).toStringList();
@@ -176,8 +168,7 @@ void tst_PaletteExtractor::testImageMagick()
 
 int main(int argc, char *argv[])
 {
-    // Sandboxed XDG locations: set before the QCoreApplication is constructed so
-    // QStandardPaths never touches the real home directory.
+    // Sandboxed XDG locations and HOME, set before QCoreApplication construction.
     const QString base = QDir::tempPath() + QStringLiteral("/kwal-test-paletteextractor-")
         + QString::number(QCoreApplication::applicationPid());
     qputenv("HOME", base.toUtf8());

@@ -2,9 +2,7 @@
 
 #include <QtTest/QtTest>
 
-// The About page (Kirigami.AboutPage) renders whatever aboutdata.json holds;
-// these checks pin the aboutData() object shape and the bundled resources so
-// a broken edit of the JSON is caught here instead of as an empty page.
+// Pins the aboutData() shape so a broken aboutdata.json fails here, not as an empty About page.
 class tst_AboutInfo : public QObject
 {
     Q_OBJECT

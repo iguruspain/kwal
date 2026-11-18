@@ -10,8 +10,6 @@ namespace tools
 
 namespace {
 
-// ImageMagick fill color, in the same form the old app passed: #rrggbb, or
-// rgba(r,g,b,a) when the tint has partial alpha.
 QString fillColor(const QColor &tint)
 {
     if (tint.alpha() < 255) {
@@ -24,7 +22,6 @@ QString fillColor(const QColor &tint)
     return tint.name(QColor::HexRgb);
 }
 
-// Prefer the IM7 `magick` binary, fall back to the IM6 `convert` shim.
 QString magickExecutable()
 {
     const QString magick = QStandardPaths::findExecutable(QStringLiteral("magick"));
@@ -45,8 +42,6 @@ bool runMagick(const QString &exe, const QStringList &args)
     return true;
 }
 
-// The animated families the app treats as frame sequences (GIF and WebP);
-// every other source is a still image.
 bool isAnimatedSuffix(const QFileInfo &info)
 {
     const QString suffix = info.suffix().toLower();
@@ -69,15 +64,7 @@ bool tintImageTo(const QString &srcPath, const QString &dstPath, const QColor &t
     const bool animatedSource = isAnimatedSuffix(QFileInfo(srcPath));
     const bool animatedDst = isAnimatedSuffix(dstInfo);
 
-    // A single ImageMagick pass: grayscale and tint applied in order to the
-    // same image sequence (measured more than twice as fast as writing a
-    // grayscale intermediate and re-reading it). An animated destination
-    // keeps every frame, its delay and the loop count (-coalesce for GIFs;
-    // the WebP writer re-encodes the whole animation itself).
-    // ImageMagick silently splits a multi-frame source written to a
-    // single-frame destination into one numbered file per frame, and would
-    // flatten the animation anyway, so a still destination always reads the
-    // first frame only.
+    // One pass, measured >2x faster than a grayscale intermediate; still dsts read [0] to avoid IM's per-frame file split.
     QStringList args;
     if (animatedSource && animatedDst)
         args << srcPath << QStringLiteral("-coalesce");

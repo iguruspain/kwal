@@ -12,17 +12,13 @@ Kirigami.Page {
     property AppController app
     property FolderDialog addFolderDialog
     property bool sidePaneOpen: false
-    // True while this page is the current tab; drives video playback gating.
+    // Gates video playback: only the current tab plays.
     property bool pageActive: true
     property bool searchOpen: false
-    // True while the detail panel (right of the grid) is open.
     property bool detailOpen: false
-    // Fraction of the content width the detail panel takes while open —
-    // not decided yet, tune to taste.
     property real detailPanelFraction: 0.4
 
-    // The 15 matugen color categories (name/hex/label from the original
-    // app's categoryColorModel); the chips filter the grid (AND semantics).
+    // Chips filter the grid with AND semantics.
     readonly property var categorySwatches: [
         { name: "red", hex: "#E53935", label: qsTr("Red") },
         { name: "orange", hex: "#FB8C00", label: qsTr("Orange") },
@@ -59,22 +55,18 @@ Kirigami.Page {
 
     function toggleSearch() {
         searchOpen = !searchOpen
-        // Closing the field must not orphan the focus: the field goes hidden,
-        // focus falls to the window root and arrow keys stop doing anything.
+        // A hidden field orphans focus: hand it back to the grid so arrow keys keep working.
         if (!searchOpen)
             gridView.forceActiveFocus()
     }
 
-    // Accessibility: Shortcut for Ctrl+F to toggle search
     Shortcut {
         sequence: "Ctrl+F"
         context: Qt.ApplicationShortcut
         onActivated: page.toggleSearch()
     }
 
-    // Escape closes the topmost transient layer - detail panel first, then
-    // search - and hands keyboard control back to the grid, the page's main
-    // view (the old overlay drawer closed on Escape too).
+    // Escape closes the topmost layer (panel first, then search) and returns focus to the grid.
     Shortcut {
         sequence: "Escape"
         context: Qt.ApplicationShortcut
@@ -90,7 +82,7 @@ Kirigami.Page {
 
     header:ToolBar {
         background: Rectangle {
-            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: "transparent"
         }
         contentItem: ColumnLayout {
             anchors.fill: parent
@@ -136,7 +128,6 @@ Kirigami.Page {
                         color: Kirigami.Theme.disabledTextColor
                         opacity: 0.7
                         visible: page.app.selectedWallpaperSize !== "" && !page.searchOpen
-                        //font.pixelSize: Kirigami.Theme.smallFont.pointSize
                     }
 
                     Kirigami.SearchField {
@@ -181,8 +172,7 @@ Kirigami.Page {
                         tooltipText: modelData.label
                         enableCopy: false
                         selected: page.selectedCategories.indexOf(modelData.name) !== -1
-                        // Mouse-operated only: the 15 chips stay out of the
-                        // Tab chain (the "Clear" chip stays its own stop).
+                        // Mouse-only: the chips stay out of the Tab chain (Clear keeps its stop).
                         activeFocusOnTab: false
                         onClicked: page.toggleCategory(modelData.name)
                     }
@@ -230,38 +220,25 @@ Kirigami.Page {
             
                 GridView {
                     id: gridView
-                    //anchors.fill: parent
                     anchors.left: parent.left
                     anchors.right: parent.right
                     // Reserve space for the scrollbar to prevent visual overlap
                     anchors.rightMargin: Kirigami.Units.smallSpacing + Kirigami.Units.largeSpacing
 
-                    // Responsive cells: one ~250px-wide 16:9 column per
-                    // 250 px of width, down to a single full-width column
-                    // when squeezed (e.g. by the detail panel).
+                    // One ~250 px 16:9 column per 250 px of width; single full-width column when squeezed.
                     readonly property int columnCount: Math.max(1, Math.floor(width / 250))
                     cellWidth: Math.floor(width / columnCount)
                     cellHeight: Math.floor(cellWidth * 0.5625)
-                    // Reuse delegates and pre-render a row or two: WallpaperItem
-                    // is stateless per cell (everything is bound to the model
-                    // row + index), so a bounded delegate pool keeps memory
-                    // flat over a large folder while cacheBuffer smooths the
-                    // pop-in while scrolling.
+                    // WallpaperItem is stateless per model row, so the delegate pool stays bounded; cacheBuffer smooths pop-in.
                     reuseItems: true
                     cacheBuffer: 700
                     model: page.app.wallpaperModel
                     focus: true
-                    // The view is the grid's single tab stop (views default to
-                    // activeFocusOnTab false, so Tab would never reach it and
-                    // the initial focus would be a dead end). Delegates stay
-                    // non-focusable: one Tab enters the grid, arrow keys move
-                    // the highlight.
+                    // The view is the grid's single tab stop (views default activeFocusOnTab false); delegates stay non-focusable, arrows move the highlight.
                     activeFocusOnTab: true
                     highlight: Rectangle {
                         color: Kirigami.Theme.highlightColor
                         radius: Kirigami.Units.smallSpacing
-                        // Dim the highlight while the view lacks focus, so the
-                        // arrow-key cursor never looks active when it is not.
                         opacity: gridView.activeFocus ? 1.0 : 0.4
                     }
                     delegate: WallpaperItem {
@@ -273,7 +250,7 @@ Kirigami.Page {
                         isAnimated: model.isAnimated
                         sourceColors: model.sourceColors
                         onOpenDetail: page.openDetail()
-                        // GridView does not resize delegates; fill the cell like the old app.
+                        // GridView does not resize delegates; fill the cell explicitly.
                         width: gridView.cellWidth
                         height: gridView.cellHeight
 
@@ -289,13 +266,7 @@ Kirigami.Page {
                         }
                     }
                     onCurrentIndexChanged: {
-                        // The selection is the wallpaper path, never the row
-                        // number. An index with no row behind it (the selection
-                        // filtered out, a folder switch, an empty result) keeps
-                        // the selection untouched: the drawer, the header title
-                        // and the dot choice belong to that wallpaper, and
-                        // dropping them on a keystroke would throw away work in
-                        // progress.
+                        // Selection is the wallpaper path, not the row number: an index with no row behind it (filtered out, folder switch) must leave the selection untouched.
                         const path = gridView.currentIndex >= 0
                             ? page.app.wallpaperModel.pathAt(gridView.currentIndex)
                             : ""
@@ -306,8 +277,6 @@ Kirigami.Page {
                         event.accepted = true
                         page.app.applyWallpaper()
                     }
-                    // Space is the keyboard's double-click: it opens the detail
-                    // panel on the current selection.
                     Keys.onSpacePressed: function(event) {
                         event.accepted = true
                         if (page.app.selectedWallpaper !== "")
@@ -325,16 +294,10 @@ Kirigami.Page {
             }
         }
 
-        // Detail panel (no overlay): sits right of the grid and pushes it
-        // aside, taking detailPanelFraction of the content area while open
-        // (the grid falls back to a single full-width column). Same
-        // width/opacity animation as the Folders sidebar; the width is the
-        // animated property that also drives visibility.
+        // Not an overlay; the animated Layout width doubles as the visibility driver (0 = hidden).
         WallpaperDetailDrawer {
             id: detailPanel
             app: page.app
-            // Follows the grid selection, so moving the highlight (click
-            // or arrow keys) while the panel is open switches its content.
             wallpaper: page.app.selectedWallpaper
             isVideo: page.app.wallpaperModel.isVideoFile(page.app.selectedWallpaper)
             categorySwatches: page.categorySwatches
@@ -358,10 +321,7 @@ Kirigami.Page {
         }
     }
 
-    // Opens the detail panel (right of the grid); it shows the current
-    // selection, which is a path, not a grid row - filtering or switching
-    // folders never clears it. It closes only when the selection itself is
-    // cleared (the file vanished, see AppController::applyWallpaper).
+    // The panel closes only when the selection itself is cleared (see AppController::applyWallpaper).
     function openDetail() {
         page.detailOpen = true
     }
@@ -374,15 +334,7 @@ Kirigami.Page {
         }
     }
 
-    // A search string, a color chip or a folder rescan resets the model. The
-    // GridView keeps its numeric cursor across a reset, so the number it holds
-    // suddenly names a different file (or none at all): re-derive it from the
-    // selected path. Without this, clicking a filtered row that happens to carry
-    // the old number leaves currentIndex untouched, so no selection happens -
-    // the cell gains no matugen dots, the drawer keeps describing the previous
-    // wallpaper, and clearing the filter restores the highlight to the old
-    // wallpaper. A selection the filter hides leaves the cursor at -1: no cell
-    // is highlighted, the selection itself stays.
+    // A model reset keeps GridView's numeric cursor, which would name a different file: re-derive currentIndex from the selected path. A selection the filter hides leaves the cursor at -1; the selection itself stays.
     Connections {
         target: page.app.wallpaperModel
         function onModelReset() {
@@ -391,9 +343,7 @@ Kirigami.Page {
     }
 
     Component.onCompleted: {
-        // Reopen the grid positioned at the wallpaper applied last
-        // ([Wallpapers] currentWallpaper in kwalrc), when it is in this
-        // folder; setting currentIndex also selects it.
+        // Position at the last-applied wallpaper (kwalrc [Wallpapers] currentWallpaper) if present; currentIndex also selects.
         const index = page.app.wallpaperModel.rowForPath(page.app.currentWallpaper)
         if (index >= 0) {
             gridView.currentIndex = index

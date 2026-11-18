@@ -17,8 +17,7 @@ QString tr(const char *text)
 }
 }
 
-// Fill the palette draft lists from `palettes`, putting the document's active
-// palette first (parity with the original app: index 0 edits the active one).
+// Fills the draft lists from `palettes`; index 0 is the document's active palette.
 void fillPaletteDrafts(const tools::PaletteMap &palettes, const QString &activeName,
                        QStringList &names, QList<QVariantList> &values, QList<QVariantList> &keys)
 {
@@ -79,7 +78,6 @@ void StarshipController::setTemplateIndex(int index)
         if (index >= 0 && index < m_templateNames.size()) {
             loadTemplate(m_templateNames[index]);
         } else {
-            // Index -1 means current config
             clearSelection();
         }
     }
@@ -96,7 +94,6 @@ void StarshipController::setDraftColor(const QString &color)
         m_draftColor = color;
         emit draftColorChanged();
 
-        // Apply the draft color to the current palette/color index
         if (m_draftPaletteIndex >= 0 && m_draftPaletteIndex < m_paletteValues.size() &&
             m_draftColorIndex >= 0 && m_draftColorIndex < m_paletteValues[m_draftPaletteIndex].size()) {
             m_paletteValues[m_draftPaletteIndex][m_draftColorIndex] = color;
@@ -118,7 +115,6 @@ void StarshipController::setDraftPaletteIndex(int index)
         m_draftPaletteIndex = index;
         emit draftPaletteIndexChanged();
 
-        // Reset color index when palette changes
         if (index >= 0 && index < m_paletteValues.size() && !m_paletteValues[index].isEmpty()) {
             setDraftColorIndex(0);
         } else {
@@ -140,7 +136,6 @@ void StarshipController::setDraftColorIndex(int index)
         m_draftColorIndex = index;
         emit draftColorIndexChanged();
 
-        // Update draft color to reflect the selected color
         if (index >= 0 && m_draftPaletteIndex >= 0 &&
             m_draftPaletteIndex < m_paletteValues.size() &&
             index < m_paletteValues[m_draftPaletteIndex].size()) {
@@ -237,7 +232,6 @@ void StarshipController::refresh()
     emit paletteValuesChanged();
     emit paletteKeysChanged();
 
-    // Select the active palette by default
     if (!m_paletteNames.isEmpty()) {
         setDraftPaletteIndex(0);
     }
@@ -260,10 +254,8 @@ void StarshipController::refreshIfChanged()
         return;
 
     if (m_templateIndex >= 0) {
-        // A template is the source of the draft being edited; re-reading the
-        // config as the source (what refresh() does) would replace the draft
-        // palettes. Follow only the applied-config side: status, backup state
-        // and the "Current" preview.
+        // A template is the draft's source: refresh() here would replace the draft
+        // palettes. Only the applied side follows: status, backup state, "Current" preview.
         m_configValid = tools::readStarshipConfig(m_configPath).valid;
         updateHasBackup();
         updateHasConfig();
@@ -295,7 +287,6 @@ void StarshipController::loadTemplate(const QString &name)
     emit paletteValuesChanged();
     emit paletteKeysChanged();
 
-    // Select the active palette by default
     if (!m_paletteNames.isEmpty()) {
         setDraftPaletteIndex(0);
     }
@@ -383,11 +374,8 @@ void StarshipController::setPreviewScale(double scale)
 
 void StarshipController::regeneratePreview()
 {
-    // Draft preview of the selected source document (template, or the current
-    // config when no template is selected): the document's own format and
-    // modules with the draft palettes substituted in. Colors follow the
-    // selected draft palette, or the document's active palette when nothing
-    // is selected (paletteIndex -1).
+    // Draft preview: source doc's own format/modules with the draft palettes swapped
+    // in; colors follow the selected draft palette, else the doc's active one (-1).
     QString html;
     if (!m_doc.empty()) {
         toml::table doc = m_doc;
@@ -395,8 +383,7 @@ void StarshipController::regeneratePreview()
             QString active = tools::getActivePaletteName(m_doc);
             if (m_draftPaletteIndex >= 0 && m_draftPaletteIndex < m_paletteNames.size())
                 active = m_paletteNames[m_draftPaletteIndex];
-            // Replace the palettes table and point the document's `palette`
-            // key at the palette being previewed.
+            // Swap the palettes table and point the doc's `palette` key at the previewed one.
             tools::replacePalettesInDoc(doc, draftPalettes(), active);
         }
         html = tools::starshipPreviewHtml(doc, -1, m_previewScale, 800);
@@ -410,8 +397,7 @@ void StarshipController::regeneratePreview()
 
 void StarshipController::regenerateCurrentPreview()
 {
-    // Renders the file on disk as-is: no draft palettes applied, and the
-    // file's own active palette selects the colors (paletteIndex -1).
+    // On-disk file as-is: no draft palettes; its own active palette wins (paletteIndex -1).
     QString html;
     if (m_configValid) {
         try {

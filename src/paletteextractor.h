@@ -9,33 +9,23 @@
 #include <QStringList>
 #include <QThreadPool>
 
-// Wallpapers palettes: Material You (M3) schemes via Google's
-// material-color-utilities (Celebi quantization + 9-scheme selector) and
-// ImageMagick unique colors + best accent.
-// Extraction runs on a thread pool; signals are always emitted on the
-// thread the object lives on.
+// M3 palettes via material-color-utilities (Celebi + 9-scheme selector) or
+// ImageMagick. Signals always emit on the object's thread.
 class PaletteExtractor : public QObject
 {
     Q_OBJECT
 public:
     explicit PaletteExtractor(QObject *parent = nullptr);
 
-    // backend: "materialyou" or "imagemagick". For videos the cached first
-    // frame is used (WallpapersInfo must be initialized). scheme: one of the
-    // nine M3 scheme names ("TonalSpot", "Vibrant", "Expressive", "Content",
-    // "FruitSalad", "Rainbow", "Monochrome", "Neutral", "Fidelity"); any
-    // other value falls back to TonalSpot. Only used by "materialyou".
-    // For "materialyou" the nine schemes of an extracted wallpaper are
-    // cached per dark mode, so a repeat call (e.g. a scheme switch) answers
-    // immediately without re-running the extraction.
+    // backend: "materialyou" (scheme = any of the nine M3 names, else TonalSpot)
+    // or "imagemagick"; videos use the cached first frame (WallpapersInfo must be
+    // initialized). Schemes are cached per dark mode so repeat calls skip Celebi.
     Q_INVOKABLE void extract(const QString &path,
                              const QString &backend,
                              bool dark,
                              const QString &scheme = QStringLiteral("TonalSpot"));
 
-    // Material You (M3) scheme of an image: 16 swatches (D6),
-    // the top-3 ranked colors as accents and the primary seed as seed.
-    // scheme as in extract().
+    // M3 scheme of an image: 16 swatches, top-3 ranked colors, primary seed.
     struct MaterialYouResult {
         QStringList colors;
         QStringList accents;
@@ -44,9 +34,8 @@ public:
     static MaterialYouResult materialYouFromImage(const QImage &image,
                                                   bool dark,
                                                   const QString &scheme = QStringLiteral("TonalSpot"));
-    // All nine M3 schemes in a single pass: the expensive part (scaling,
-    // Celebi quantization, ranking) runs once and each scheme is a cheap
-    // recombination. Keyed by the nine scheme names; empty on failure.
+    // All nine M3 schemes in one pass: scaling, Celebi and ranking run once;
+    // each scheme is a cheap recombination. Keyed by scheme name; empty on failure.
     static QMap<QString, MaterialYouResult>
         materialYouSchemesFromImage(const QImage &image, bool dark);
 
@@ -68,9 +57,8 @@ private:
                    const QString &seed);
     void emitFailed(const QString &path, const QString &message);
 
-    // "path|dark"/"path|light" -> the nine schemes of one extraction pass,
-    // so scheme switches answer from the cache instead of re-running
-    // Celebi. Pool threads write, the owning thread reads: mutex-guarded.
+    // "path|dark"/"path|light" -> nine schemes of one pass. Pool writes,
+    // owning thread reads: guarded by m_cacheMutex.
     QHash<QString, QMap<QString, MaterialYouResult>> m_schemeCache;
     QMutex m_cacheMutex;
     QThreadPool m_pool;

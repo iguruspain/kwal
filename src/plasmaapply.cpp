@@ -28,8 +28,7 @@ QString configPath(const QString &fileName)
     return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QLatin1Char('/') + fileName;
 }
 
-// A path byte passes through unencoded only when it is one of the
-// characters Plasma keeps as-is in config file URLs.
+// Exactly the bytes Plasma keeps unencoded in config-file URLs.
 bool isUnreserved(char c)
 {
     const auto b = static_cast<quint8>(c);
@@ -43,12 +42,10 @@ QStringList pluginSection(int desktopId, const QString &plugin)
             QStringLiteral("Wallpaper"), plugin, QStringLiteral("General")};
 }
 
-// True when <url> is not a local file:// URL, or the referenced file
-// still exists on disk.
 bool fileUrlAlive(const QString &url)
 {
     if (!url.startsWith(QLatin1String("file://"))) {
-        return true; // a foreign scheme is not our concern
+        return true;
     }
     const QString path = QUrl::fromPercentEncoding(url.mid(7).toUtf8());
     return QFileInfo(path).isFile();
@@ -90,11 +87,8 @@ QString computeVideoUrls(const QString &existingJson, const QString &targetUrl)
         }
     }
 
-    // The plugin's config page re-serializes the playlist with JSON.stringify
-    // in this exact field order (updateConfig in config.qml), dropping entries
-    // without a filename. The stored string must round-trip byte-identically
-    // through that serialization, or the page reports unsaved changes as soon
-    // as the model is touched.
+    // The plugin page re-serializes the playlist with JSON.stringify in this exact
+    // field order (updateConfig in config.qml), dropping filename-less entries.
     const auto json = [](const QJsonValue &value) {
         QJsonArray wrapper;
         wrapper.append(value);
@@ -110,7 +104,7 @@ QString computeVideoUrls(const QString &existingJson, const QString &targetUrl)
         const QJsonObject entry = value.toObject();
         const QString filename = entry.value(QStringLiteral("filename")).toString();
         if (filename.isEmpty()) {
-            continue; // the page drops such entries
+            continue;
         }
         const bool isTarget = filename == targetUrl;
         if (isTarget) {
@@ -180,8 +174,7 @@ bool Ini::save(const QString &path) const
     }
     tmp.close();
     const QString tmpPath = tmp.fileName();
-    // Single atomic replace (rename(2)): the whole Plasma appletsrc is
-    // swapped in one step, so a crash never leaves it missing.
+    // One rename(2) swaps in the whole appletsrc; a crash never leaves it missing.
     return tools::renameAtomic(tmpPath, path);
 }
 
@@ -345,7 +338,6 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
                                  bool includeLockscreen)
 {
     qWarning("perf: %lld apply: start", perfMs());
-    // 1. Resolve the target plugin and its config values.
     QString plugin = QString::fromLatin1(kImagePluginId);
     QString imageUrl;
     QString videoEntryUrl;
@@ -353,16 +345,12 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
     if (type == QLatin1String("video")) {
         if (rebornAvailable()) {
             plugin = QString::fromLatin1(kRebornPluginId);
-            // Both the playlist entry and the LastVideo key keep the raw
-            // path, as the plugin UI writes them (QUrl::toString with
-            // PreferredEncoding leaves UTF-8 and spaces unencoded); the
-            // plugin matches LastVideo against playlist filenames by exact
-            // string, so both must use that same form (D9).
+            // LastVideo is matched against playlist filenames by exact string:
+            // both keys must carry the same raw form (rawVideoUrl).
             videoEntryUrl = rawVideoUrl(path);
             videoLastUrl = rawVideoUrl(path);
         } else {
-            // Without the reborn plugin the cached first frame stands in
-            // for the video (D11).
+            // No reborn plugin: the cached first frame stands in.
             WallpapersInfo *info = WallpapersInfo::instance();
             const QString frame = info ? info->firstFrameFor(path) : QString();
             if (frame.isEmpty()) {
@@ -375,8 +363,6 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
         imageUrl = fileUrl(path);
     }
 
-    // 2. Desktops: live from the shell, falling back to the appletsrc
-    // sections.
     const QString appletsrcPath = configPath(QStringLiteral("plasma-org.kde.plasma.desktop-appletsrc"));
     Ini appletsrc = Ini::fromFile(appletsrcPath);
     QDBusInterface shell(QStringLiteral("org.kde.plasmashell"),
@@ -399,7 +385,6 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
         return;
     }
 
-    // 3. Per desktop: D-Bus first, an appletsrc edit for the failures (D9).
     QStringList failed;
     int appliedDbus = 0;
     for (const QString &id : desktops) {
@@ -432,8 +417,7 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
 
     if (!failed.isEmpty()) {
         if (appliedDbus > 0) {
-            // The shell may have rewritten the file while applying through
-            // D-Bus; reread it before editing (D9).
+            // The shell may rewrite the file after a D-Bus apply; reread before editing.
             QThread::msleep(300);
             appletsrc = Ini::fromFile(appletsrcPath);
         }
@@ -459,7 +443,6 @@ void PlasmaApply::applyWallpaper(const QString &type, const QString &path,
         }
     }
 
-    // 4. Optional lock screen (D15): one wallpaper for all screens.
     if (includeLockscreen && !mirrorLockscreen(plugin, imageUrl, videoEntryUrl, videoLastUrl)) {
         emit result(false, QStringLiteral("Could not write kscreenlockerrc."));
         return;
@@ -479,9 +462,7 @@ QString PlasmaApply::pruneVideoUrls(const QString &existingJson) const
     if (!doc.isArray()) {
         return existingJson;
     }
-    // Same compact per-entry serialization as computeVideoUrls: QJsonObject
-    // keeps the parsed key order, so the surviving entries round-trip
-    // byte-identically through the plugin page's JSON.stringify.
+    // Same compact serialization as computeVideoUrls: QJsonObject keeps parsed key order.
     const auto json = [](const QJsonValue &value) {
         QJsonArray wrapper;
         wrapper.append(value);

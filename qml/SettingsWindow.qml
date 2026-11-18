@@ -19,14 +19,10 @@ Kirigami.ApplicationWindow {
     required property AppController app
     required property UlauncherController ulauncher
 
-    // Mirrors the main window so toggling transparency updates both live.
     readonly property color pageBackground: app.enableTransparency
         ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
         : Kirigami.Theme.backgroundColor
 
-    // Returns whether a drawer section matches the settings search: the query
-    // must be contained in the section's page title or in any of the page's
-    // setting labels (searchKeys).
     function sectionMatches(query, index) {
         if (query === "") {
             return true;
@@ -51,12 +47,10 @@ Kirigami.ApplicationWindow {
     globalDrawer: Kirigami.GlobalDrawer {
         id: globalDrawer
 
-        // "Collapsible Sidebar Drawer" pattern (Kirigami Gallery, BaseApp).
         modal: false
         collapsible: true
         collapsed: false
 
-        // Settings search; filters the sections below (see drawerMatches).
         header: ToolBar {
             visible: !globalDrawer.collapsed
             contentItem: RowLayout {

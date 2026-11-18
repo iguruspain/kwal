@@ -8,8 +8,6 @@ class QFileSystemWatcher;
 class QTimer;
 
 
-// Provides the wallpaper media (images and videos) of one folder: path,
-// display name and a cached thumbnail.
 class WallpaperModel : public QAbstractListModel
 {
     Q_OBJECT
@@ -36,40 +34,29 @@ public:
     QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const override;
 
     Q_INVOKABLE QString pathAt(int row) const;
-    // Row of `path` in the currently visible (filtered) entries, -1 when the
-    // file is filtered out or not in this folder. The view's cursor must be
-    // derived from the path, never kept as a row number: a filter change
-    // resets the model, and the same number then names a different file.
+    // Row within the filtered entries, -1 if filtered out. Keep the cursor as a
+    // path, never a row number: a filter change renumbers rows.
     Q_INVOKABLE int rowForPath(const QString &path) const;
     Q_INVOKABLE void setSourceDirectory(const QString &directory);
     Q_INVOKABLE QStringList filePaths() const;
-    // Selected color categories; the visible entries must contain all of
-    // them (AND). Empty means "no category restriction".
+    // Category AND-filter; empty = no restriction.
     QStringList categoryFilter() const;
     Q_INVOKABLE void setCategoryFilter(const QStringList &categories);
 
-    // True if the file has one of the supported video extensions.
     static bool isVideo(const QString &filePath);
-    // Instance form exposed to QML (QML cannot call static invokables);
-    // used by the detail panel's isVideo binding.
+    // Instance form: QML cannot call static invokables.
     Q_INVOKABLE bool isVideoFile(const QString &filePath) const;
-    // True if the file has one of the supported image extensions.
     static bool isImage(const QString &filePath);
-    // The supported image extensions (the single source for "what the grid
-    // offers", reused by the settings page's readability warning).
     static const QStringList &imageExtensions();
-    // Name filters (e.g. "*.mp4") for the supported video extensions; the
-    // single source for enumerating video files in a folder.
+    // Glob patterns (e.g. "*.mp4") for the supported video extensions.
     static QStringList videoNameFilters();
     QString filterText() const;
     void setFilterText(const QString &text);
 
 signals:
-    // Emitted when the number of entries changes (via model reset).
     void countChanged();
     void filterTextChanged();
     void categoryFilterChanged();
-    // Emitted after a full re-scan of the source directory.
     void scanned();
 
 private:
@@ -82,7 +69,7 @@ private:
     QFileSystemWatcher *m_watcher = nullptr;
     QTimer *m_debounce = nullptr;
 
-    // Batches a burst of file-system events into a single re-scan.
+    // Batches file-system event bursts into one re-scan.
     static constexpr int kRefreshDebounceMs = 200;
     QString m_directory;
     struct Entry {
@@ -98,9 +85,8 @@ private:
 };
 
 namespace wallpapermodel {
-// The entries of `accepted` (wallpaper extensions) that the image-reader
-// formats in `readable` (QImageReader::supportedImageFormats()) cannot decode,
-// lowercased and deduplicated. Case-insensitive, and a format counts as
-// readable when the plugin advertises any of its aliases (jpg/jpeg/jfif…).
+// Lowercased, deduped `accepted` entries no format in `readable`
+// (QImageReader::supportedImageFormats()) can decode; matches any alias
+// (jpg/jpeg/jfif…).
 QStringList unreadableFormats(const QList<QByteArray> &readable, const QStringList &accepted);
 } // namespace wallpapermodel

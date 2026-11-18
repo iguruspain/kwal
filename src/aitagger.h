@@ -12,43 +12,25 @@
 
 class QNetworkAccessManager;
 
-// Pure helpers of the AI tag pipeline; free of app state so the unit
-// tests exercise them without network or QML.
 namespace aitagger {
-// Tags a single model response may contribute; anything beyond the cap is
-// dropped (defensive against runaway prose).
+// Defensive cap: model responses drift into prose; anything past this is dropped.
 inline constexpr int kMaxTags = 10;
-// Default prompt: 3-5 lowercase comma-separated search tags describing the
-// wallpaper image; used while the stored prompt is empty.
 QString defaultSystemPrompt();
-// Normalizes a user-typed OpenAI-compatible endpoint to a base URL that
-// ends in "/v1" (a scheme-less "host:port" gets "http://").
 QString normalizeBase(const QString &endpoint);
-// The text part of the user message for one wallpaper: file name and media
-// type.
 QString buildUserMessage(const QString &path, const QString &type);
-// Decodes <path>, resizes it to at most <maxSide> px on the longest side
-// (no upscale) and returns JPEG bytes; empty when the file cannot be
-// decoded.
 QByteArray resizedJpeg(const QString &path, int maxSide, int quality);
-// The user message content for the chat request: the text part plus an
-// OpenAI-style "image_url" part (base64 data URI) when the image data is
-// available, a plain string otherwise.
+// OpenAI chat content: parts array with a base64 data URI when image data
+// is present, plain string otherwise.
 QJsonValue buildUserContent(const QString &path, const QString &type, const QByteArray &imageData, const QString &mimeType);
-// The vision-capable model ids of a /v1/models response: models whose
-// reported input modalities (llama.cpp "architecture", OpenAI
-// "capabilities") include "image"; servers that report no modalities keep
-// every model.
+// Vision-capable ids from a /v1/models response: input modalities under
+// llama.cpp "architecture" or OpenAI "capabilities"; none reported = keep.
 QStringList parseModels(const QJsonDocument &doc);
-// Extracts the tag list from a model response: a JSON array, an array
-// embedded in prose, or plain comma/semicolon/newline-separated text.
+// Accepts a JSON array (possibly embedded in prose) or comma/semicolon/newline text.
 QStringList parseTags(const QString &content);
 } // namespace aitagger
 
-// AI tag generation against an OpenAI-compatible chat API (llama-server,
-// vLLM, ...). The endpoint, model, system prompt and last tagged folder
-// persist in the [Wallpapers] group of kwalrc. Chat requests run one at a
-// time, wallpaper by wallpaper.
+// Tags via an OpenAI-compatible chat API; settings persist in kwalrc's
+// [Wallpapers] group. Chat requests run strictly one at a time.
 class AiTagger : public QObject
 {
     Q_OBJECT
@@ -57,14 +39,11 @@ class AiTagger : public QObject
     Q_PROPERTY(QString endpoint READ endpoint WRITE setEndpoint NOTIFY endpointChanged)
     Q_PROPERTY(QString model READ model WRITE setModel NOTIFY modelChanged)
     Q_PROPERTY(QString systemPrompt READ systemPrompt WRITE setSystemPrompt NOTIFY systemPromptChanged)
-    // Prompt used while the stored one is empty; editable in the settings.
     Q_PROPERTY(QString defaultSystemPrompt READ defaultSystemPrompt CONSTANT)
     Q_PROPERTY(QString folder READ folder WRITE setFolder NOTIFY folderChanged)
-    // Model ids reported by the server's /v1/models endpoint.
     Q_PROPERTY(QStringList models READ models NOTIFY modelsChanged)
     Q_PROPERTY(bool modelsLoading READ modelsLoading NOTIFY modelsLoadingChanged)
     Q_PROPERTY(QString modelsError READ modelsError NOTIFY modelsChanged)
-    // "Tag wallpapers" batch progress.
     Q_PROPERTY(bool tagging READ tagging NOTIFY taggingChanged)
     Q_PROPERTY(int tagTotal READ tagTotal NOTIFY taggingChanged)
     Q_PROPERTY(int tagCompleted READ tagCompleted NOTIFY taggingChanged)
@@ -88,11 +67,8 @@ public:
     int tagTotal() const;
     int tagCompleted() const;
 
-    // GETs {endpoint}/v1/models and fills <models>.
     Q_INVOKABLE void fetchModels();
-    // Tags every wallpaper (image and video) in <folder>, sequentially.
     Q_INVOKABLE void tagFolder(const QString &folder);
-    // Tags one wallpaper (the drawer's refresh button).
     Q_INVOKABLE void tagWallpaper(const QString &path);
 
 signals:
@@ -103,20 +79,16 @@ signals:
     void modelsChanged();
     void modelsLoadingChanged();
     void taggingChanged();
-    // Result for one wallpaper; <tags> is the list stored on success.
     void wallpaperTagged(const QString &path, bool ok, const QString &message, const QStringList &tags);
-    // Emitted when a whole tagFolder batch finishes.
     void taggingFinished(int succeeded, int failed);
-    // An operation could not start (missing endpoint/model, empty folder).
     void error(const QString &message);
 
 private:
-    // Pool job; nested so it can call the private sendRequest. It resolves
-    // the image (videos: the cached first frame), resizes it off the GUI
-    // thread and queues the finished JSON body back.
+    // Pool job, nested for private sendRequest access; image resolve/resize runs
+    // off the GUI thread, the finished body is queued back.
     class RequestJob;
     void startNext();
-    // POSTs the prepared request body; runs on the owning thread.
+    // Runs on the owning thread (queued in from the pool job).
     void sendRequest(const QString &path, const QByteArray &body);
 
     QNetworkAccessManager *m_nam = nullptr;

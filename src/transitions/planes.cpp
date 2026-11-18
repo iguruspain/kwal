@@ -162,7 +162,6 @@ Buffer composeImage(const Plane &plane, int w, int h)
     const int iw = img.width();
     const int ih = img.height();
 
-    // Size of the image once fitted.
     int nw = iw;
     int nh = ih;
     switch (plane.fill) {

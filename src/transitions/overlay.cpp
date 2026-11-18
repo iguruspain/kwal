@@ -38,14 +38,12 @@ namespace {
 
 constexpr char kLayerNamespace[] = "kwal-transition";
 constexpr int kEventTimeoutMs = 2000;
-// Fade-out before destroying a surface that still shows the image.
 constexpr double kCloseFadeSec = 0.15;
 constexpr int kMaxDispatchRounds = 300;
 
-// Draws one frame of `effect` at `progress` ∈ [0, 1] into `buf`, which must
-// hold `orig` or an earlier frame of the same animation. `w`/`h` are the
-// buffer size in pixels, `logicalW`/`logicalH` the surface's logical size
-// (for pixel positions). `done` forces the exact end state.
+// Draws one `progress` frame of `effect` into `buf`, which must hold `orig` or an
+// earlier frame of the same animation; logicalW/H map effect positions; `done`
+// forces the exact end state.
 void renderFrame(const Effect &effect, Paint paint, std::span<Pixel> buf,
                  const std::span<const Pixel> orig, int w, int h, int logicalW,
                  int logicalH, double progress, bool done)
@@ -98,8 +96,7 @@ void renderFrame(const Effect &effect, Paint paint, std::span<Pixel> buf,
     }
 }
 
-// Creates a memfd holding two copies of `argb` (double buffering) with a RW
-// mapping.
+// memfd holding two copies of `argb` (double buffering) with a RW mapping.
 bool makeMemfd(const Pixel *argb, size_t count, int *fdOut, uint8_t **memOut,
                size_t *bufLenOut, size_t *poolLenOut)
 {
@@ -131,17 +128,15 @@ bool dispatchWait(OverlayState &st, int timeoutMs)
 {
     struct wl_display *d = st.display;
 
-    // 1. Deliver what is already queued (prepare_read fails while events
-    //    are pending on the default queue).
+    // Drain queued events first: wl_display_prepare_read fails while events are pending.
     while (wl_display_prepare_read(d) != 0) {
         if (wl_display_dispatch_pending(d) < 0) {
             return false;
         }
     }
 
-    // 2. Send our pending requests BEFORE sleeping. Polling first made the
-    //    compositor wait for requests that were still in our buffer, so
-    //    every round trip cost the whole timeout.
+    // Flush BEFORE sleeping: polling first lets the compositor wait on requests
+    // still in our buffer, so each round trip costs the full timeout.
     short events = POLLIN;
     if (wl_display_flush(d) < 0) {
         if (errno != EAGAIN) {
@@ -151,7 +146,6 @@ bool dispatchWait(OverlayState &st, int timeoutMs)
         events |= POLLOUT; // socket buffer full: wait until it drains
     }
 
-    // 3. Sleep until the compositor answers (or the timeout).
     struct pollfd pfd;
     pfd.fd = wl_display_get_fd(d);
     pfd.events = events;
@@ -306,7 +300,7 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
     }
     struct wl_display *display = wl_display_connect(nullptr);
     if (!display) {
-        return false; // No Wayland session.
+        return false;
     }
     auto st = std::make_unique<OverlayState>();
     st->display = display;
@@ -318,8 +312,7 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
     wl_registry_add_listener(st->registry, &kRegistryListener, st.get());
     qWarning("perf: %lld begin: connected", perfMs());
 
-    // All global announcements are delivered before the sync roundtrip
-    // is acked.
+    // Global announcements are delivered before a sync roundtrip is acked.
     for (int i = 0; i < 10; ++i) {
         if (!dispatchWait(*st, kEventTimeoutMs)) {
             wl_display_disconnect(display);
@@ -339,10 +332,8 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
     if (!st->viewporter) {
         qWarning("transition: wp_viewporter missing; falling back to logical-size buffers");
     }
-    // Each wl_output sends its initial state (geometry, mode, name,
-    // description) right after the bind and closes the stream with `done`.
-    // Dispatch until every output is done so the names are ready for the
-    // plane matching below (same scheme as the reference implementation).
+    // wl_output streams its initial state after the bind, ending with `done`;
+    // wait for it so names are ready for the plane matching below.
     for (int i = 0; i < 10; ++i) {
         bool allDone = true;
         for (const auto &o : st->outputs) {
@@ -361,9 +352,8 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
     }
     qWarning("perf: %lld begin: outputs done", perfMs());
 
-    // Phase 1: create each layer surface, anchor it, and commit WITHOUT a
-    // buffer — layer-shell requires a configure/ack round-trip before any
-    // buffer is attached.
+    // Phase 1: create and anchor each layer surface, commit WITHOUT a buffer —
+    // layer-shell requires a configure/ack round-trip before one is attached.
     struct Pending {
         int plane = 0;
         int mon = 0;
@@ -389,8 +379,7 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
             qWarning("transition: screen %u has no active mode; skipping", plane.screen);
             continue;
         }
-        // Match by connector name only: guessing by index could put the
-        // overlay on a different monitor than the one being changed.
+        // Match by connector name: index guessing could hit the wrong monitor.
         int oi = -1;
         for (size_t i = 0; i < st->outputs.size(); ++i) {
             const auto &o = st->outputs[i];
@@ -427,8 +416,7 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
         zwlr_layer_surface_v1_set_size(ls, 0, 0);
         // -1: ignore panels' exclusive zones and cover the whole output.
         zwlr_layer_surface_v1_set_exclusive_zone(ls, -1);
-        // Explicit protocol default: the overlay never wants keyboard focus,
-        // input passes through to the desktop (empty input region below).
+        // Explicit protocol default: the overlay never takes keyboard focus.
         zwlr_layer_surface_v1_set_keyboard_interactivity(
             ls, ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE);
         wl_surface_commit(surface);
@@ -448,7 +436,6 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
         return false;
     }
 
-    // Phase 2: wait for every configure and ack it.
     for (int i = 0; i < kMaxDispatchRounds; ++i) {
         if (st->configsPending == 0) {
             break;
@@ -465,7 +452,6 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
     }
     qWarning("perf: %lld begin: configures done", perfMs());
 
-    // Phase 3: render, attach the first buffer and map the surfaces.
     for (size_t i = 0; i < pendings.size(); ++i) {
         const auto &p = pendings[i];
         const auto &m = mons[static_cast<size_t>(p.mon)];
@@ -479,9 +465,8 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
             lw = m.width;
             lh = m.height;
         }
-        // Buffer size: the output's physical mode (crisp at any scale),
-        // mapped to the logical size by the viewport. Swap for rotated
-        // outputs, where logical and mode orientations differ.
+        // Buffer = physical mode size (crisp at any scale), mapped to logical by the
+        // viewport; swap for rotated outputs (logical vs mode orientation differ).
         int bw = m.width;
         int bh = m.height;
         if ((lw > lh) != (bw > bh)) {
@@ -505,7 +490,6 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
             return false;
         }
         qWarning("perf: %lld begin: composed %dx%d", perfMs(), bw, bh);
-        // Reveal starts as the opaque image, Cover as a transparent overlay.
         Buffer blank;
         const Buffer *initial = &s->orig;
         if (paint == Paint::Cover) {
@@ -523,7 +507,7 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
         s->height = bh;
         s->logical = {lw, lh};
         s->paint = paint;
-        s->opaque = (paint == Paint::Reveal); // Reveal starts as the opaque old image
+        s->opaque = (paint == Paint::Reveal); // Reveal starts opaque.
         s->shown = 0;
         s->released[0].store(false, std::memory_order_release);
         s->released[1].store(true, std::memory_order_release);
@@ -551,8 +535,6 @@ bool Overlay::begin(const std::vector<Output> &mons, const std::vector<Plane> &p
 
     m_state = std::move(st);
 
-    // Block until every first frame is composited: the overlay is then
-    // opaque on screen and can safely hide the switch.
     for (int i = 0; i < kMaxDispatchRounds; ++i) {
         if (m_state->framesPending == 0) {
             break;
@@ -570,7 +552,6 @@ bool Overlay::presentFrame(OverlaySurface &s, const Effect &effect, Paint paint,
                            double progress, bool done)
 {
     const int next = 1 - s.shown;
-    // Wait until the compositor released the buffer we reuse.
     for (int i = 0; i < kMaxDispatchRounds; ++i) {
         if (s.released[next].load(std::memory_order_acquire)) {
             break;
@@ -613,15 +594,13 @@ void Overlay::animate(const Spec &spec)
     if (!m_state || m_surfaces.empty()) {
         return;
     }
-    // `Reveal` + `none`: nothing to animate. `Cover` + `none` still has to
-    // paint the final frame once.
+    // Reveal+none has nothing to paint; Cover+none paints the final frame once.
     if (spec.effect.type == EffectType::None
         && m_surfaces[0]->paint == Paint::Reveal) {
         return;
     }
 
-    // `simple` is frame-driven (step per frame, 30 fps like awww);
-    // everything else follows the clock along the bezier curve.
+    // simple: frame-driven step (30 fps, awww); others follow the clock along the bezier.
     const bool isSimple = spec.effect.type == EffectType::Simple;
     const int fps = spec.fps != 0 ? spec.fps : (isSimple ? 30 : 0);
     const double minDt = fps != 0 ? 1.0 / static_cast<double>(fps) : 0.0;
@@ -658,11 +637,9 @@ void Overlay::animate(const Spec &spec)
                 return;
             }
             if (done) {
-                // End state: Reveal = fully transparent, Cover = the new image.
                 sp->opaque = (sp->paint == Paint::Cover);
             }
         }
-        // Pace on the compositor's frame callbacks (vsync).
         if (!waitFrames()) {
             qWarning("transition: dispatch failed; aborting");
             teardown();
@@ -745,8 +722,7 @@ void Overlay::close(int holdMs)
     if (holdMs > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(holdMs));
     }
-    // Never destroy an opaque surface: the compositor would animate its
-    // closing on top of the (identical) wallpaper underneath.
+    // Never destroy an opaque surface: the compositor would animate its closing.
     fadeOutOpaque(kCloseFadeSec);
     teardown();
     qWarning("perf: %lld close: done", perfMs());
@@ -791,12 +767,9 @@ void Overlay::teardown()
     }
     m_surfaces.clear();
     if (m_state) {
-        // Send the queued destroys to the compositor; without a flush the
-        // layer surfaces stay mapped until the connection closes (the
-        // reference implementation flushes at the end of teardown).
+        // Flush the queued destroys: without it, surfaces stay mapped until disconnect.
         wl_display_flush(m_state->display);
-        // The layer-user data is freed with the state (after the surfaces,
-        // whose listeners are gone by then).
+        // layerUsers die with the state, after the surfaces whose listeners use them.
         m_state.reset();
     }
 }

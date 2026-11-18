@@ -56,8 +56,7 @@ bool restoreBackup(const QString &path)
     if (source.error() != QFileDevice::NoError)
         return false;
 
-    // Restore through a temp file + atomic rename so a crash never leaves
-    // the real file missing (a plain remove+copy would).
+    // Temp + rename, never remove+copy: a crash must not leave the target missing.
     const QFileInfo info(path);
     QTemporaryFile tmp;
     tmp.setFileTemplate(info.absoluteDir().filePath(
@@ -77,8 +76,7 @@ QString contentFingerprint(const QStringList &paths)
 {
     QCryptographicHash hash(QCryptographicHash::Sha1);
     for (const QString &path : paths) {
-        // The path is hashed too (with the file contents after it), so two
-        // different file sets can never collide by shuffling bytes around.
+        // Path hashed before contents so file sets can't collide by byte shuffling.
         hash.addData(path.toUtf8());
         hash.addData(QByteArray(1, '\0'));
         QFile file(path);

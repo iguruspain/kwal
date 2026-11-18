@@ -11,59 +11,45 @@
 namespace tools
 {
 
-// Starship config path: ~/.config/starship.toml (XDG_CONFIG_HOME aware).
+// ~/.config/starship.toml (XDG_CONFIG_HOME aware).
 QString starshipConfigPath();
 
-// Starship templates directory: ~/.config/kwal/templates/starship
+// ~/.config/kwal/templates/starship
 QString starshipTemplateDir();
 
-// Parsed palette entry: name -> {key -> value}
 using PaletteMap = std::map<QString, std::map<QString, QString>>;
 
-// Result of reading a starship config file.
 struct StarshipConfigResult
 {
-    QString configPath;       // Display path (e.g. ~/.config/starship.toml)
-    PaletteMap palettes;      // All palettes found in the file
-    QString activePalette;    // Name of the active palette (from `palette = '...'`)
-    bool valid = false;       // Whether the file was parsed successfully
+    QString configPath;       // display path, ~-abbreviated
+    PaletteMap palettes;
+    QString activePalette;    // top-level `palette` key
+    bool valid = false;
 };
 
-// Reads and parses a starship.toml file, extracting palettes.
 StarshipConfigResult readStarshipConfig(const QString &path = QString());
 
-// Applies the given palettes to the starship config atomically.
-// Backs up the current file to .bak before writing. `activePalette` sets
-// the top-level `palette` key. Returns true on success.
+// Backs up to .bak and writes atomically; activePalette sets the top-level `palette` key.
 bool applyStarshipPalettes(const QString &configPath,
                            const PaletteMap &palettes,
                            const QString &activePalette = QString());
 
-// Restores starship.toml from its .bak backup.
 bool restoreStarshipBackup(const QString &configPath = QString());
 
-// Whether a .bak backup exists for the starship config.
 bool hasStarshipBackup(const QString &configPath = QString());
 
-// Loads a template file from the starship template directory.
-// Returns empty table on failure.
+// Empty table on failure.
 toml::table loadStarshipTemplate(const QString &templateName);
 
-// Lists available template names (without .toml extension) from the template directory.
+// Template names without .toml extension.
 QStringList listStarshipTemplates();
 
-// Extracts the palette map from a parsed TOML document.
 PaletteMap extractPalettes(const toml::table &doc);
 
-// Gets the active palette name from the document (top-level `palette` key).
 QString getActivePaletteName(const toml::table &doc);
 
-// Replaces all palettes in the TOML document with the given palette map.
-// Updates the top-level `palette` key to `activePalette` if provided.
 void replacePalettesInDoc(toml::table &doc, const PaletteMap &palettes, const QString &activePalette = QString());
 
-// Writes the whole TOML document to `configPath` (used when applying a
-// template: the document itself is the new config).
 bool writeStarshipDoc(const QString &configPath, const toml::table &doc);
 
 } // namespace tools

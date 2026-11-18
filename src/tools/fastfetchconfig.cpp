@@ -27,7 +27,6 @@ QString readStringKey(const QString &path, const QString &key)
         return QString();
     const QString raw = QString::fromUtf8(file.readAll());
 
-    // Quoted key, then unquoted JSONC key.
     const QRegularExpression quoted(QStringLiteral("\\\"%1\\\"\\s*:\\s*\"([^\"]*)\"").arg(QRegularExpression::escape(key)));
     const QRegularExpression unquoted(QStringLiteral("^[ \\t]*%1[ \\t]*:[ \\t]*\"([^\"]*)\"").arg(QRegularExpression::escape(key)));
     auto match = quoted.match(raw);
@@ -87,7 +86,6 @@ bool setImageSource(const QString &newSourcePath)
         return writeFileAtomic(cfg, raw);
     }
 
-    // Unquoted JSONC key at line start.
     const QRegularExpression unquoted(QStringLiteral("^[ \\t]*source[ \\t]*:[ \\t]*(\"[^\"]*\"|'[^']*'|[^,\\n]*),?[ \\t]*$"),
         QRegularExpression::MultilineOption);
     match = unquoted.match(raw);

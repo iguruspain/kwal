@@ -5,34 +5,24 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// Color swatch shared by the whole app:
-// - Picker (tool pages): enablePicker, left-click opens the built-in
-//   color dialog and emits accepted().
-// - Selectable swatch (wallpaper grid and detail drawer): left-click
-//   emits clicked(), right-click copies the hex to the clipboard.
-// - Category filter chips: enableCopy: false and tooltipText set to the
-//   category label.
+// Shared swatch: enablePicker + accepted() for tool pages; plain clicked() with right-click hex copy (enableCopy) for grid/drawer; filter chips set enableCopy: false + tooltipText.
 Item {
     id: root
 
-    // Current color: "#rrggbb", "#aarrggbb", or "transparent".
+    // "#rrggbb", "#aarrggbb" (alpha first), or "transparent".
     property string color: "transparent"
     property bool selected: false
     property bool enablePicker: false
     property bool enableCopy: true
-    // Tooltip override; defaults to the hex (uppercased), or "Pick color"
-    // when no color is set.
     property string tooltipText: ""
     property real dotSize: Kirigami.Units.gridUnit * 1.5
 
-    // Emitted on left-click when the picker is disabled.
+    // Emitted on left-click only when the picker is disabled.
     signal clicked()
-    // Emitted with the hex color picked in the dialog.
     signal accepted(string hex)
 
     implicitWidth: dotSize
     implicitHeight: dotSize
-    // Mouse-operated swatch; the role only announces it to assistive tech.
     Accessible.role: Accessible.Button
     Accessible.name: root.tooltipText !== ""
         ? root.tooltipText
@@ -84,9 +74,7 @@ Item {
         onAccepted: root.accepted(root.dialogHex())
     }
 
-    // Invisible TextEdit used to copy text to the clipboard. Pure plumbing:
-    // hide it from accessibility, where it showed up as a phantom editable
-    // field per dot.
+    // Clipboard plumbing; Accessible.ignored keeps it out of the a11y tree as a phantom editable field.
     TextEdit {
         id: clipboard
         visible: false

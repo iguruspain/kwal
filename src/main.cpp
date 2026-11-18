@@ -3,7 +3,7 @@
 #include <QMessageLogger>
 extern "C" {
 #include <libavutil/avutil.h>
-} // extern "C": the ffmpeg headers ship without C++ guards
+} // extern "C": ffmpeg headers lack C++ guards
 #include <QtWebEngineQuick>
 #include "aboutinfo.h"
 #include "fdothumbnailprovider.h"
@@ -17,10 +17,7 @@ static void messageHandler(QtMsgType, const QMessageLogContext &, const QString 
     fprintf(stderr, "%s\n", msg.toUtf8().constData());
 }
 
-// Let Qt integrate with the running KDE desktop instead of falling back to
-// built-in defaults: query the desktop for the user's widget style and color
-// scheme, and render QML controls as native Plasma widgets. Never overrides
-// explicit user settings; inactive on non-KDE desktops.
+// KDE only; never overrides explicit user settings.
 static void applyDesktopIntegration()
 {
     const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -36,15 +33,10 @@ int main(int argc, char *argv[])
 {
     applyDesktopIntegration();
 
-    // Qt Multimedia's FFmpeg backend leaves libavutil's default log callback
-    // in place, so every MediaPlayer prints its raw "Input #0, ..." probe
-    // dump straight to stderr. Silence everything below real errors.
+    // libavutil's default callback prints MediaPlayer probe dumps to stderr.
     av_log_set_level(AV_LOG_ERROR);
 
-    // WebEngine preview pages: keep Chromium on the software path to avoid
-    // "GBM not supported" warnings and freezes on systems without working
-    // GPU acceleration (same behavior as the original app). Never overrides
-    // an explicit user setting.
+    // Chromium software path: avoids "GBM not supported" freezes; never overrides an explicit setting.
     const QProcessEnvironment webEnv = QProcessEnvironment::systemEnvironment();
     if (webEnv.value(QStringLiteral("QTWEBENGINE_CHROMIUM_FLAGS")).isEmpty())
         qputenv("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu");
@@ -56,16 +48,10 @@ int main(int argc, char *argv[])
     app.setOrganizationDomain(QStringLiteral("kde.org"));
     app.setApplicationName(QStringLiteral("kwal"));
     app.setApplicationVersion(QStringLiteral(KWAL_VERSION));
-    // Match the running window to the installed desktop entry (app id
-    // org.kde.kwal) so Plasma shows the right icon/name and StartupNotify
-    // works. Must be the installed org.kde.kwal.desktop base name.
+    // must be the installed org.kde.kwal.desktop base name (icon/name, StartupNotify).
     app.setDesktopFileName(QStringLiteral("org.kde.kwal"));
-    // WebEngine's initialize() installs its own message handler (it forwards
-    // Qt logging into Chromium's logging system), which silently swallows
-    // every qWarning/console message from the QML side — including the QML
-    // load failures that are the first diagnostic for a missing window.
-    // Re-install ours after the application object exists so the last
-    // installer wins.
+    // WebEngine's initialize() installs its own handler that swallows QML
+    // warnings; re-install ours after the application object exists.
     qInstallMessageHandler(messageHandler);
     WallpapersInfo::initialize(&app);
     AboutInfo::initialize(&app);

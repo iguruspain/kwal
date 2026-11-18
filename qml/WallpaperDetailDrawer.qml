@@ -6,44 +6,27 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// Wallpaper detail panel (no overlay): lives in the wallpapers page's
-// RowLayout, right of the grid, and pushes it aside — the page animates
-// the panel's width and opacity exactly like the Folders sidebar. Opened
-// by double-clicking a cell; closed via the X button or the Escape key.
+// Inline panel beside the grid (not an overlay); the page animates its width like the sidebar.
 Rectangle {
     id: root
 
     required property AppController app
-    // Absolute path of the wallpaper shown in the panel. Changing it
-    // reloads categories/tags and resets the palette and video state.
     required property string wallpaper
     required property bool isVideo
-    // The 15 color categories (name/hex/label) shared with the search chips.
     required property var categorySwatches
-    // Whether the panel is open; drives live video playback (the grid
-    // cell keeps its own player off while it is open).
+    // While open, the grid cell's own player stays off (live playback moves here).
     property bool open: false
 
     signal closeRequested()
 
-    // Local copies of the wallpaper's categories/tags/source colors.
-    // They are reassigned (never mutated in place) so bindings
-    // re-evaluate; the editable ones are written back through
-    // WallpapersInfo.
+    // Reassigned, never mutated in place, so bindings re-evaluate; writes go through WallpapersInfo.
     property var categories: []
     property var tags: []
-    // Mirrored so the matugen dots appear as soon as the extraction job
-    // finishes (entryChanged), not only when the panel happens to open
-    // after it — the common case for videos (first-frame extraction).
+    // Mirrored (entryChanged re-fetch), not bound: *For() methods are not notifiable properties.
     property var sourceColors: []
-    // Whether the tag input field is shown; toggled by the "+" button.
     property bool tagInputVisible: false
 
-    // Whether the wallpaper is a real animation: the per-file
-    // QImageReader::imageCount() frame-count probe cached in WallpapersInfo
-    // (extension fallback until probed), so a static WebP/GIF never goes
-    // through the QMovie path. Re-synced by syncWithInfo on every
-    // entryChanged, like the colors and tags.
+    // QImageReader::imageCount() probe cached in WallpapersInfo (extension fallback until probed): keeps static WebP/GIF off the QMovie path.
     property bool isAnimated: false
 
     property string paletteBackend: "materialyou"
@@ -52,14 +35,10 @@ Rectangle {
     property var paletteSwatches: []
     property int paletteSelected: -1
     property bool paletteBusy: false
-    // Set by a short timer after opening so the first frame shows before
-    // the video decoder starts. Reset whenever the video Loader unloads.
+    // Timer-set after opening so the first frame shows before the decoder starts; reset on Loader unload.
     property bool mediaArmed: false
-    // QMovie frame width for the media area, set by mediaWidthSettle once
-    // the panel width settles (initial guess until then).
     property real mediaFrameWidth: 512
 
-    // The page selector index: 0 = Info, 1 = Commands.
     property int pageSelected: 0
 
     color: Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
@@ -73,15 +52,11 @@ Rectangle {
         pageSelected = 0
     }
 
-    // The panel always opens on the Info page.
     onOpenChanged: if (open) {
         pageSelected = 0
-        // Freshly settle the frame width for the panel that just opened.
         mediaWidthSettle.restart()
     }
 
-    // Reloads the manual categories/tags from the backend and clears any
-    // palette computed for the previous wallpaper.
     function syncWithInfo() {
         categories = app.wallpapersInfo.colorCategoriesFor(root.wallpaper)
         tags = app.wallpapersInfo.tagsFor(root.wallpaper)
@@ -89,8 +64,7 @@ Rectangle {
         isAnimated = app.wallpapersInfo.isAnimatedFor(root.wallpaper)
         paletteSwatches = []
         paletteSelected = -1
-        // A completion that is about to be discarded must not leave the
-        // extract button disabled on the new wallpaper.
+        // paletteBusy is app-wide: a discarded completion must not leave it stuck (see onPaletteReady).
         paletteBusy = false
     }
 
@@ -105,8 +79,6 @@ Rectangle {
         return Kirigami.Theme.highlightColor
     }
 
-    // AI tag results for the wallpaper the panel shows; the tag chips
-    // themselves resync through entryChanged.
     function notify(message) {
         // qmllint disable unqualified
         const win = applicationWindow()
@@ -130,14 +102,12 @@ Rectangle {
         }
     }
 
-    // QML split() returns a plain JS array (no last()), so index the end.
+    // split() returns a plain JS array (no last()).
     function fileNameOf(path) {
         const parts = path.split("/")
         return parts[parts.length - 1]
     }
 
-    // Keeps the panel in sync when the entry is modified elsewhere
-    // (e.g. a rescan or an edit from the grid).
     Connections {
         target: root.app.wallpapersInfo
         function onEntryChanged(path) {
@@ -147,16 +117,10 @@ Rectangle {
         }
     }
 
-    // Extraction is asynchronous and results for other wallpapers can
-    // arrive late, so palette payloads are filtered by path; the busy
-    // flag is cleared regardless (see onPaletteReady).
+    // Extractions are async: results for other wallpapers arrive late — filter payloads by path, clear the busy flag regardless.
     Connections {
         target: root.app.paletteExtractor
         function onPaletteReady(path, colors, accents, seed) {
-            // The busy flag is app-wide (one extraction at a time), so a
-            // completion for a wallpaper the panel no longer shows must
-            // still clear it — otherwise the extract button stays
-            // disabled on the new wallpaper.
             root.paletteBusy = false
             if (path === root.wallpaper) {
                 root.paletteSwatches = colors
@@ -177,7 +141,6 @@ Rectangle {
         anchors.margins: Kirigami.Units.gridUnit
         spacing: Kirigami.Units.gridUnit
 
-        // Header: file name and close button.
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
@@ -224,19 +187,10 @@ Rectangle {
             }
         }
 
-        // Media area: the base layer is always the wallpaper (images)
-        // or its cached first frame (videos). Live playback is layered
-        // on top after a short delay, so the user sees the frame
-        // immediately instead of a blank area while the decoder starts.
-        // The matugen source colors overlay its bottom-left corner.
+        // Base layer = wallpaper or cached first frame; live playback layers on top after a delay (frame visible while the decoder starts).
         Item {
             id: mediaArea
-            // The media area stays 16:9: the height starts from the full
-            // content width and is capped at 40% of the panel height (so
-            // the chips and palette below stay visible without scrolling);
-            // the width is then derived from the height, so when the cap
-            // kicks in the area shrinks proportionally instead of keeping
-            // the full width.
+            // 16:9, height capped at 40% of panel height; width derives from height so the cap shrinks it proportionally.
             readonly property real mediaHeight: Math.min(
                 (rootContent.width - 2 * Kirigami.Units.gridUnit) * 9 / 16,
                 root.height * 0.4)
@@ -264,10 +218,7 @@ Rectangle {
                 fillMode: Image.PreserveAspectCrop
                 asynchronous: true
                 smooth: true
-                // Cap the decode: the panel shows the wallpaper at a few
-                // hundred px, but the source is the full-resolution original
-                // (or the cached first frame); decoding it at native size
-                // (e.g. 4K) wastes memory the panel never displays.
+                // sourceSize caps the decode; without it a 4K source decodes at native size.
                 sourceSize: Qt.size(1280, 0)
                 visible: !root.isAnimated
                 source: root.isVideo
@@ -277,11 +228,7 @@ Rectangle {
                     : root.app.fileUrl(root.wallpaper)
             }
 
-            // QMovie frame width follows the panel's settled width:
-            // setScaledSize is a decode target, not a cap (the old fixed
-            // 1280 px decoded frames the panel never shows), and every
-            // change reloads the frames — so feed it only the settled
-            // width, 400 ms after the last width change.
+            // setScaledSize is a decode target, not a cap; every change reloads all frames — feed it only the settled width.
             Timer {
                 id: mediaWidthSettle
                 interval: 400
@@ -289,8 +236,7 @@ Rectangle {
                     root.mediaFrameWidth = Math.min(Math.ceil(mediaArea.width * root.Screen.devicePixelRatio), 1024)
             }
 
-            // Plays the GIF/WebP frames in place while the panel is open
-            // (QQuickImage above only shows the first frame).
+            // QQuickImage only shows the first frame; AnimatedImage decodes the GIF/WebP frames.
             AnimatedImage {
                 id: mediaAnimated
                 anchors.fill: parent
@@ -304,10 +250,7 @@ Rectangle {
                 playing: root.isAnimated && root.open
             }
 
-            // The MediaPlayer lives inside the Loader so closing the
-            // panel or switching wallpaper destroys it (not just
-            // pauses it), freeing the decoder and letting the grid
-            // cell's own video resume its loop.
+            // Loader destroys the MediaPlayer on close (not just pauses), freeing the decoder so the grid cell's loop resumes.
             Loader {
                 id: videoLoader
                 anchors.fill: parent
@@ -325,7 +268,6 @@ Rectangle {
                             source: root.app.fileUrl(root.wallpaper)
                             autoPlay: true
                             loops: MediaPlayer.Infinite
-                            // -1 disables the audio track: wallpapers play muted.
                             activeAudioTrack: -1
                             videoOutput: videoSurface
                         }
@@ -333,7 +275,6 @@ Rectangle {
                 }
             }
 
-            // Arms the video 250 ms after the panel opens.
             Timer {
                 id: mediaStartTimer
                 interval: 250
@@ -341,9 +282,7 @@ Rectangle {
                 onTriggered: root.mediaArmed = true
             }
 
-            // The matugen source colors, overlaid at the bottom-left like the
-            // grid's selected cell: the selected dot feeds the
-            // %scolor%/%sc% placeholders of the custom commands.
+            // The selected dot feeds the %scolor%/%sc% placeholders of the custom commands.
             SourceColorDots {
                 anchors.left: parent.left
                 anchors.bottom: parent.bottom
@@ -370,7 +309,6 @@ Rectangle {
                     : commandsPageComponent
             }
 
-            // Info page: the scrollable section (media stays fixed above).
             Component {
                 id: infoPageComponent
 
@@ -378,9 +316,7 @@ Rectangle {
                     anchors.fill: parent
                     spacing: Kirigami.Units.gridUnit
 
-                    // Scrollable section: categories, tags and palette. The content
-                    // column is pinned to availableWidth (the width minus the
-                    // scrollbar) so it never scrolls horizontally.
+                    // Content column pinned to availableWidth so it never scrolls horizontally.
                     ScrollView {
                         id: scrollView
                         Layout.fillWidth: true
@@ -393,12 +329,7 @@ Rectangle {
                             width: scrollView.availableWidth
                             spacing: Kirigami.Units.gridUnit
 
-                            // Categories and tags: category chips plus the refresh
-                            // and add buttons, then the tag chips and the optional
-                            // tag input. The "Add" menu only offers the categories
-                            // the wallpaper does not have yet. Both chip rows wrap
-                            // (Flow) so the buttons stay visible instead of
-                            // overflowing the ScrollView's clip.
+                            // The "Add" menu only offers categories the wallpaper lacks; Flow keeps buttons visible inside the clip.
                             CollapsibleSection {
                                 Layout.fillWidth: true
                                 title: qsTr("Categories and tags")
@@ -436,9 +367,7 @@ Rectangle {
                                                 onClicked: addMenu.open()
                                             }
 
-                                            // Menu items are generated by the Instantiator
-                                            // (a Menu does not support a Repeater directly) and
-                                            // inserted/removed as the model changes.
+                                            // A Menu does not support a Repeater; items come from the Instantiator.
                                             Menu {
                                                 id: addMenu
                                                 Instantiator {
@@ -461,8 +390,6 @@ Rectangle {
                                                 }
                                             }
 
-                                            // Recalculates the automatic categories from the
-                                            // wallpaper image and clears the manual override.
                                             ToolButton {
                                                 icon.name: "view-refresh"
                                                 Accessible.name: qsTr("Recalculate categories")
@@ -507,8 +434,6 @@ Rectangle {
                                                 onClicked: root.tagInputVisible = checked
                                             }
 
-                                            // Replaces the tags with AI suggestions from the configured
-                                            // OpenAI-compatible endpoint (Settings → Wallpapers).
                                             ToolButton {
                                                 icon.name: "tag-new"
                                                 enabled: !root.app.aiTagger.tagging
@@ -533,8 +458,6 @@ Rectangle {
                                             onVisibleChanged: if (visible) forceActiveFocus()
                                             placeholderText: qsTr("Add tags, separated by commas...")
                                             onAccepted: {
-                                                // Comma-separated input adds several tags at once;
-                                                // empty parts and duplicates are ignored.
                                                 const parts = tagField.text.split(",").map(p => p.trim())
                                                 const list = root.tags.slice()
                                                 for (const t of parts) {
@@ -552,8 +475,6 @@ Rectangle {
                                 }
                             }
 
-                            // Palette: backend controls, extracted swatches and the
-                            // Material You scheme selector.
                             CollapsibleSection {
                                 Layout.fillWidth: true
                                 title: qsTr("Palette")
@@ -562,7 +483,6 @@ Rectangle {
                                         width: parent.width
                                         spacing: Kirigami.Units.smallSpacing
 
-                                        // Palette controls: backend, extraction and mode.
                                         RowLayout {
                                             Layout.fillWidth: true
                                             spacing: Kirigami.Units.smallSpacing
@@ -571,7 +491,6 @@ Rectangle {
                                                 id: backendCombo
                                                 Layout.preferredWidth: 160
                                                 model: [qsTr("Material You"), qsTr("ImageMagick")]
-                                                // Switching backend invalidates the current palette.
                                                 onActivated: {
                                                     root.paletteBackend = currentIndex === 1 ? "imagemagick" : "materialyou"
                                                     root.paletteSwatches = []
@@ -579,8 +498,7 @@ Rectangle {
                                                 }
                                             }
 
-                                            // Disabled while an extraction is running to avoid
-                                            // overlapping requests for the same wallpaper.
+                                            // One extraction at a time.
                                             ToolButton {
                                                 Layout.alignment: Qt.AlignRight
                                                 enabled: !root.paletteBusy
@@ -595,8 +513,7 @@ Rectangle {
                                                 }
                                             }
 
-                                            // Dark/light only applies to Material You; the
-                                            // ImageMagick backend ignores it.
+                                            // Dark/light applies to Material You only; ImageMagick ignores it.
                                             Switch {
                                                 id: darkSwitch
                                                 checked: root.paletteDark
@@ -612,8 +529,6 @@ Rectangle {
                                             Layout.fillWidth: true
                                             spacing: Kirigami.Units.smallSpacing
 
-                                            // Extracted swatches: left click selects, right click
-                                            // copies the hex value to the clipboard.
                                             Grid {
                                                 id: paletteGrid
                                                 Layout.fillWidth: true
@@ -633,12 +548,7 @@ Rectangle {
                                                 }
                                             }
                                         }
-                                        // M3 scheme selector (Material You only). Switching
-                                        // scheme re-requests the palette instead of clearing
-                                        // it: the extractor keeps the nine schemes of an
-                                        // extracted wallpaper in cache, so this is immediate
-                                        // once the first extraction has run (a switch before
-                                        // the first one simply extracts with the new scheme).
+                                        // Scheme switch re-extracts rather than clears: the extractor caches all nine schemes once extracted.
                                         ComboBox {
                                             id: schemeCombo
                                             visible: root.paletteBackend === "materialyou" && root.paletteSwatches.length > 0
@@ -659,11 +569,7 @@ Rectangle {
                 }
             }
 
-            // Commands page: the %mode%/%ccolor% placeholder controls
-            // (dark/light switch and custom color) and the custom
-            // commands list, executed last on every wallpaper apply.
-            // The matugen source colors (the %scolor%/%sc% placeholders,
-            // first dot selected by default) are overlaid on the media.
+            // Commands page: %mode%/%ccolor% controls; %scolor%/%sc% dots live on the media, first selected by default.
             Component {
                 id: commandsPageComponent
 
@@ -840,7 +746,6 @@ Rectangle {
             }
         }
 
-        // Footer: always visible, outside the scroll area.
         Kirigami.Separator { Layout.fillWidth: true }
 
         RowLayout {

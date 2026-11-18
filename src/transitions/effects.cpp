@@ -21,7 +21,6 @@ constexpr std::uint32_t keep256(double cover)
     return static_cast<std::uint32_t>((1.0 - std::clamp(cover, 0.0, 1.0)) * 256.0 + 0.5);
 }
 
-// Pixels [a, b) are entirely inside the shape.
 void fillFull(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, size_t a, size_t b)
 {
     if (b <= a) {
@@ -43,11 +42,9 @@ void putPixel(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, si
     buf[i] = scalePx(orig[i], keep);
 }
 
-// Per-row split of a half-plane edge. d(x) = a - dxX*x is the signed
-// distance (px, positive = revealed) at pixel index x ignoring any wave, m
-// the margin within which the exact cover must be evaluated. Returns
-// (b0, f0, f1, b1): pixels [f0, f1) are fully transparent, [b0, f0) and
-// [f1, b1) need per-pixel evaluation, the rest is untouched.
+// Per-row half-plane split: d(x) = a - dx*x is the signed distance (px, positive =
+// transparent) ignoring any wave, m the margin needing exact evaluation. Returns
+// (b0, f0, f1, b1): [f0, f1) fully transparent, [b0, f0) and [f1, b1) per-pixel, rest untouched.
 std::array<size_t, 4> rowRanges(size_t w, double a, double dx, double m)
 {
     const double wf = static_cast<double>(w);
@@ -64,20 +61,16 @@ std::array<size_t, 4> rowRanges(size_t w, double a, double dx, double m)
         return {0, 0, 0, w};
     }
     if (dx > 0.0) {
-        // d decreases with x: full for x <= (a-m)/dx, untouched past (a+m)/dx.
         const size_t f1 = cl(std::floor((a - m) / dx) + 1.0);
         const size_t b1 = std::max(cl(std::ceil((a + m) / dx)), f1);
         return {0, 0, f1, b1};
     }
-    // d increases with x.
     const double k = -dx;
     const size_t f0 = cl(std::ceil((m - a) / k));
     const size_t b0 = std::min(cl(std::floor((-m - a) / k)), f0);
     return {b0, f0, w, w};
 }
 
-// Exact cover of pixel (x, y) for a wipe whose front is at `front` along
-// dir, with an optional sine wave (width, height) on the edge.
 double wipeCover(size_t x, size_t y, double dirX, double dirY, double front,
                  double waveW, double waveH)
 {
@@ -174,7 +167,6 @@ void drawGrow(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, in
         const size_t xo0 = static_cast<size_t>(std::max(std::floor(cx - ho - 0.5), 0.0));
         const size_t xo1 = static_cast<size_t>(std::max(std::min(std::ceil(cx + ho - 0.5), static_cast<double>(wu) - 1.0), 0.0));
 
-        // Fully transparent interior: pixel centres within r - 0.5.
         const double ri2 = rIn * rIn - dy * dy;
         size_t xi0 = 0;
         size_t xi1 = 0;
@@ -224,14 +216,12 @@ void drawOuter(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, i
             continue;
         }
         const double ho = std::sqrt(ho2);
-        // Fully transparent: centre distance >= r + 0.5.
         const size_t lEnd = static_cast<size_t>(std::clamp(std::floor(cx - ho - 0.5) + 1.0, 0.0, static_cast<double>(wu)));
         size_t rStart = static_cast<size_t>(std::clamp(std::ceil(cx + ho - 0.5), 0.0, static_cast<double>(wu)));
         rStart = std::max(rStart, lEnd);
         fillFull(paint, buf, orig, row, row + lEnd);
         fillFull(paint, buf, orig, row + rStart, row + static_cast<size_t>(wu));
 
-        // Untouched interior: centre distance <= r - 0.5.
         const double ri2 = rIn * rIn - dy * dy;
         size_t i0 = rStart;
         size_t i1 = rStart;

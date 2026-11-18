@@ -14,10 +14,7 @@ ItemDelegate {
         return parts.length > 0 ? parts[parts.length - 1] : modelData
     }
 
-    // Selection + keyboard cursor drawn here (no ListView highlight): the
-    // background fills the delegate, so hover/press/selection share one
-    // geometry. The ListView keeps currentIndex on the applied folder;
-    // arrow keys move it before Enter/Space applies it.
+    // No ListView highlight: this background draws hover/press/selection; currentIndex is the applied folder, arrows move it, Enter/Space applies.
     readonly property bool cursorOnRow: ListView.view && ListView.view.currentIndex === index
     background: Rectangle {
         radius: Kirigami.Units.smallSpacing
@@ -29,8 +26,7 @@ ItemDelegate {
              : "transparent"
     }
     onClicked: root.app.setCurrentFolderIndex(root.index)
-    // ItemDelegate (AbstractButton) swallows Space as its own click; the
-    // attached handler runs first and applies the row's folder directly.
+    // ItemDelegate swallows Space as its own click; the attached handler runs first and applies this folder.
     Keys.onSpacePressed: function(event) {
         event.accepted = true
         root.app.setCurrentFolderIndex(root.index)
@@ -63,9 +59,7 @@ ItemDelegate {
             ToolTip.text: qsTr("Remove this folder")
             ToolTip.visible: hovered
             onClicked: root.app.removeFolder(root.index)
-            // Not a tab stop: it is hidden until hover, so tabbing to it
-            // would land focus on an invisible control. The sidebar itself
-            // is the single stop of the folder list.
+            // Not a tab stop: hidden until hover; the sidebar list is the single stop.
             activeFocusOnTab: false
         }
     }

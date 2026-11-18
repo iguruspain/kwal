@@ -24,11 +24,10 @@ namespace {
 
 constexpr int kRefreshThreadCount = 2;
 constexpr int kMatugenTimeoutMs = 30000;
-constexpr int kResizeTimeoutMs = 600000; // P5 encode cap (plan: max 10 min).
-constexpr int kMaxAutoCategories = 5; // Automatic categories: top 5 by dominance (D13).
+constexpr int kResizeTimeoutMs = 600000;
+constexpr int kMaxAutoCategories = 5; // top categories by dominance
 
-// Runs "matugen image <image> --show-source-colors" and returns the parsed
-// "#rrggbb" colors: deduplicated, order preserved.
+// Returns matugen's parsed "#rrggbb" colors: deduplicated, order preserved.
 bool extractSourceColors(const QString &image, QStringList &colors)
 {
     const QString binary = QStandardPaths::findExecutable(QStringLiteral("matugen"));
@@ -65,7 +64,6 @@ bool extractSourceColors(const QString &image, QStringList &colors)
 constexpr int kHashChunkBytes = 1024 * 1024;
 constexpr int kFfmpegTimeoutMs = 120000;
 
-// Converts a JSON array of strings to a QStringList.
 QStringList jsonStringList(const QJsonValue &value)
 {
     QStringList list;
@@ -75,16 +73,14 @@ QStringList jsonStringList(const QJsonValue &value)
     return list;
 }
 
-// Extracts the first video frame of <video> as a PNG to <target> (tmp + rename).
 bool extractFirstFrame(const QString &video, const QString &target)
 {
     const QString binary = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
     if (binary.isEmpty()) {
         return false;
     }
-    // Unique per extraction: two refresh passes of the same video can
-    // overlap in the pool; a shared tmp name would interleave the two
-    // ffmpeg writers in one file (same pattern as encodeResized).
+    // Unique tmp name: overlapping pool extractions of one video would
+    // interleave in a shared file.
     static std::atomic<quint64> tmpSeq{0};
     const QString tmp = target + QStringLiteral(".%1-%2.tmp")
                             .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()))
@@ -94,10 +90,8 @@ bool extractFirstFrame(const QString &video, const QString &target)
                   {QStringLiteral("-v"),
                    QStringLiteral("error"),
                    QStringLiteral("-y"),
-                   // Input protocols pinned to plain files: a planted file
-                   // whose bytes are actually an HLS/DASH playlist must not
-                   // make ffmpeg reach the network while the folder is
-                   // scanned. (Input-scoped: output options keep defaults.)
+                   // Block planted HLS/DASH playlists from making ffmpeg
+                   // reach the network; input-scoped, outputs keep defaults.
                    QStringLiteral("-protocol_whitelist"),
                    QStringLiteral("file,pipe"),
                    QStringLiteral("-i"),
@@ -125,11 +119,9 @@ bool extractFirstFrame(const QString &video, const QString &target)
         QFile::remove(tmp);
         return false;
     }
-    // Single atomic replace (rename(2)); no remove window.
     return tools::renameAtomic(tmp, target);
 }
 
-// MD5 of the file content, read in 1 MiB chunks.
 QString contentMd5(const QString &path)
 {
     QCryptographicHash hash(QCryptographicHash::Md5);
@@ -172,10 +164,8 @@ private:
     QString m_type;
 };
 
-// Automatic color categories of <image> (Celebi top colors + HCT
-// classification), unique and in rank order, capped at kMaxAutoCategories.
-// Returns false when the image cannot be decoded; the categories stay
-// empty in that case.
+// Celebi top colors + HCT classification, unique and rank-ordered, capped at
+// kMaxAutoCategories; false when the image cannot be decoded.
 bool computeImageCategories(const QString &image, QStringList &categories)
 {
     categories.clear();
@@ -200,8 +190,7 @@ bool computeImageCategories(const QString &image, QStringList &categories)
     return true;
 }
 
-// Recomputes the automatic categories of one wallpaper (the drawer's reset
-// button) and applies them on the object's thread.
+// Drawer reset button: recomputes automatic categories for one wallpaper.
 class RecalcJob : public QRunnable
 {
 public:
@@ -233,7 +222,6 @@ private:
     QString m_image;
 };
 
-// ffprobe height/fps of the first video stream.
 struct VideoProbe {
     bool ok = false;
     int height = 0;
@@ -253,7 +241,7 @@ VideoProbe probeVideo(const QString &probeBinary, const QString &video)
                    QStringLiteral("stream=width,height,r_frame_rate"),
                    QStringLiteral("-of"),
                    QStringLiteral("json"),
-                   // Same input-protocol pinning as extractFirstFrame.
+                   // Input-protocol pinning, as in extractFirstFrame.
                    QStringLiteral("-protocol_whitelist"),
                    QStringLiteral("file,pipe"),
                    video});
@@ -284,8 +272,7 @@ VideoProbe probeVideo(const QString &probeBinary, const QString &video)
     return result;
 }
 
-// The P5 resize decision: false = apply the original as-is. <outHeight> is
-// always set to the planned target height.
+// Resize decision: false = apply the original as-is.
 bool computeResizePlan(int srcHeight, double srcFps, int targetHeight, int targetFps,
                        int &outHeight, int &outFps)
 {
@@ -299,14 +286,13 @@ bool computeResizePlan(int srcHeight, double srcFps, int targetHeight, int targe
     return scale || fpsFilter;
 }
 
-// Encodes the resized copy to <output> via a tmp file + rename; the
-// -progress stream is drained so the pipe never fills during a long encode.
+// Encodes the resized copy via tmp + rename; the -progress stream is drained
+// so the pipe never fills during a long encode.
 bool encodeResized(const QString &ffmpegBinary, const QString &video, const QString &output,
                    int targetHeight, int fps, bool scale)
 {
-    // Unique per encode: a batch job and an on-demand apply-time resize of
-    // the same video can overlap; a shared tmp name would interleave the
-    // two writers in one file.
+    // Unique tmp name: a batch job and an apply-time resize of one video can
+    // overlap and would interleave in a shared file.
     static std::atomic<quint64> tmpSeq{0};
     const QString tmp = output + QStringLiteral(".%1-%2.tmp")
                             .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()))
@@ -319,7 +305,7 @@ bool encodeResized(const QString &ffmpegBinary, const QString &video, const QStr
          << QStringLiteral("-progress")
          << QStringLiteral("pipe:1")
          << QStringLiteral("-nostats")
-         // Same input-protocol pinning as extractFirstFrame.
+         // Input-protocol pinning, as in extractFirstFrame.
          << QStringLiteral("-protocol_whitelist")
          << QStringLiteral("file,pipe")
          << QStringLiteral("-i")
@@ -374,7 +360,6 @@ bool encodeResized(const QString &ffmpegBinary, const QString &video, const QStr
         QFile::remove(tmp);
         return false;
     }
-    // Single atomic replace (rename(2)); no remove window on the cache copy.
     if (!tools::renameAtomic(tmp, output)) {
         QFile::remove(tmp);
         return false;
@@ -385,14 +370,14 @@ bool encodeResized(const QString &ffmpegBinary, const QString &video, const QStr
 struct ResizeResult {
     // "" = no resize applied; otherwise the cache copy path.
     QString output;
-    // The plan ran to a conclusion (encoded, reused, or not needed by the
-    // settings); false = probe/encode failure, retry on the next scan.
+    // Plan ran to a conclusion (encoded, reused, or not needed); false =
+    // probe/encode failure, retry next scan.
     bool planned = false;
     bool noFfmpeg = false;
 };
 
-// Probes <video> and encodes the resized cache copy when the P5 settings
-// call for it; reuses an existing non-empty copy.
+// Probes <video> and encodes the resized copy when settings call for it;
+// reuses an existing non-empty copy.
 ResizeResult planAndEncode(const QString &resizesRoot, const QString &video, int targetHeight,
                            int targetFps)
 {
@@ -428,7 +413,6 @@ ResizeResult planAndEncode(const QString &resizesRoot, const QString &video, int
     return result;
 }
 
-// Re-runs the P5 resize plan for one video (settings change).
 class ResizeJob : public QRunnable
 {
 public:
@@ -451,9 +435,8 @@ private:
     QString m_path;
 };
 
-// Formats that can carry an animation in this Qt (QMovie::supportedFormats
-// lists gif, webp, avif, jxl, svg and ani; only these ever appear as
-// wallpapers). Used as the fallback while an entry is still unprobed.
+// Extensions that can carry an animation in this Qt; fallback while an
+// entry is unprobed (QImageReader probes the real file).
 bool couldBeAnimatedFormat(const QString &path)
 {
     const QString suffix = QFileInfo(path).suffix().toLower();
@@ -461,12 +444,9 @@ bool couldBeAnimatedFormat(const QString &path)
         || suffix == QLatin1String("avif") || suffix == QLatin1String("jxl");
 }
 
-// Per-file animation probe: QImageReader::imageCount() is the handler's real
-// frame count (measured on this Qt: worst case here 23 ms for the 232-frame
-// GIF, WebP 0-1 ms). QImageReader::supportsAnimation() is NOT usable: the gif
-// handler treats it as a format capability and answers true even for a
-// single-frame GIF, while the webp handler answers per file. A handler that
-// cannot count frames (-1) falls back to the capability answer.
+// QImageReader::imageCount() is the handler's real frame count (measured: 23 ms
+// worst case, a 232-frame GIF); supportsAnimation() lies for single-frame GIFs
+// (format capability). Handlers returning -1 fall back to it.
 int probeAnimated(const QString &path)
 {
     QImageReader probe(path);
@@ -497,7 +477,7 @@ WallpapersInfo *WallpapersInfo::instance()
 WallpapersInfo::WallpapersInfo(QObject *parent)
     : QObject(parent)
 {
-    // Shared with the legacy Python app: ~/.cache/kwal (XDG cache, no org nesting).
+    // Cache dir shared with the legacy Python app (no org nesting).
     m_root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/kwal");
     QDir().mkpath(framesDir());
     m_pool.setMaxThreadCount(kRefreshThreadCount);
@@ -529,11 +509,8 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
     {
         QMutexLocker locker(&m_mutex);
         const auto it = m_entries.constFind(path);
-        // Up to date: same mtime, (video) the first frame was already
-        // extracted, image categories were computed (or are manual), and
-        // matugen extraction succeeded whenever it is enabled. Empty
-        // categories (failed decode) and a failed or missing matugen run
-        // (no flag) are retried on the next scan.
+        // Up to date: same mtime, first frame extracted, categories present or
+        // manual, matugen done when enabled; failed decode/matugen retries.
         const bool matugenOk = !m_matugenEnabled || it == m_entries.constEnd()
             || !it->sourceColorIndex.isEmpty() || it->matugenDone;
         const bool categoriesOk = it == m_entries.constEnd()
@@ -548,12 +525,10 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
         }
     }
     if (upToDate) {
-        // Entries written by an older index have no animated probe; fill it
-        // with the cheap frame-count probe instead of re-running the heavy
-        // refresh (measured ≤23 ms per file, off-thread here).
+        // Older-index entries lack the probe; cheap fill, not a full refresh.
         fillMissingAnimatedProbe(path);
-        // jobFinished() acquires m_mutex itself; it must not be called
-        // while this scope still holds it (non-recursive self-deadlock).
+        // jobFinished() takes m_mutex itself: calling it while this scope holds
+        // it self-deadlocks (QMutex is non-recursive).
         jobFinished();
         return;
     }
@@ -569,15 +544,9 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
         }
     }
     const QString image = (type == QLatin1String("video")) ? entry.firstFrame : path;
-    // Animation probe (per-file frame count, measured ≤23 ms per file,
-    // off-thread): drives the grid/drawer decision to use AnimatedImage, so
-    // a static GIF/WebP never pays the QMovie path. Videos are never
-    // animations.
+    // Frame-count probe: static GIF/WebP never pay the QMovie path; videos never animate.
     entry.animated = (type == QLatin1String("video")) ? 0 : probeAnimated(path);
-    // Color categories from the image itself (material-color-utilities:
-    // Celebi top colors + HCT classification), independent of matugen.
     computeImageCategories(image, entry.colorCategories);
-    // Optional matugen source colors (wallpaper dots only).
     if (m_matugenEnabled && matugenAvailable() && !image.isEmpty()) {
         QStringList colors;
         if (extractSourceColors(image, colors)) {
@@ -586,7 +555,6 @@ void WallpapersInfo::processFile(const QString &path, const QString &type)
             entry.matugenDone = true;
         }
     }
-    // Manually edited categories/tags survive rescans.
     if (carryCategoriesManual || carryTagsManual) {
         QMutexLocker locker(&m_mutex);
         const auto it = m_entries.constFind(path);
@@ -633,8 +601,7 @@ void WallpapersInfo::fillMissingAnimatedProbe(const QString &path)
             return;
         }
     }
-    // The probe reads the file: keep m_mutex out of the way (QImageReader is
-    // reentrant and runs on the refresh pool thread).
+    // The probe reads the file: keep m_mutex out (QImageReader is reentrant).
     const int probed = probeAnimated(path);
     {
         QMutexLocker locker(&m_mutex);
@@ -752,9 +719,8 @@ void WallpapersInfo::load()
         saveLocked();
         return;
     }
-    // v1 stored matugen-derived categories (HSL, capped); recompute them
-    // from the image on the next scan. Manual edits survive via the
-    // categoriesManual flag; lastModified=0 forces one full reprocess.
+    // v1 stored matugen-derived categories: clear them (manual edits survive)
+    // and force one reprocess via lastModified=0.
     const bool migrate = doc.object().value(QStringLiteral("version")).toInt(1) < 2;
     bool migrated = false;
     for (const QJsonValue &value : doc.object().value(QStringLiteral("files")).toArray()) {
@@ -825,7 +791,6 @@ void WallpapersInfo::saveLocked()
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         file.write(QJsonDocument(root).toJson());
         file.close();
-        // Single atomic replace (rename(2)); no remove window on the cache.
         if (!tools::renameAtomic(tmp, path)) {
             QFile::remove(tmp);
         }
@@ -871,7 +836,7 @@ bool WallpapersInfo::isAnimatedFor(const QString &path) const
             return animated == 1;
         }
     }
-    // Entry not probed yet (or unknown path): fall back to the extension rule.
+    // Unprobed (or unknown path): extension-rule fallback.
     return couldBeAnimatedFormat(path);
 }
 
@@ -943,8 +908,7 @@ int WallpapersInfo::clearAllResizes()
     {
         QMutexLocker locker(&m_mutex);
         if (m_resizePending > 0) {
-            // A "Generate resizes" batch is running; clearing mid-batch
-            // would race with the jobs writing the new copies.
+            // Clearing mid-batch would race with jobs writing new copies.
             return 0;
         }
         for (auto it = m_entries.begin(); it != m_entries.end(); ++it) {
@@ -966,8 +930,7 @@ int WallpapersInfo::clearAllResizes()
     for (const QString &path : std::as_const(changedPaths)) {
         emit entryChanged(path);
     }
-    // Same contract as sweep(): cache files went away, so the desktop
-    // video playlist gets its dead URLs pruned.
+    // purged() prunes dead video playlist URLs, as in sweep().
     emit purged();
     return copies.size();
 }
@@ -1019,8 +982,7 @@ void WallpapersInfo::applyCalculatedCategories(const QString &path, const QStrin
         QMutexLocker locker(&m_mutex);
         auto it = m_entries.find(path);
         if (it == m_entries.end() || !ok) {
-            // Unknown entry, or the image could not be decoded: keep the
-            // current categories (manual or not) untouched.
+            // Unknown entry or undecodable image: keep current categories.
             return;
         }
         it->colorCategories = categories;
@@ -1140,14 +1102,12 @@ QString WallpapersInfo::ensureResizedCopy(const QString &path)
     const ResizeResult result = planAndEncode(resizesDir(), path, m_resizeHeight, m_resizeFps);
     Entry entry = entryFor(path);
     if (entry.file.isEmpty()) {
-        // Defensive: an untracked video; keep a minimal entry so the copy
-        // survives sweeps.
+        // Untracked video: minimal entry so the copy survives sweeps.
         entry.file = path;
         entry.type = QStringLiteral("video");
     }
-    // Mirror the batch job: only a completed plan (encoded, reused, or
-    // "not needed by the settings") writes the result to the entry; a
-    // probe/encode failure clears it and the original is applied.
+    // As in the batch job: only a completed plan writes; probe/encode
+    // failures clear the reference and the original is applied.
     entry.resized = result.planned ? result.output : QString();
     upsert(entry);
     if (result.noFfmpeg) {

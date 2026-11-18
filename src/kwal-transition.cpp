@@ -1,8 +1,4 @@
-// kwal-transition: standalone wallpaper transition binary (see
-// KWAL_TRANSICIONES_PLAN.md). It runs the layer-shell overlay, performs the
-// Plasma switch and the holds, and exits 0 when the switch succeeded. The
-// app calls it through QProcess; it can also be run by hand to test a
-// transition against the live desktop.
+// Standalone wallpaper transition binary; exit 0 = the Plasma switch succeeded.
 #include "plasmaapply.h"
 #include "transitions/effects.h"
 #include "transitions/overlay.h"
@@ -33,8 +29,7 @@ using transitions::Overlay;
 using transitions::Spec;
 using transitions::TransitionConfig;
 
-// The overlay hides the wallpaper switch for the time the new wallpaper
-// takes to load (hold constants of the Rust reference).
+// Hold hiding the switch while the new wallpaper loads; values of the Rust reference.
 constexpr int kRebornHoldMs = 1500;
 constexpr int kImageHoldMs = 400;
 
@@ -52,7 +47,6 @@ void usage(const QCoreApplication &app)
                  app.applicationName().toUtf8().constData());
 }
 
-// Parses the command line; returns false on an error (usage already shown).
 bool parseArgs(int argc, char **argv, const QCoreApplication &app, QString &type,
                QString &filePath, QString &framePath, TransitionConfig &cfg)
 {
@@ -63,7 +57,7 @@ bool parseArgs(int argc, char **argv, const QCoreApplication &app, QString &type
             ok = i + 1 < argc;
             return ok ? QString::fromLocal8Bit(argv[++i]) : QString();
         };
-        bool ok = true; // Only value-taking options can fail the check.
+        bool ok = true;
         if (arg == QLatin1String("--type")) {
             type = value(ok);
         } else if (arg == QLatin1String("--file")) {
@@ -125,10 +119,7 @@ bool parseArgs(int argc, char **argv, const QCoreApplication &app, QString &type
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-    // This system's Qt build has a silent default message handler (qWarning
-    // and co. print nothing from standalone processes; verified with a bare
-    // test program), so route Qt messages to stderr explicitly — a CLI
-    // binary must not swallow them.
+    // This Qt build's default handler is silent in standalone processes; route Qt messages to stderr.
     qInstallMessageHandler(
         [](QtMsgType, const QMessageLogContext &, const QString &msg) {
             std::fprintf(stderr, "%s\n", msg.toUtf8().constData());
@@ -147,9 +138,7 @@ int main(int argc, char **argv)
 
     PlasmaApply plasma;
 
-    // Resolve the target plugin and what the overlay paints, mirroring
-    // PlasmaApply step 1: the image is itself; a video is covered by its
-    // first frame (the app resolves it from WallpapersInfo and passes it).
+    // A video is covered by its first frame (--frame, resolved by the app); an image by itself.
     QString plugin = QString::fromLatin1(kImagePluginId);
     QString coverImage;
     if (type == QLatin1String("video")) {
@@ -161,8 +150,6 @@ int main(int argc, char **argv)
         coverImage = filePath;
     }
 
-    // Target desktops: live from the shell, falling back to the appletsrc
-    // sections (shared code from PlasmaApply).
     const QString appletsrcPath
         = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
           + QStringLiteral("/plasma-org.kde.plasma.desktop-appletsrc");
@@ -187,10 +174,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // Direction: the image target and the frame fallback are covered by the
-    // incoming image (Cover); the reborn video freezes the outgoing image on
-    // top (Reveal) only when every target desktop currently shows an image
-    // wallpaper, otherwise the incoming first frame covers it.
+    // Reveal only if every target desktop currently shows an image wallpaper; otherwise Cover.
     bool reveal = false;
     if (type == QLatin1String("video") && plugin == QLatin1String(kRebornPluginId)) {
         bool allImage = true;
@@ -203,7 +187,7 @@ int main(int argc, char **argv)
         reveal = allImage;
     }
 
-    // Overlay setup. Any failure degrades to a plain switch.
+    // Any overlay failure degrades to a plain switch.
     Spec spec;
     Overlay overlay;
     std::fprintf(stderr, "kwal-transition: reveal=%d cover=%s\n", reveal ? 1 : 0,
@@ -246,8 +230,7 @@ int main(int argc, char **argv)
                 if (!overlay.begin(outputs, planes, transitions::parseSurfaceLayer(cfg.layer), paint)) {
                     std::fprintf(stderr, "kwal-transition: overlay setup failed; falling back to a plain switch\n");
                 } else if (paint == Paint::Cover) {
-                    // Paint the incoming image until opaque before the
-                    // switch (the old wallpaper keeps playing below).
+                    // Paint to opaque before the switch (old wallpaper keeps playing below).
                     overlay.animate(spec);
                     std::fprintf(stderr, "kwal-transition: animate: done\n");
                 }
@@ -255,23 +238,18 @@ int main(int argc, char **argv)
         }
     }
 
-    // The Plasma switch (D-Bus setWallpaper per desktop, appletsrc fallback).
     bool switchOk = false;
     QString switchMsg;
     QObject::connect(&plasma, &PlasmaApply::result, [&](bool ok, const QString &msg) {
         switchOk = ok;
         switchMsg = msg;
     });
-    // Never the lock screen: the app mirrors it after the binary succeeds
-    // (the lockscreen is never a parameter of the transition command).
+    // Never the lockscreen: the app mirrors it when this exits 0.
     plasma.applyWallpaper(type, filePath, false);
     std::fprintf(stderr, "kwal-transition: switch ok=%d msg=%s\n", switchOk ? 1 : 0,
                  switchMsg.toUtf8().constData());
 
-    // Transition end: hold for the new wallpaper to load (1500 ms for the
-    // reborn video, 400 ms for image/frame), then reveal the outgoing image
-    // (Reveal) or drop the overlay (Cover). A failed switch drops the
-    // overlay as fast as possible.
+    // A failed switch drops the overlay as fast as possible.
     if (overlay.active()) {
         if (switchOk) {
             if (reveal) {

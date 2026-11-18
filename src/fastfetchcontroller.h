@@ -5,8 +5,7 @@
 #include <QString>
 #include <QtQml/qqmlregistration.h>
 
-// Fastfetch integration: tint a selected image and point the fastfetch
-// config at the result (or at the original image).
+// Tints a selected image and points the fastfetch config at the result.
 class FastfetchController : public QObject
 {
     Q_OBJECT
@@ -18,16 +17,11 @@ class FastfetchController : public QObject
     Q_PROPERTY(QString tintedPreviewPath READ tintedPreviewPath NOTIFY tintedPreviewChanged)
     Q_PROPERTY(QString tintedPreviewUrl READ tintedPreviewUrl NOTIFY tintedPreviewChanged)
     Q_PROPERTY(bool hasBackup READ hasBackup NOTIFY hasBackupChanged)
-    // Whether the selected/tinted preview row has anything to show: a manual
-    // pick, or a tint pass running/landed for the auto-adopted config image.
-    // Without the second half, tinting the image fastfetch already points at
-    // ran with the row hidden, so no preview ever appeared.
+    // Manual pick, or a tint pass running/landed on the auto-adopted config image.
     Q_PROPERTY(bool previewsVisible READ previewsVisible NOTIFY previewsVisibilityChanged)
-    // True while the apply step (writing the tinted copy / restoring the
-    // backup) runs; the QML buttons show a spinner and stay disabled.
+    // Apply step (tinted copy / backup restore) in flight.
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
-    // True while the tinted-preview generation pass runs; the Tinted
-    // preview area shows a spinner over the last preview while it does.
+    // Tinted-preview generation pass in flight.
     Q_PROPERTY(bool previewBusy READ previewBusy NOTIFY previewBusyChanged)
 
 
@@ -40,33 +34,26 @@ public:
     QString draftColor() const;
     void setDraftColor(const QString &color);
     QString tintedPreviewPath() const;
-    // file:// URL of tintedPreviewPath with a cache-buster, for QML Image
-    // sources; empty when no preview exists.
+    // file:// URL of tintedPreviewPath with a cache-buster; empty without a preview.
     QString tintedPreviewUrl() const;
     bool hasBackup() const;
     bool previewsVisible() const;
-    // True while the apply step is running.
     bool busy() const;
-    // True while a tinted-preview generation pass runs.
     bool previewBusy() const;
-    // file:// URL (percent-encoded) for a local path; for QML Image sources.
+    // Percent-encoded file:// URL, for QML Image sources.
     Q_INVOKABLE QString fileUrl(const QString &path) const;
-    // Path the applied tinted copy of srcPath will be written to.
     Q_INVOKABLE QString tintedImagePathFor(const QString &srcPath) const;
 
 public slots:
-    // Re-read the image referenced by the fastfetch config.
     void refreshConfigImage();
     void selectFile(const QString &path);
     void clearSelection();
-    // Full-resolution tint of the selected image with draftColor, written to
-    // the preview cache; this same file is what applyTintedImage copies.
+    // Full-res tint with draftColor into the preview cache; apply copies this exact file.
     void generateTintedPreview();
-    // Points the fastfetch config at the selected image, without tinting.
+    // Points the config at the selected image, untinted.
     void applyOriginalImage();
-    // Copies the generated preview to a "tinted" subfolder next to the
-    // original (regenerating it first if needed) and points the config at
-    // the copy — the tint pass is never repeated for the apply.
+    // Copies the preview into a "tinted" subfolder next to the original
+    // (regenerating it first if stale); the tint pass is never repeated for apply.
     void applyTintedImage();
     void restoreBackup();
 
@@ -82,8 +69,7 @@ signals:
     void operationResult(bool success, const QString &message);
 
 private:
-    // Pools the ImageMagick passes off the UI thread; the result is posted
-    // back to the owning thread, where the state is updated.
+    // ImageMagick pass off the UI thread; result posted back to the owning thread.
     class TintJob;
     void setBusy(bool value);
     void setPreviewBusy(bool value);
@@ -93,13 +79,11 @@ private:
     void setSelectedFile(const QString &path);
     void setTintedPreviewPath(const QString &path);
     void setHasBackup(bool has);
-    // Whether the user picked the file (vs. the config image being adopted).
+    // User picked the file (vs. the config image being adopted).
     void setManuallySelected(bool manual);
-    // Emits previewsVisibilityChanged() when previewsVisible() flips.
     void notifyPreviewsVisibility();
     void finishApply(const QString &appliedPath);
-    // Adopt the image the config points at as the selection unless the
-    // user picked one manually.
+    // Adopts the config image as the selection unless the user picked one manually.
     void adoptConfigImage();
     QString m_configImage;
     int m_configRevision = 0;
@@ -112,19 +96,15 @@ private:
     QString m_tintedPreviewPath;
     int m_tintedPreviewRevision = 0;
     bool m_hasBackup = false;
-    // Tint jobs (main thread only; the pool threads touch nothing else).
+    // Tint jobs; main thread only — pool threads touch nothing else.
     QThreadPool m_pool;
     QString m_previewPath;
     bool m_previewRunning = false;
-    // True while the file at m_previewPath is the tint of the *current*
-    // selection with the *current* color (false from the moment a newer
-    // pass starts or a pass fails).
+    // m_previewPath is the current selection+color tint; false on pass start or failure.
     bool m_previewValid = false;
-    // An apply requested while the preview pass was not up to date: copy
-    // the fresh result when that pass lands instead of re-tinting.
+    // Apply requested on a stale preview: copy the fresh result when it lands.
     bool m_applyAfterPreview = false;
-    // A color change arrived while a preview job ran: re-run with the
-    // latest color once the running job finishes.
+    // Color changed mid-job: re-run with the latest color when it lands.
     bool m_previewPending = false;
     bool m_applyRunning = false;
 };

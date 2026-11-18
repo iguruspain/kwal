@@ -38,10 +38,7 @@ ToolPage {
         }
     }
 
-    // The PageRow keeps every pushed page visible, so a tab switch never
-    // toggles `visible`: pageActive is what fires when the user comes back to
-    // this tab, and the only moment the fastfetch config can have changed
-    // behind our back gets picked up.
+    // pageActive, not visible: the PageRow keeps pushed pages visible; this is the only moment the fastfetch config can have changed behind our back.
     onPageActiveChanged: {
         if (pageActive)
             page.controller.refreshConfigImage()
@@ -52,9 +49,6 @@ ToolPage {
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
-        // --- Left pane: controls ---
-        // Fixed-width control panel: pin min/max/preferred so the Card's
-        // implicit content width cannot inflate it (Card defaults to filling).
         Rectangle {
             id: leftPane
             Layout.preferredWidth: 300
@@ -127,8 +121,6 @@ ToolPage {
                     Item { Layout.fillWidth: true }
                     ColorDot {
                         enablePicker: true
-                        // The controller regenerates the tinted preview
-                        // when the draft color changes.
                         color: page.controller.draftColor
                         onAccepted: (hex) => { page.controller.draftColor = hex }
                     }
@@ -182,12 +174,11 @@ ToolPage {
             }
         }
 
-        // --- Right pane: previews ---
         Rectangle {
             id: rightPane
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: "transparent"
             radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
@@ -195,7 +186,6 @@ ToolPage {
                 anchors.margins: Kirigami.Units.gridUnit
                 spacing: Kirigami.Units.gridUnit
 
-                // 1. Image currently referenced by the fastfetch config.
                 Label {
                     text: qsTr("Current (config):")
                     font.bold: true
@@ -216,8 +206,7 @@ ToolPage {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.preferredHeight: 300
-                    // Same as the wallpaper grid: Image (QQuickImage) only shows the
-                    // first frame, so animated sources (GIF/WebP) use AnimatedImage.
+                    // Image shows only the first frame: animated sources (GIF/WebP) use AnimatedImage.
                     readonly property bool isAnimated:
                         page.controller.configImage.toLowerCase().endsWith(".gif")
                         || page.controller.configImage.toLowerCase().endsWith(".webp")
@@ -236,9 +225,7 @@ ToolPage {
                         source: configPreviewArea.isAnimated ? page.controller.configImageUrl : ""
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
-                        // AnimatedImage caches every frame in memory; cap the stored
-                        // frame width at 1280 with a zero height so Qt keeps the
-                        // image's aspect ratio (same rule as the wallpaper grid).
+                        // AnimatedImage caches every frame in memory; 1280x0 caps stored frame width, zero height keeps the aspect ratio.
                         sourceSize: Qt.size(1280, 0)
                         playing: page.pageActive
                         width: Math.min(configPreviewArea.width, configPreviewArea.height)
@@ -252,7 +239,6 @@ ToolPage {
                     }
                 }
 
-                // 2+3. Selected image and its tinted version, side by side.
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -296,8 +282,6 @@ ToolPage {
                                 width: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                                 height: Math.min(originalPreviewArea.width, originalPreviewArea.height)
                             }
-                            // Animated like the grid; the tinted preview below stays
-                            // static on purpose (its content is mid-tint).
                             AnimatedImage {
                                 anchors.centerIn: parent
                                 source: originalPreviewArea.isAnimated
@@ -338,11 +322,7 @@ ToolPage {
                             id: tintedPreviewArea
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            // The tinted preview keeps animated sources animated (a
-                            // tinted GIF/WebP is generated as one animated file), so
-                            // like the other two areas the sequence plays through
-                            // AnimatedImage. Before a tint exists the selected file
-                            // itself shows instead.
+                            // A tinted GIF/WebP is generated as one animated file; before a tint exists the selected file shows instead.
                             readonly property bool isAnimated:
                                 (page.controller.tintedPreviewPath !== ""
                                     ? page.controller.tintedPreviewPath
@@ -373,19 +353,13 @@ ToolPage {
                                     : ""
                                 asynchronous: true
                                 fillMode: Image.PreserveAspectFit
-                                // Frame-cache cap, same rule as the grid and the
-                                // other preview areas.
                                 sourceSize: Qt.size(1280, 0)
                                 playing: page.pageActive
                                 width: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
                                 height: Math.min(tintedPreviewArea.width, tintedPreviewArea.height)
                             }
-                            // The tint pass runs off the UI thread: while it works the
-                            // area keeps showing the last preview under a busy spinner.
-                            // Only this area spins - the apply buttons stay free, since
-                            // a queued apply just copies this file when the pass lands.
-                            // The spinner gets its own translucent chip: over the image it
-                            // would otherwise vanish into the wallpaper colors.
+                            // The tint pass runs off the UI thread; only this area spins because a queued apply just copies the file once the pass lands.
+                            // The translucent chip keeps the spinner visible over the image.
                             Rectangle {
                                 anchors.centerIn: parent
                                 visible: page.controller.previewBusy

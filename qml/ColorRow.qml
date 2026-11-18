@@ -5,14 +5,11 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// One editable color row (label + swatch) for the tool pages' palette
-// sections. The Repeater binds the per-item color entry via modelData.
 RowLayout {
     id: root
 
     required property var modelData
 
-    // Emitted with the hex color picked in the swatch dialog.
     signal colorAccepted(string hex)
 
     Layout.fillWidth: true

@@ -7,8 +7,7 @@
 #include <QtQml/qqmlregistration.h>
 #include <toml++/toml.hpp>
 
-// Starship prompt theme controller: manages template selection, palette editing,
-// live preview, and applying/restoring the starship.toml configuration.
+// Starship prompt theme: templates, palette editing, live preview, apply/restore.
 class StarshipController : public QObject
 {
     Q_OBJECT
@@ -53,25 +52,18 @@ public:
     QVariantList paletteKeys() const;
 
 public slots:
-    // Re-read the current starship.toml and update palettes/preview.
     void refresh();
-    // Refresh only when starship.toml actually changed on disk since the
-    // controller last read it (external tools like matugen rewrite it while
-    // the app is open). While a template is selected the draft being edited
-    // stays untouched: only the applied-config side follows the change.
+    // Reload only if starship.toml changed on disk (matugen and friends rewrite it
+    // while the app runs); an edited draft stays, only the applied side follows.
     void refreshIfChanged();
-    // Load a template by name (from ~/.config/kwal/templates/starship).
+    // Loads a template by name from ~/.config/kwal/templates/starship.
     void loadTemplate(const QString &name);
-    // Clear template selection, go back to editing the current config.
+    // Drops the template selection; editing goes back to the live config.
     void clearSelection();
-    // Apply the current draft palette to ~/.config/starship.toml (the current
-    // config is backed up to .bak first).
+    // Writes the draft palette to ~/.config/starship.toml, backing it up to .bak first.
     void applyConfig();
-    // Restore starship.toml from its .bak backup.
     void restoreBackup();
-    // Edits one color row of the draft palette by key (mirrors the QML rows).
     void setColorValue(const QString &key, const QString &color);
-    // Updates the preview scaling factor (drives both previews' HTML).
     void setPreviewScale(double scale);
 
 signals:
@@ -90,7 +82,7 @@ signals:
     void paletteNamesChanged();
     void paletteValuesChanged();
     void paletteKeysChanged();
-    // User-facing result of apply/restore/clear operations.
+    // Result of apply/restore/clear, for the user.
     void operationResult(bool success, const QString &message);
 
 private:
@@ -99,9 +91,8 @@ private:
     void updateHasBackup();
     void updateHasConfig();
     void loadTemplateList();
-    // Fingerprint of starship.toml as it was when the controller last read
-    // it (refresh() re-arms it), so refreshIfChanged() can tell an external
-    // rewrite from an unchanged file.
+    // Fingerprint of starship.toml as last read (refresh() re-arms it), so
+    // refreshIfChanged() can spot an external rewrite.
     void armConfigFingerprint();
     tools::PaletteMap draftPalettes() const;
 
@@ -118,9 +109,9 @@ private:
     bool m_hasConfig = false;
     QStringList m_templateNames;
     QStringList m_paletteNames;
-    QList<QVariantList> m_paletteValues;  // list of string lists
-    QList<QVariantList> m_paletteKeys;    // list of string lists
-    toml::table m_doc;                    // parsed source doc (config or template)
+    QList<QVariantList> m_paletteValues;
+    QList<QVariantList> m_paletteKeys;
+    toml::table m_doc;                    // parsed config or template doc
     double m_previewScale = 1.0;
     bool m_configValid = false;
 };

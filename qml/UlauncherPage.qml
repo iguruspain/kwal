@@ -12,14 +12,12 @@ ToolPage {
 
     required property UlauncherController controller
 
-    // The entry currently selected in the theme combobox.
     readonly property var selectedEntry: {
         const entries = page.controller.themeEntries
         const index = page.controller.selectedThemeIndex
         return (entries && index >= 0 && index < entries.length) ? entries[index] : null
     }
 
-    // True when no palette section holds any editable color row.
     readonly property bool noColors: {
         const sections = page.controller.paletteSections
         if (!sections)
@@ -65,11 +63,8 @@ ToolPage {
         }
     }
 
-    // The PageRow keeps every pushed page visible, so a tab switch never
-    // toggles `visible`: pageActive is what fires when the user comes back to
-    // this tab. refreshIfChanged() follows settings.json / the applied theme
-    // only when those files really changed (matugen rewrote them), keeping the
-    // colors being drafted in the selected theme.
+    // pageActive, not visible: the PageRow keeps pushed pages visible.
+    // refreshIfChanged() re-reads settings.json / the applied theme only when those files changed, keeping the colors drafted in the selected theme.
     onPageActiveChanged: {
         if (pageActive)
             page.controller.refreshIfChanged()
@@ -80,7 +75,6 @@ ToolPage {
         anchors.margins: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
-        // --- Left pane: settings ---
         Rectangle {
             id: leftPane
             Layout.preferredWidth: 300
@@ -147,8 +141,7 @@ ToolPage {
                         width: paletteScroll.availableWidth
                         spacing: Kirigami.Units.largeSpacing
 
-                        // paletteSections order is fixed by the controller:
-                        // index 0 = Manifest Colors, index 1 = Theme Colors.
+                        // paletteSections order is fixed by the controller: 0 = Manifest Colors, 1 = Theme Colors.
                         Label {
                             text: {
                                 const s = page.controller.paletteSections
@@ -249,12 +242,11 @@ ToolPage {
             }
         }
 
-        // --- Right pane: previews ---
         Rectangle {
             id: rightPane
             Layout.fillWidth: true
             Layout.fillHeight: true
-            color: "transparent" //Qt.alpha(Kirigami.Theme.backgroundColor, 0.80)
+            color: "transparent"
             radius: Kirigami.Units.largeSpacing
 
             ColumnLayout {
@@ -286,8 +278,6 @@ ToolPage {
                         visible: page.controller.currentPreviewHtml === ""
                     }
                 }
-
-                //Kirigami.Separator { Layout.fillWidth: true }
 
                 Label {
                     text: qsTr("Live Preview")

@@ -20,8 +20,7 @@ namespace tools
 namespace {
 QString resolveIcon(const QString &name);
 
-// Default color for a theme variable when it is unset (sentinel), missing, or
-// unresolvable. Keeps the mockup legible before the user applies a palette.
+// Fallback when a var is unset (provisional_ sentinel), missing, or unresolvable.
 QString defaultFor(const QString &name)
 {
     if (name == "bg_color" || name == "window_bg")
@@ -57,9 +56,8 @@ QString normalizeHex(const QColor &c)
     return QStringLiteral("#%1%2").arg(rgb).arg(c.alpha(), 2, 16, QChar('0'));
 }
 
-// Resolve a raw GTK CSS value (sentinel, @ref, darker(), alpha(), or a plain
-// color) to a browser color string, using `eff` (live overrides over the
-// parsed @define-color map) to follow variable references.
+// GTK CSS color forms (@ref, darker(), alpha(), plain) -> browser color, following refs through
+// `eff` (live overrides over the parsed @define-color map).
 QString resolveColor(const QString &name,
                      const QString &raw,
                      const std::map<QString, QString> &eff,
@@ -71,7 +69,6 @@ QString resolveColor(const QString &name,
     if (depth <= 0)
         return defaultFor(name);
 
-    // @variable reference
     if (v.startsWith('@') && v.size() > 1) {
         const QString other = v.mid(1);
         auto it = eff.find(other);
@@ -80,7 +77,6 @@ QString resolveColor(const QString &name,
         return defaultFor(name);
     }
 
-    // darker(X)
     const QRegularExpression darkRe(QStringLiteral(R"(darker\s*\(\s*([^)]+)\s*\))"));
     const QRegularExpressionMatch dm = darkRe.match(v);
     if (dm.hasMatch()) {
@@ -97,7 +93,6 @@ QString resolveColor(const QString &name,
         return normalizeHex(c);
     }
 
-    // alpha(X, factor)
     const QRegularExpression alphaRe(
         QStringLiteral(R"(alpha\s*\(\s*([^,]+),\s*([0-9.]+)\s*\))"));
     const QRegularExpressionMatch am = alphaRe.match(v);
@@ -114,25 +109,20 @@ QString resolveColor(const QString &name,
         return normalizeHex(c);
     }
 
-    // rgb()/rgba() function values: Qt's QColor cannot parse them, but
-    // browsers render them natively, so pass them through unchanged —
-    // minus `<`: every resolved color is spliced raw into the <style>
-    // block of the mockup document, and without `<` a value can close
-    // its rule but can never open markup like `</style><script>`.
+    // QColor can't parse rgb()/rgba(); browsers can, so pass through minus `<`:
+    // colors splice raw into <style>, and without `<` nothing like `</style><script>` can open.
     if (QRegularExpression(QStringLiteral(R"(^rgba?\s*\()")).match(v).hasMatch()) {
         QString raw = v;
         raw.remove(QLatin1Char('<'));
         return raw;
     }
 
-    // Direct color
     const QColor c(v);
     if (c.isValid())
         return normalizeHex(c);
     return defaultFor(name);
 }
 
-// Replace every match of `re` in `in` with the result of `fn(matched text)`.
 QString replaceMatches(const QString &in,
                        const QRegularExpression &re,
                        const std::function<QString(const QString &)> &fn)
@@ -150,19 +140,15 @@ QString replaceMatches(const QString &in,
     return out;
 }
 
-// Turn a theme's theme.css into plain web CSS: strip comments and the
-// @define-color declarations, then resolve @variable references and
-// alpha()/darker() function calls using `eff`. The resulting selectors (.app,
-// .input, .item-box, .selected...) are the real theme rules applied to the
-// mockup markup.
+// theme.css -> web CSS: strip comments/@define-color, resolve @vars, then alpha()/darker();
+// the theme's own selectors (.app, .item-box, .selected...) then style the mockup markup.
 QString transformCss(const QString &css, const std::map<QString, QString> &eff)
 {
     QString out = stripCssComments(css);
 
-    // 1. Drop the @define-color declarations (their values live in `eff`).
+    // Safe to drop: those values already live in `eff`.
     out.remove(QRegularExpression(QStringLiteral("@define-color\\s+[\\w-]+\\s+[^;]+;")));
 
-    // 2. Resolve @variable references.
     out = replaceMatches(
         out,
         QRegularExpression(QStringLiteral("@([\\w-]+)")),
@@ -174,7 +160,7 @@ QString transformCss(const QString &css, const std::map<QString, QString> &eff)
             return resolveColor(varName, found->second, eff, 4);
         });
 
-    // 3. Resolve alpha()/darker() function calls (inner @vars already gone).
+    // After @vars: function args are already resolved colors.
     out = replaceMatches(
         out,
         QRegularExpression(QStringLiteral("(?:alpha|darker)\\s*\\([^)]*\\)")),
@@ -182,10 +168,7 @@ QString transformCss(const QString &css, const std::map<QString, QString> &eff)
             return resolveColor(QString(), matched, {}, 4);
         });
 
-    // The result is spliced raw into the <style> block of the mockup
-    // document (a file://-origin WebEngine page). `<` carries no meaning
-    // in CSS, and dropping it makes any markup exit like
-    // `</style><script>` in a hostile third-party theme impossible.
+    // `<` is meaningless in CSS; dropping it blocks `</style><script>` exits from hostile themes.
     out.remove(QLatin1Char('<'));
     return out;
 }
@@ -200,8 +183,7 @@ QString escapeHtml(const QString &text)
     return out;
 }
 
-// Wrap the characters of `name` that match `query` (case-insensitive, in
-// order, like Ulauncher's fuzzy match) in a span with class `hlClass`.
+// Case-insensitive, in-order fuzzy match like Ulauncher's.
 QString highlightText(const QString &name, const QString &query, const QString &hlClass)
 {
     if (query.isEmpty() || query.length() > name.length())
@@ -272,10 +254,7 @@ QString gearSvg(const QString &prefsBg, const QString &prefsFg)
         "3.6 3.6-1.62 3.6-3.6 3.6z\"/></svg>")
         .arg(prefsBg, prefsFg);
 }
-// The settings gear icon: Ulauncher's own bundled gear (what the real app
-// renders), falling back to the system's preferences-system-symbolic. Real
-// Ulauncher draws it in a fixed gray (untintable), so the SVG is inlined in
-// the document and tinted gray by CSS (.prefs-btn svg path).
+// Ulauncher's own gear first, then system fallbacks; it renders in untintable fixed gray.
 QString gearIconPath()
 {
     static const QStringList candidates = {
@@ -298,9 +277,7 @@ QString gearMarkup()
         if (file.open(QIODevice::ReadOnly)) {
             QString svg = QString::fromUtf8(file.readAll());
             if (!svg.isEmpty()) {
-                // An inline <svg> without a viewBox maps user units 1:1 to its
-                // CSS box, so the glyph would not scale up; add a viewBox
-                // matching the svg's own width/height to let CSS size it.
+                // Inline <svg> without a viewBox maps user units 1:1 and won't scale; add one from its width/height.
                 if (!svg.contains(QLatin1String("viewBox"))) {
                     const auto widthMatch =
                         QRegularExpression(QStringLiteral("width=['\"]?(\\d+)")).match(svg);
@@ -316,15 +293,11 @@ QString gearMarkup()
             }
         }
     }
-    // No icon file available: the generated gear as a last resort.
     return gearSvg(QStringLiteral("transparent"), QStringLiteral("#4f4b4b"));
 }
 
-// Resolve an icon name to a file on disk, searching the standard icon theme
-// locations. The exact name (name.png / name.svg) is tried first in every
-// directory; when that fails, files whose base name starts with the given
-// name are matched alphabetically, so "unsloth" finds "unsloth-studio.png".
-// Returns an empty string when nothing is found.
+// Exact name.png/.svg first in every dir, else alphabetical prefix match
+// ("unsloth" finds "unsloth-studio.png"); empty when nothing matches.
 QString resolveIcon(const QString &name)
 {
     if (name.isEmpty())
@@ -367,9 +340,7 @@ QString resolveIcon(const QString &name)
 }
 } // namespace
 
-// Sample items and typed query shown when no row list is given. Firefox and
-// Filelight: both ship with a KDE/Plasma desktop, so the example works for
-// everyone without extra installs.
+// Firefox/Filelight ship with KDE/Plasma: samples that resolve without extra installs.
 QList<UlauncherRow> sampleRows()
 {
     return {
@@ -393,7 +364,6 @@ QString ulauncherPreviewHtml(const QString &themePath,
                              const QList<UlauncherRow> &rows,
                              const QString &query)
 {
-    // 1. Obtain the theme CSS content.
     QString css = cssContent;
     if (css.isEmpty() && !themePath.isEmpty()) {
         QFile file(QDir(themePath).filePath(QStringLiteral("theme.css")));
@@ -401,7 +371,6 @@ QString ulauncherPreviewHtml(const QString &themePath,
             css = QString::fromUtf8(file.readAll());
     }
 
-    // 2. Effective values: parsed @define-color map, then live overrides.
     const ColorMap parsed = extractCssColors(css);
     std::map<QString, QString> eff;
     for (auto it = parsed.constBegin(); it != parsed.constEnd(); ++it)
@@ -409,7 +378,6 @@ QString ulauncherPreviewHtml(const QString &themePath,
     for (const auto &[key, value] : liveColors)
         eff[key] = value;
 
-    // 3. Manifest highlight colors, when not provided as live overrides.
     if (!manifestJson.isEmpty()) {
         QJsonParseError error;
         QJsonDocument doc = QJsonDocument::fromJson(manifestJson.toUtf8(), &error);
@@ -454,11 +422,8 @@ QString ulauncherPreviewHtml(const QString &themePath,
     const int width = windowWidth > 0 ? windowWidth : 650;
     const double s = scale > 0.0 ? scale : 0.75;
 
-    // 4. Transform the real theme CSS (comments and @define-color stripped,
-    //    variables and functions resolved) so its selectors style the mockup.
     const QString themeCss = transformCss(css, eff);
 
-    // 5. Build the rows and the input query.
     const QList<UlauncherRow> items = rows.isEmpty() ? sampleRows() : rows;
     const QString q = rows.isEmpty() ? sampleQuery() : query;
     QString rowsHtml;

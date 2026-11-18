@@ -1,6 +1,4 @@
-// Unit tests for the pure transition maths and parsers (no Wayland). The
-// vectors are ported from the test modules of the Rust reference
-// (effects.rs, transitions.rs, monitors.rs, lib.rs).
+// Vectors ported from the Rust reference's test modules (effects.rs, transitions.rs, monitors.rs, lib.rs).
 #include <QtTest>
 
 #include <algorithm>
@@ -36,8 +34,7 @@ std::pair<double, double> dirOf(double angleDeg)
     return {-std::cos(a), std::sin(a)};
 }
 
-// Reference implementation of the per-pixel wipe cover (the formula
-// documented in effects.h), used to check the incremental fast path.
+// Reference per-pixel wipe cover (formula per effects.h) cross-checking the incremental fast path.
 std::uint32_t keep256(double cover)
 {
     return static_cast<std::uint32_t>((1.0 - std::clamp(cover, 0.0, 1.0)) * 256.0 + 0.5);
@@ -91,7 +88,6 @@ private slots:
             QVERIFY(v >= 0.0 && v <= 1.0);
             prev = v;
         }
-        // Linear curve is the identity.
         const Bezier linear{0.0, 0.0, 1.0, 1.0};
         QVERIFY(std::abs(bezierEase(linear, 0.37) - 0.37) < 1e-6);
     }
@@ -152,11 +148,9 @@ private slots:
         const Buffer orig = solid(w, h);
         const double cx = 40.0, cy = 30.0;
         const double rmax = maxRadius(cx, cy, w, h) + 1.0;
-        // Start: nothing revealed.
         Buffer start = orig;
         drawOuter(Paint::Reveal, start, orig, w, h, cx, cy, rmax);
         QCOMPARE(start, orig);
-        // Shrink step by step == drawing straight to the final radius.
         const double radii[] = {rmax, 60.0, 33.3, 12.0, 5.5};
         Buffer inc = orig;
         for (double r : radii) {
@@ -165,9 +159,8 @@ private slots:
         Buffer direct = orig;
         drawOuter(Paint::Reveal, direct, orig, w, h, cx, cy, 5.5);
         QCOMPARE(inc, direct);
-        QCOMPARE(alpha(direct, w, 40, 30), std::uint32_t(255)); // still inside
-        QCOMPARE(alpha(direct, w, 100, 60), std::uint32_t(0)); // outside
-        // End: everything revealed.
+        QCOMPARE(alpha(direct, w, 40, 30), std::uint32_t(255));
+        QCOMPARE(alpha(direct, w, 100, 60), std::uint32_t(0));
         drawOuter(Paint::Reveal, inc, orig, w, h, cx, cy, -1.0);
         for (Pixel p : inc) {
             QCOMPARE(p, Pixel(0));
@@ -208,13 +201,13 @@ private slots:
         const double lo = lo0 - 11.0, hi = hi0 + 11.0;
         Buffer inc = orig;
         drawWipe(Paint::Reveal, inc, orig, w, h, dirX, dirY, lo, waveW, waveH);
-        QCOMPARE(inc, orig); // nothing revealed at the start
+        QCOMPARE(inc, orig);
         for (int k = 1; k <= 20; ++k) {
             drawWipe(Paint::Reveal, inc, orig, w, h, dirX, dirY, lo + (hi - lo) * k / 20.0,
                      waveW, waveH);
         }
         for (Pixel p : inc) {
-            QCOMPARE(p, Pixel(0)); // everything revealed at the end
+            QCOMPARE(p, Pixel(0));
         }
     }
 
@@ -229,7 +222,6 @@ private slots:
         drawWipe(Paint::Reveal, buf, orig, w, h, dirX, dirY, lo + (hi - lo) * 0.5, 20.0, 0.0);
         QCOMPARE(alpha(buf, w, 5, 20), std::uint32_t(0));
         QCOMPARE(alpha(buf, w, 95, 20), std::uint32_t(255));
-        // `top` = angle 90 = top edge to bottom edge.
         std::tie(dirX, dirY) = dirOf(90.0);
         std::tie(lo, hi) = projRange(w, h, dirX, dirY);
         buf = orig;
@@ -268,7 +260,6 @@ private slots:
         }
         const double cx = 50.0, cy = 20.0;
         const double rmax = maxRadius(cx, cy, w, h) + 2.0;
-        // grow: transparent at the start, exact image at the end.
         Buffer buf(img.size(), Pixel(0));
         drawGrow(Paint::Cover, buf, img, w, h, cx, cy, 0.0);
         for (Pixel p : buf) {
@@ -279,7 +270,6 @@ private slots:
             drawGrow(Paint::Cover, buf, img, w, h, cx, cy, r);
         }
         QCOMPARE(buf, img);
-        // incremental == direct for grow
         Buffer inc(img.size(), Pixel(0));
         const double steps[] = {5.0, 6.0, 20.0, 33.3};
         for (double r : steps) {
@@ -288,7 +278,6 @@ private slots:
         Buffer direct(img.size(), Pixel(0));
         drawGrow(Paint::Cover, direct, img, w, h, cx, cy, 33.3);
         QCOMPARE(inc, direct);
-        // outer: starts transparent, ends as the image
         Buffer o(img.size(), Pixel(0));
         const double start = maxRadius(cx, cy, w, h) + 1.0;
         drawOuter(Paint::Cover, o, img, w, h, cx, cy, start);

@@ -37,9 +37,7 @@ private:
         image.save(path);
     }
 
-    // Custom commands persist in the sandboxed kvalrc across the whole test
-    // run; command-driven tests start from a known-empty list so add/update
-    // hit the rows they create, not a leftover (possibly disabled) one.
+    // Custom commands persist in the sandboxed kvalrc across the whole run; start from a known-empty list.
     static void clearCommands(AppController &app)
     {
         while (app.customCommands().size() > 0) {
@@ -86,11 +84,8 @@ void tst_AppController::testWallpaperModel()
     QVERIFY(!model->data(index, WallpaperModel::ThumbnailRole).toUrl().isEmpty());
     QCOMPARE(model->data(index, WallpaperModel::ExtensionRole).toString(), QStringLiteral("png"));
 
-    // Filtering resets the model, so a row number the grid holds across the
-    // change names a different file. The page re-derives its cursor from the
-    // selected path; that lookup must follow the visible entries (and report -1
-    // for a file the filter hides), otherwise clicking a filtered row is a
-    // no-op and the previous wallpaper stays selected.
+    // Filtering resets the model: rowForPath must follow visible entries and report -1 for
+    // hidden files, or the grid's cursor goes stale on a filtered row.
     const QString alphaPath = model->pathAt(0);
     const QString betaPath = model->pathAt(1);
     QSignalSpy resetSpy(model, &QAbstractItemModel::modelReset);
@@ -108,10 +103,8 @@ void tst_AppController::testWallpaperModel()
     QCOMPARE(model->rowForPath(QStringLiteral("/does/not/exist.png")), -1);
     QCOMPARE(model->rowForPath(QString()), -1);
 
-    // A line break inside a file name must never reach the consumers:
-    // video apply writes raw file:// URLs into appletsrc/kscreenlockerrc,
-    // where the newline would become an injected INI line. The grid hides
-    // such names outright.
+    // Newline names are hidden: video apply writes raw file:// URLs into
+    // appletsrc/kscreenlockerrc, where the newline injects an INI line.
     const QString junk = pictures + QStringLiteral("/C-newline");
     QDir().mkpath(junk);
     saveImage(junk + QStringLiteral("/ok.png"), Qt::red);
@@ -151,7 +144,7 @@ void tst_AppController::testFoldersAndConfig()
     QCOMPARE(app.folders(), expected);
     QCOMPARE(app.currentFolderIndex(), 1);
 
-    app.addFolder(a); // duplicate is ignored
+    app.addFolder(a);
     QCOMPARE(app.folders().size(), 2);
 
     app.addFolder(b);
@@ -165,7 +158,6 @@ void tst_AppController::testFoldersAndConfig()
     QCOMPARE(app.folders(), expected2);
     QCOMPARE(app.currentFolderIndex(), 0);
 
-    // A fresh controller must see the persisted state from the same config file.
     AppController app2;
     QCOMPARE(app2.folders(), app.folders());
     QCOMPARE(app2.currentFolderIndex(), 0);
@@ -180,12 +172,11 @@ void tst_AppController::testSelectionAndApply()
     AppController app;
     QSignalSpy resultSpy(&app, &AppController::wallpaperSetResult);
 
-    // No selection: applying is a no-op.
     app.applyWallpaper();
     QCOMPARE(resultSpy.count(), 0);
     QCOMPARE(app.selectedWallpaper(), QString());
 
-    // Selection pointing at a missing file: cleared and reported.
+    // Missing selection file: apply fails and clears the selection.
     app.selectWallpaper(pictures + QStringLiteral("/A/missing.png"));
     QCOMPARE(app.selectedWallpaper(), pictures + QStringLiteral("/A/missing.png"));
     app.applyWallpaper();
@@ -207,16 +198,15 @@ void tst_AppController::testWindowSettings()
     QCOMPARE(app.defaultWindowHeight(), 768);
     QCOMPARE(widthSpy.count(), 1);
 
-    app.setDefaultWindowWidth(1024); // unchanged value does not re-emit
+    app.setDefaultWindowWidth(1024);
     QCOMPARE(widthSpy.count(), 1);
 
-    // Out-of-range values are clamped to the configurable window range.
+    // Valid window range: 700-2160.
     app.setDefaultWindowWidth(1);
     app.setDefaultWindowHeight(4096);
     QCOMPARE(app.defaultWindowWidth(), 700);
     QCOMPARE(app.defaultWindowHeight(), 2160);
 
-    // Persisted to the same kwalrc file and visible to a fresh controller.
     AppController app2;
     QCOMPARE(app2.defaultWindowWidth(), 700);
     QCOMPARE(app2.defaultWindowHeight(), 2160);
@@ -225,7 +215,7 @@ void tst_AppController::testWindowSettings()
 void tst_AppController::testTransparencyPersistence()
 {
     AppController app;
-    QCOMPARE(app.enableTransparency(), true); // default on
+    QCOMPARE(app.enableTransparency(), true);
 
     app.setEnableTransparency(false);
     QCOMPARE(app.enableTransparency(), false);
@@ -233,20 +223,20 @@ void tst_AppController::testTransparencyPersistence()
     AppController app2;
     QCOMPARE(app2.enableTransparency(), false);
 
-    app2.setEnableTransparency(true); // restore default
+    app2.setEnableTransparency(true);
 }
 
 void tst_AppController::testTransparencyLevelPersistence()
 {
     AppController app;
-    QCOMPARE(app.transparencyLevel(), 80); // default 80%
+    QCOMPARE(app.transparencyLevel(), 80);
 
     QSignalSpy spy(&app, &AppController::transparencyLevelChanged);
     app.setTransparencyLevel(40);
     QCOMPARE(app.transparencyLevel(), 40);
     QCOMPARE(spy.count(), 1);
 
-    app.setTransparencyLevel(40); // unchanged value does not re-emit
+    app.setTransparencyLevel(40);
     QCOMPARE(spy.count(), 1);
 
     // Out-of-range values are clamped to the 0-100 percent range.
@@ -255,18 +245,15 @@ void tst_AppController::testTransparencyLevelPersistence()
     app.setTransparencyLevel(-5);
     QCOMPARE(app.transparencyLevel(), 0);
 
-    // Persisted to the same kwalrc file and visible to a fresh controller.
     app.setTransparencyLevel(55);
     AppController app2;
     QCOMPARE(app2.transparencyLevel(), 55);
-    app2.setTransparencyLevel(80); // restore default
+    app2.setTransparencyLevel(80);
 }
 
 void tst_AppController::testToolDetection()
 {
-    // Detection is a $PATH lookup for installed binaries (not running
-    // processes): point PATH at a sandbox dir holding only a fake
-    // fastfetch and assert the other tools are not reported.
+    // Detection is a $PATH lookup for binaries (not running processes): fake fastfetch on a sandboxed PATH.
     const QByteArray previousPath = qgetenv("PATH");
     const QString fakeBin = QDir::tempPath() + QStringLiteral("/kwal-test-tools-") +
                             QString::number(QCoreApplication::applicationPid());
@@ -294,7 +281,6 @@ void tst_AppController::testUnreadableFormats()
     const QStringList accepted = WallpaperModel::imageExtensions();
     QVERIFY(!accepted.isEmpty());
 
-    // Everything decodes: nothing to warn about.
     QVERIFY(wallpapermodel::unreadableFormats({QByteArrayLiteral("png"), QByteArrayLiteral("jpg"),
                                                QByteArrayLiteral("jpeg"), QByteArrayLiteral("webp"),
                                                QByteArrayLiteral("bmp"), QByteArrayLiteral("gif"),
@@ -302,15 +288,13 @@ void tst_AppController::testUnreadableFormats()
                                               accepted)
                 .isEmpty());
 
-    // Only the two formats whose handler lives outside qt6-base are reported,
-    // in accepted order; the jpeg plugin (advertising "jpeg") covers ".jpg".
+    // Only formats whose handler lives outside qt6-base are reported, in accepted order.
     QCOMPARE(wallpapermodel::unreadableFormats({QByteArrayLiteral("png"), QByteArrayLiteral("jpeg"),
                                                 QByteArrayLiteral("bmp"), QByteArrayLiteral("gif")},
                                                accepted),
              QStringList({QStringLiteral("webp"), QStringLiteral("svg")}));
 
-    // Handler aliases: a plugin advertising "jpeg" decodes .jpg too, so a
-    // build that only reports jpeg must not be blamed for jpg.
+    // Handler aliases: a plugin advertising "jpeg" decodes .jpg too.
     QVERIFY(wallpapermodel::unreadableFormats({QByteArrayLiteral("jpeg")},
                                               {QStringLiteral("jpg"), QStringLiteral("jpeg")})
                 .isEmpty());
@@ -321,9 +305,8 @@ void tst_AppController::testUnreadableFormats()
                                                 QStringLiteral("webp")}),
              QStringList({QStringLiteral("webp")}));
 
-    // On the real build the handlers that ship inside qt6-base must never be
-    // blamed for a missing plugin: that warning would tell the user to
-    // reinstall Qt itself.
+    // Handlers shipping inside qt6-base must never be reported: that warning
+    // would tell the user to reinstall Qt itself.
     AppController app;
     const QStringList reported = app.unreadableWallpaperFormats();
     for (const QString &extension : {QStringLiteral("png"), QStringLiteral("jpg"),
@@ -336,7 +319,7 @@ void tst_AppController::testUnreadableFormats()
 void tst_AppController::testCustomCommands()
 {
     AppController app;
-    QCOMPARE(app.selectedSourceColorIndex(), 0); // first dot selected by default
+    QCOMPARE(app.selectedSourceColorIndex(), 0);
     QCOMPARE(app.customCommands().size(), 0);
 
     QSignalSpy spy(&app, &AppController::customCommandsChanged);
@@ -345,16 +328,15 @@ void tst_AppController::testCustomCommands()
     QCOMPARE(spy.count(), 1);
     QCOMPARE(app.customCommands().size(), 1);
     app.updateCustomCommand(0, QStringLiteral("notify-send 'x %path%'"));
-    app.updateCustomCommand(0, QStringLiteral("notify-send 'x %path%'")); // no-op
+    app.updateCustomCommand(0, QStringLiteral("notify-send 'x %path%'"));
     QCOMPARE(spy.count(), 2);
 
     app.addCustomCommand();
     app.updateCustomCommand(1, QStringLiteral("echo %scolor% %sc%"));
     app.setCustomCommandEnabled(0, false);
-    app.setCustomCommandEnabled(0, false); // no-op
+    app.setCustomCommandEnabled(0, false);
     QCOMPARE(spy.count(), 5);
 
-    // Round-trip through a fresh controller over the same [Commands] group.
     AppController app2;
     QCOMPARE(app2.customCommands().size(), 2);
     const QVariantMap first = app2.customCommands().at(0).toMap();
@@ -373,7 +355,6 @@ void tst_AppController::testCustomCommands()
     app2.moveCustomCommand(0, 0);
     QCOMPARE(app2.customCommands().size(), 2);
 
-    // A real move reorders and persists.
     app2.moveCustomCommand(0, 1);
     QCOMPARE(app2.customCommands().at(0).toMap().value("command").toString(),
              QStringLiteral("echo %scolor% %sc%"));
@@ -402,23 +383,17 @@ void tst_AppController::testCustomCommandExpansion()
     app.selectWallpaper(wallpaper);
     app.setSelectedSourceColorIndex(2);
 
-    // %mode% defaults to "dark"; %ccolor% is empty until picked; both
-    // persist to [Commands].
     QCOMPARE(app.themeMode(), QStringLiteral("dark"));
     QCOMPARE(app.customColor(), QString());
     app.setThemeMode(QStringLiteral("light"));
     app.setCustomColor(QStringLiteral("#123456"));
-    // Every shell-bound placeholder is quoted, %mode% included: the only
-    // unquoted ones are %sc% (always an int) and nothing else.
+    // Shell-bound placeholders are quoted; %sc% (always an int) is the only unquoted one.
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%mode%")), QStringLiteral("'light'"));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%ccolor%")), QStringLiteral("'#123456'"));
     AppController modeApp;
     QCOMPARE(modeApp.themeMode(), QStringLiteral("light"));
     QCOMPARE(modeApp.customColor(), QStringLiteral("#123456"));
 
-    // No source colors for the selection: %path% and %image% expand as
-    // POSIX single-quoted words, %sc% to the index, %scolor% to an empty
-    // quoted word.
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%path%")),
              QStringLiteral("'%1'").arg(wallpaper));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%image%")),
@@ -435,15 +410,14 @@ void tst_AppController::testCustomCommandExpansion()
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%path%")),
              QStringLiteral("'%1'").arg(escapedTricky));
 
-    // The enabled commands run as one detached shell chain; disabled and
-    // empty commands are skipped.
+    // Enabled commands run as one detached shell chain; disabled/empty are skipped.
     app.selectWallpaper(wallpaper);
     app.addCustomCommand();
     app.updateCustomCommand(0, QStringLiteral("echo %path% > %1").arg(out));
     app.addCustomCommand();
     app.updateCustomCommand(1, QStringLiteral("echo x > %1").arg(second));
     app.setCustomCommandEnabled(1, false);
-    app.addCustomCommand(); // empty command, skipped
+    app.addCustomCommand();
     app.runCustomCommands();
 
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(out), 5000);
@@ -456,10 +430,8 @@ void tst_AppController::testCustomCommandExpansion()
 
 void tst_AppController::testCustomCommandQuoting()
 {
-    // A wallpaper whose name is a crafted shell payload: with double-quoted
-    // expansion the $( ) and backtick command substitutions would run when
-    // the commands fire through sh -c. Single-quoted expansion keeps every
-    // one of them literal.
+    // Regression: a wallpaper named as a shell payload. Double-quoted expansion would run
+    // $( ) and backtick substitutions through sh -c; single-quoted expansion keeps them literal.
     QTemporaryDir dir;
     const QString subMarker = dir.path() + QStringLiteral("/pwn_sub");
     const QString btMarker = dir.path() + QStringLiteral("/pwn_bt");
@@ -480,7 +452,6 @@ void tst_AppController::testCustomCommandQuoting()
     app.updateCustomCommand(1, QStringLiteral("echo %ccolor% > '%1'").arg(ccOut));
     app.runCustomCommands();
 
-    // Both files land with the literal payload as content; no marker is created.
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(out), 5000);
     QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(ccOut), 5000);
     QFile file(out);
@@ -503,10 +474,9 @@ void tst_AppController::testSourceColorIndexPersistence()
     const QString beta = a + QStringLiteral("/beta.png");
 
     AppController app;
-    QCOMPARE(app.currentWallpaper().isEmpty(), true); // no wallpaper applied yet
+    QCOMPARE(app.currentWallpaper().isEmpty(), true);
 
-    // In-session the selection is per wallpaper: a dot choice follows the
-    // navigation and survives going back.
+    // Dot selection is per wallpaper: it follows navigation and survives going back.
     app.selectWallpaper(alpha);
     app.setSelectedSourceColorIndex(3);
     app.selectWallpaper(beta);
@@ -519,8 +489,7 @@ void tst_AppController::testSourceColorIndexPersistence()
     app2.selectWallpaper(alpha);
     QCOMPARE(app2.selectedSourceColorIndex(), 0);
 
-    // Applying the selected wallpaper persists its active dot selection
-    // as the single stored entry.
+    // Applying persists the active dot selection as the single stored entry.
     app.setCurrentWallpaper(alpha);
     AppController app3;
     app3.selectWallpaper(alpha);
@@ -528,9 +497,8 @@ void tst_AppController::testSourceColorIndexPersistence()
     app3.selectWallpaper(beta);
     QCOMPARE(app3.selectedSourceColorIndex(), 0);
 
-    // A dot choice on a non-applied wallpaper is session-local; applying
-    // that wallpaper stores the selection active at apply time and keeps
-    // the config single-entry.
+    // Dot choices on non-applied wallpapers are session-local; applying stores the
+    // selection active at apply time (config stays single-entry).
     app3.setSelectedSourceColorIndex(5); // on beta, not applied yet
     app3.setCurrentWallpaper(beta);
     AppController app4;
@@ -542,9 +510,8 @@ void tst_AppController::testSourceColorIndexPersistence()
 
 int main(int argc, char *argv[])
 {
-    // Sandboxed XDG locations: set before the QCoreApplication is constructed.
-    // HOME is sandboxed too so QStandardPaths user dirs (Pictures, ...) never
-    // touch the real home directory.
+    // Sandboxed XDG locations and HOME, set before QCoreApplication construction:
+    // QStandardPaths user dirs (Pictures, ...) never touch the real home.
     const QString base = QDir::tempPath() + QStringLiteral("/kwal-test-") +
                          QString::number(QCoreApplication::applicationPid());
     qputenv("HOME", base.toUtf8());

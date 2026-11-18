@@ -15,35 +15,29 @@
 #include <QtQml/qqmlregistration.h>
 
 
-// Manages Ulauncher themes: lists templates and user themes, exposes the
-// selected theme's colors as editable sections, renders live previews, and
-// saves/applies/creates/deletes themes. The preview mockup settings (window
-// width, typed query, sample rows) are app-local; when constructed with a
-// valid KConfig group they are persisted there.
+// Ulauncher themes: list templates/user themes, edit their colors, preview them,
+// save/apply/create/delete. Preview mockup settings persist via a KConfig group.
 class UlauncherController : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
 
-    // Theme list for the combobox: list of {name, path, isTemplate, isCurrent} maps.
+    // Combobox list of {name, path, isTemplate, isCurrent} maps.
     Q_PROPERTY(QVariantList themeEntries READ themeEntries NOTIFY themeEntriesChanged)
     Q_PROPERTY(int selectedThemeIndex READ selectedThemeIndex NOTIFY selectedThemeIndexChanged)
     Q_PROPERTY(QString currentThemePath READ currentThemePath NOTIFY currentThemePathChanged)
     // Editable color sections: list of {title, colors: [{key, value, display}]} maps.
     Q_PROPERTY(QVariantList paletteSections READ paletteSections NOTIFY paletteSectionsChanged)
-    // Launcher mockup of the selected theme with unapplied edits.
+    // Launcher mockup of the selected theme, unapplied edits included.
     Q_PROPERTY(QString previewHtml READ previewHtml NOTIFY previewHtmlChanged)
     // Launcher mockup of the applied (active) theme.
     Q_PROPERTY(QString currentPreviewHtml READ currentPreviewHtml NOTIFY currentPreviewHtmlChanged)
     Q_PROPERTY(bool hasBackup READ hasBackup NOTIFY hasBackupChanged)
-    // Width in px of the launcher window in the preview mockups (clamped to
-    // 400..1200); editable from the Ulauncher settings page.
+    // Launcher window width in the mockups, clamped to 400..1200.
     Q_PROPERTY(int previewWindowWidth READ previewWindowWidth NOTIFY previewWindowWidthChanged)
-    // Text typed in the preview mockup input; its characters are the ones
-    // highlighted inside each sample row name.
+    // Mockup input text; its characters are what gets highlighted in the row names.
     Q_PROPERTY(QString previewQuery READ previewQuery NOTIFY previewQueryChanged)
-    // Sample rows of the preview mockups: list of {icon, name, shortcut,
-    // selected} maps.
+    // Mockup sample rows: list of {icon, name, shortcut, selected} maps.
     Q_PROPERTY(QVariantList sampleRows READ sampleRows NOTIFY sampleRowsChanged)
 
 public:
@@ -61,52 +55,37 @@ public:
     QString previewQuery() const;
     QVariantList sampleRows() const;
 
-    // Point the controller at a specific theme directory (used by tests);
-    // reloads colors and regenerates the preview.
+    // Points the controller at a specific theme directory (used by tests).
     void setThemePath(const QString &path);
 
 public slots:
-    // Re-resolves the active theme, rebuilds the theme list, and keeps the
-    // selection (falling back to the current theme, then the first entry).
+    // Rebuilds the list, keeping the selection (fallback: current theme, then first).
     void refresh();
-    // Refresh only when the files the tab shows changed on disk since the
-    // controller last read them (settings.json or a theme's manifest.json /
-    // theme.css rewritten by matugen or an editor). Colors the user is
-    // drafting in the selected theme survive unless that theme's own files
-    // are what changed.
+    // Reload only when the watched files changed on disk (matugen or an editor
+    // rewrites them); drafts in the selected theme survive unless its own files changed.
     void refreshIfChanged();
-    // Selects the theme at the given list index for editing.
     void selectTheme(int index);
     // Re-selects the currently applied theme (or the first entry).
     void clearSelection();
     // Edits one color by key (a manifest row key or a theme.css variable name).
     void setColorValue(const QString &key, const QString &color);
-    // Writes the edited colors to the selected theme's files.
     void saveTheme();
     // Makes the selected theme active in Ulauncher's settings.json.
     void applyToUlauncher();
     // Creates a new user theme from the selected one.
     void createTheme(const QString &name);
-    // Deletes the selected user theme.
     void deleteTheme();
     // Restores the selected theme from its .bak backups.
     void restoreBackup();
-    // Sets the scale used to render both preview mockups (clamped to
-    // 0.2..2.0) and regenerates them. Called by the QML mockups with the
-    // scale that fits the launcher window into the available pane.
+    // Render scale for both mockups, clamped to 0.2..2.0; supplied by the QML mockups.
     void setPreviewScale(double scale);
-    // Sets the launcher window width in the preview mockups (clamped to
-    // 400..1200), regenerates them, and persists the value.
+    // Mockup launcher width, clamped to 400..1200; regenerates and persists.
     void setPreviewWindowWidth(int width);
-    // Sets the text typed in the preview mockup input, regenerates them, and
-    // persists the value.
+    // Mockup input text; regenerates and persists.
     void setPreviewQuery(const QString &query);
-    // Edits one sample row in place (index + {icon, name, shortcut, selected}
-    // map). No signal: the settings list already shows the edited values.
+    // Edits one sample row in place. No signal: the settings list shows the values already.
     void setSampleRow(int index, const QVariantMap &row);
-    // Appends a new (empty) sample row.
     void addSampleRow();
-    // Removes the sample row at the given index.
     void removeSampleRow(int index);
 signals:
     void themeEntriesChanged();
@@ -130,14 +109,10 @@ private:
     };
 
     void rebuildThemeEntries();
-    // Files whose content the tab shows: Ulauncher's settings.json (the
-    // active-theme marker) plus the manifest/theme.css of the applied and of
-    // the selected theme. themeFiles() is one theme directory's pair.
+    // The theme dir's manifest.json + theme.css pair (watchedFiles() adds settings.json).
     static QStringList themeFiles(const QString &themeDir);
     QStringList watchedFiles() const;
-    // Re-take the fingerprints of watchedFiles() / the selected theme after
-    // every read or self-write, so refreshIfChanged() only reacts to changes
-    // that came from outside this controller.
+    // Re-take fingerprints after every read/self-write: only external changes count.
     void armFingerprints();
     // Index of the listed entry whose directory is path, or -1.
     int entryIndexForPath(const QString &path) const;
@@ -157,24 +132,21 @@ private:
     int m_selectedIndex = -1;
     QString m_selectedPath;
     QString m_currentPath;
-    // Fingerprint of watchedFiles() and of themeFiles(m_selectedPath) as of
-    // the last read (see armFingerprints).
+    // Fingerprints of watchedFiles()/themeFiles(m_selectedPath) as of the last read.
     QString m_watchFingerprint;
     QString m_selectedFingerprint;
     QString m_cssContent;
     QString m_manifestJson;
     QMap<QString, QString> m_themeColors;
     QMap<QString, QString> m_manifestColors;
-    // Manifest row key ("when_selected" / "when_not_selected") -> the actual
-    // manifest key (root key or its matched_text_hl_colors entry).
+    // Row key -> real manifest key: root key, or nested under matched_text_hl_colors.
     QMap<QString, QString> m_manifestRowKey;
     QStringList m_themeColorOrder;
     double m_previewScale = 0.75;
     int m_previewWindowWidth = kDefaultPreviewWidth;
     QString m_query;
     QList<tools::UlauncherRow> m_rows;
-    // Invalid unless constructed with a config group; then preview settings
-    // are loaded from / saved to it.
+    // Invalid unless built with a config group; then preview settings persist to it.
     KConfigGroup m_config;
     static constexpr int kDefaultPreviewWidth = 900;
     static constexpr int kMinPreviewWidth = 400;

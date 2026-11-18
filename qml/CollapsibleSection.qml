@@ -5,10 +5,7 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// A section with an arrow ToolButton + bold label header (same pattern as
-// StarshipPage's "Collapse palette") that toggles its content. The content
-// stays alive while collapsed (only hidden) so its children keep their
-// state (typed text, selection) across toggles.
+// The Loader stays active while collapsed (visible-only) so children keep their state across toggles.
 ColumnLayout {
     id: root
 

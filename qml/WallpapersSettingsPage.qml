@@ -11,14 +11,10 @@ Kirigami.ScrollablePage {
 
     required property AppController app
 
-    // Wallpaper extensions the grid accepts but this Qt build cannot decode
-    // because the image handler plugin is not installed. The cell thumbnail
-    // still renders (it comes from the external freedesktop thumbnailer), so
-    // nothing else explains the empty palettes, categories and preview.
+    // Extensions the grid accepts but this Qt build cannot decode (missing image-handler plugins); thumbnails come from the external freedesktop thumbnailer and still render.
     readonly property var unreadableFormats: page.app.unreadableWallpaperFormats()
 
-    // Arch package owning each handler plugin (verified with pacman -Qo on
-    // /usr/lib/qt6/plugins/imageformats/*.so).
+    // Arch packages owning each image-format handler plugin.
     readonly property var formatPackages: ({
         "png": "qt6-base",
         "jpg": "qt6-base",
@@ -40,8 +36,7 @@ Kirigami.ScrollablePage {
         return packages.join(", ")
     }
 
-    // Setting labels exposed to the settings drawer search; keep in sync
-    // with the controls below.
+    // Keep in sync with the control texts below: the settings drawer search matches these.
     property var searchKeys: [
         qsTr("Show color dots (matugen)"),
         qsTr("Show color categories"),
@@ -71,8 +66,7 @@ Kirigami.ScrollablePage {
         qsTr("Clear all tags")
     ]
 
-    // The page is hosted by the settings window; notify there so the
-    // message lands on top of it.
+    // Notify on the hosting window so the message appears above it.
     function notify(message) {
         // qmllint disable missing-property
         const win = page.parent
@@ -100,9 +94,7 @@ Kirigami.ScrollablePage {
         }
     }
 
-    // Direct child of the ScrollablePage (no contentItem override): the page
-    // anchors left/right to its scroll area; the top anchor keeps the content
-    // flush with the top so the page scrolls when it overflows.
+    // Direct child of ScrollablePage (no contentItem override); the top anchor keeps content flush so the page scrolls on overflow.
     ColumnLayout {
         anchors {
             top: parent.top
@@ -112,9 +104,6 @@ Kirigami.ScrollablePage {
         }
         spacing: Kirigami.Units.smallSpacing
 
-        // The two ways this install can be missing something the app needs,
-        // both invisible by default: a broken decode shows up as empty
-        // palettes/previews, a missing video plugin as a frozen wallpaper.
         Kirigami.InlineMessage {
             Layout.fillWidth: true
             visible: page.unreadableFormats.length > 0
@@ -125,9 +114,7 @@ Kirigami.ScrollablePage {
 
         Kirigami.InlineMessage {
             Layout.fillWidth: true
-            // Only for folders that actually hold videos, and re-checked every
-            // time the page is shown: installing the plugin is what this asks
-            // for, and it needs no restart.
+            // Re-checked while the page is shown: installing the plugin takes effect without a restart.
             visible: page.visible
                      && page.app.videoFolders.length > 0
                      && !page.app.videoWallpaperPluginInstalled()
@@ -327,8 +314,6 @@ Kirigami.ScrollablePage {
                 editable: true
                 model: ["720p", "1080p", "1440p", "2160p"]
 
-                // The typed text lives in editText; a dropdown selection
-                // leaves the field empty and currentText holds the item.
                 function fieldText() {
                     return resizeHeightCombo.editText === ""
                         ? resizeHeightCombo.currentText
@@ -340,9 +325,7 @@ Kirigami.ScrollablePage {
                     return isNaN(n) ? -1 : n
                 }
 
-                // The preset list is a convenience, not a limit: a stored
-                // height outside it shows up as free text and the C++
-                // setter clamps typed values.
+                // Presets are not a limit: out-of-list heights show as free text; the C++ setter clamps typed values.
                 function sync() {
                     const v = page.app.resizeHeight
                     const i = model.indexOf(v + "p")

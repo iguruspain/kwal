@@ -181,13 +181,11 @@ void tst_Fastfetch::testTintedPreviewUrlBumpsCacheBuster()
     QVERIFY(first.startsWith(QUrl::fromLocalFile(controller.tintedPreviewPath()).toString()));
     QVERIFY(first.contains(QStringLiteral("?t=")));
 
-    // Same cache path, new color: the URL must change so the QML Image
-    // source changes and reloads.
+    // Same cache path, new color: the URL must change so the QML Image reloads.
     controller.setDraftColor(QStringLiteral("#00ff00"));
     QVERIFY(previewSpy.wait(10000));
     QCOMPARE(controller.tintedPreviewUrl() != first, true);
 
-    // Without a preview the URL is empty.
     controller.clearSelection();
     QCOMPARE(controller.tintedPreviewUrl().isEmpty(), true);
 
@@ -204,8 +202,7 @@ void tst_Fastfetch::testAnimatedPreviewCacheLayout()
     const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
         + QStringLiteral("/kwal");
     QDir().mkpath(cacheRoot);
-    // A stray file from the old flat layout (where an animated source
-    // exploded into one PNG per frame): generating a preview must clear it.
+    // The old flat layout left per-frame PNG strays; preview generation must clear them.
     const QString legacy = cacheRoot + QStringLiteral("/fastfetch-preview-0.png");
     saveImage(legacy, Qt::red);
 
@@ -230,8 +227,6 @@ void tst_Fastfetch::testAnimatedPreviewCacheLayout()
     QVERIFY(previewSpy.wait(30000));
     QVERIFY(!controller.tintedPreviewPath().isEmpty());
 
-    // The preview lives in its own cache folder and keeps the source's
-    // animated family: one tinted animated GIF, not a per-frame dump.
     QCOMPARE(controller.tintedPreviewPath(),
         cacheRoot + QStringLiteral("/fastfetch_preview/fastfetch-preview.gif"));
     QImageReader out(controller.tintedPreviewPath());
@@ -239,8 +234,6 @@ void tst_Fastfetch::testAnimatedPreviewCacheLayout()
     QCOMPARE(out.imageCount(), 2);
     QVERIFY(!QFile::exists(controller.tintedPreviewPath() + QStringLiteral("-0.gif")));
 
-    // The old-layout leftovers are gone; only the current preview remains
-    // in the preview folder.
     QVERIFY(!QFile::exists(legacy));
     const QStringList kept = QDir(cacheRoot + QStringLiteral("/fastfetch_preview"))
         .entryList(QDir::Files | QDir::Hidden);
@@ -271,8 +264,6 @@ void tst_Fastfetch::testApplyCopiesPreviewWithoutRetinting()
             QSKIP("could not generate the test GIF fixture");
     }
 
-    // Config points at the gif so the controller adopts it and the apply
-    // can rewrite the source key.
     writeConfig(QStringLiteral("{\n  source: \"%1\"\n}\n").arg(gif));
     FastfetchController controller;
     QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
@@ -280,14 +271,12 @@ void tst_Fastfetch::testApplyCopiesPreviewWithoutRetinting()
     controller.setDraftColor(QStringLiteral("#00c80a"));
     QVERIFY(previewSpy.wait(30000));
 
-    // Apply copies the finished preview next to the source: the applied
-    // file is byte-identical to the preview (no second tint pass), keeps
-    // every frame, and the config starts pointing at it.
+    // Regression: apply copies the finished preview (byte-identical, no second tint pass,
+    // all frames kept) and the config starts pointing at the applied file.
     const QString previewFile = controller.tintedPreviewPath();
     QSignalSpy resultSpy(&controller, &FastfetchController::operationResult);
     controller.applyTintedImage();
-    // The copy is synchronous when the preview is up to date; QTRY covers
-    // both that and the queued path without missing an early emission.
+    // The copy may be synchronous or queued; QTRY covers both.
     QTRY_COMPARE_WITH_TIMEOUT(resultSpy.count(), 1, 30000);
     QCOMPARE(resultSpy.at(0).at(0).toBool(), true);
 
@@ -309,9 +298,8 @@ void tst_Fastfetch::testApplyCopiesPreviewWithoutRetinting()
         configText = QString::fromUtf8(cfgFile.readAll());
     QVERIFY(configText.contains(applied));
 
-    // Clicking apply while a fresh pass is still running must not re-tint
-    // nor copy a stale file: the queued apply lands on the new result.
-    // The pass exposes its own previewBusy; the apply busy stays free.
+    // Apply during a running pass must not re-tint or copy a stale file: the queued
+    // apply lands on the new result; previewBusy does not hold apply busy.
     controller.setDraftColor(QStringLiteral("#0000ff"));
     QVERIFY(controller.previewBusy());
     QCOMPARE(controller.busy(), false);
@@ -350,7 +338,6 @@ void tst_Fastfetch::testConfigImageUrlBumpsOnRefresh()
     QCOMPARE(controller.configImage(), QFileInfo(img).absoluteFilePath());
     QCOMPARE(controller.configImageUrl() != first, true);
 
-    // No config: both properties are empty.
     cleanConfig();
     controller.refreshConfigImage();
     QCOMPARE(controller.configImage().isEmpty(), true);
@@ -373,14 +360,13 @@ void tst_Fastfetch::testSetDraftColorRegeneratesPreview()
     FastfetchController controller;
     QSignalSpy previewSpy(&controller, &FastfetchController::tintedPreviewChanged);
     controller.selectFile(img);
-    QCOMPARE(controller.tintedPreviewPath().isEmpty(), true); // no tint yet
+    QCOMPARE(controller.tintedPreviewPath().isEmpty(), true);
 
     controller.setDraftColor(QStringLiteral("#336699"));
     QVERIFY(previewSpy.wait(10000));
     QVERIFY(!controller.tintedPreviewPath().isEmpty());
 
-    // Selecting another image re-generates the preview automatically:
-    // same cache file, so the cache-buster must change.
+    // A new image reuses the same cache file: the cache-buster must change.
     const QString url1 = controller.tintedPreviewUrl();
     controller.selectFile(img2);
     QVERIFY(previewSpy.wait(10000));
@@ -409,16 +395,13 @@ void tst_Fastfetch::testPreviewsVisibleTracksSelection()
     writeConfig(QStringLiteral("{ \"source\": \"%1\" }\n").arg(img));
 
     FastfetchController controller;
-    // The config image is auto-adopted: without a tint there is nothing the
-    // selected/tinted row could show that "Current (config)" does not already.
+    // An auto-adopted config image with no tint has nothing extra to show.
     QVERIFY(!controller.selectedFile().isEmpty());
     QCOMPARE(controller.previewsVisible(), false);
 
-    // A user pick always has its own file to show.
     controller.selectFile(img);
     QCOMPARE(controller.previewsVisible(), true);
 
-    // Clearing it flips it back off.
     controller.clearSelection();
     QCOMPARE(controller.previewsVisible(), false);
 
@@ -426,9 +409,8 @@ void tst_Fastfetch::testPreviewsVisibleTracksSelection()
     cleanConfig();
 }
 
-// The special case: the user tints the image fastfetch already points at
-// (never picking a file). The tint pass used to run with the selected/tinted
-// previews hidden, so no preview ever appeared.
+// Regression: tinting the auto-adopted config image (no file ever picked)
+// used to run with the preview row hidden, so no preview ever appeared.
 void tst_Fastfetch::testTintingAdoptedImageShowsPreviews()
 {
     if (!hasImageMagick())
@@ -453,7 +435,6 @@ void tst_Fastfetch::testTintingAdoptedImageShowsPreviews()
     QVERIFY(!controller.tintedPreviewPath().isEmpty());
     QCOMPARE(controller.previewsVisible(), true);
 
-    // Back to no tint: nothing to show again.
     controller.setDraftColor(QStringLiteral("transparent"));
     QCOMPARE(controller.tintedPreviewPath().isEmpty(), true);
     QCOMPARE(controller.previewsVisible(), false);

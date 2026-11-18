@@ -1,10 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
-// Editable frame-rate picker: the presets are "current" (0 = keep the
-// source frame rate) plus fixed values; typing another number keeps it
-// as a custom value. Out-of-range entries are clamped by the C++
-// setter, which re-syncs the display through fpsChanged.
+// fps 0 displays as "current" (keep the source frame rate); the C++ setter clamps typed values and re-syncs via fpsChanged.
 ComboBox {
     id: root
 
@@ -18,8 +15,7 @@ ComboBox {
         return v === 0 ? qsTr("current") : v + "fps"
     }
 
-    // The typed text lives in editText; a dropdown selection leaves the
-    // field empty and currentText holds the item text.
+    // Editable ComboBox: typed text is editText; a dropdown selection leaves editText empty and puts the item in currentText.
     function fieldText() {
         return root.editText === "" ? root.currentText : root.editText
     }

@@ -12,17 +12,14 @@ Kirigami.ScrollablePage {
 
     required property UlauncherController controller
 
-    // Setting labels exposed to the settings drawer search; keep in sync
-    // with the controls below.
+    // Keep in sync with the control texts below: the settings drawer search matches these.
     property var searchKeys: [
         qsTr("Ulauncher width"),
         qsTr("Input text"),
         qsTr("Sample rows")
     ]
 
-    // Direct child of the ScrollablePage (no contentItem override): the page
-    // anchors left/right to its scroll area; the top anchor keeps the content
-    // flush with the top so the page scrolls when it overflows.
+    // Direct child of ScrollablePage (no contentItem override); the top anchor keeps content flush so the page scrolls on overflow.
     ColumnLayout {
         anchors {
             top: parent.top

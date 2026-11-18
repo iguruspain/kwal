@@ -83,8 +83,6 @@ QVariant WallpaperModel::data(const QModelIndex &index, int role) const
         return info ? info->sourceColorsFor(entry.path) : QStringList();
     }
     case IsAnimatedRole: {
-        // The cached frame-count probe (real animation, not just a
-        // gif/webp suffix); the extension rule while the entry is unprobed.
         const WallpapersInfo *info = WallpapersInfo::instance();
         if (info) {
             return info->isAnimatedFor(entry.path);
@@ -230,10 +228,8 @@ void WallpaperModel::refresh()
     const QDir dir(m_directory);
     const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     for (const QString &fileName : files) {
-        // Video apply keeps raw file:// URLs (the reborn plugin's exact
-        // string format); a newline inside such a name would become a real
-        // line break in appletsrc/kscreenlockerrc — INI injection. Such
-        // names are junk anyway: keep them out of every consumer.
+        // A newline in a filename becomes a real line break in the apply
+        // file:// URL inside appletsrc/kscreenlockerrc: INI injection.
         if (fileName.contains(QLatin1Char('\n')) || fileName.contains(QLatin1Char('\r'))) {
             continue;
         }
@@ -255,8 +251,6 @@ void WallpaperModel::refresh()
     applyFilter();
     endResetModel();
     emit countChanged();
-    // Every folder scan also drops cache entries whose file was deleted
-    // (images, videos and their first-frame artifacts) from any folder.
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
         info->sweep();
     }
@@ -331,8 +325,7 @@ void WallpaperModel::onEntryChanged(const QString &path)
             }
         }
     }
-    // New metadata (colors, tags) may change which entries match the active
-    // category filter.
+    // New metadata can change which entries match the category filter.
     if (!m_categoryFilter.isEmpty()) {
         beginResetModel();
         applyFilter();
@@ -343,15 +336,12 @@ void WallpaperModel::onEntryChanged(const QString &path)
 
 QUrl WallpaperModel::thumbnailFor(const QString &filePath) const
 {
-    // The "fdo_thumbnail" provider (FdoThumbnailProvider) resolves the FreeDesktop
-    // thumbnail cache and generates a 256 px thumbnail on a miss.
     return QUrl(QStringLiteral("image://fdo_thumbnail/") + filePath);
 }
 
 QUrl WallpaperModel::videoThumbnailFor(const QString &filePath) const
 {
-    // Video thumbnail: the cached first frame (wallpapers_info.json), served
-    // through the same "fdo_thumbnail" provider; empty while it is missing.
+    // Video thumbnail = WallpapersInfo's cached first frame, via fdo_thumbnail.
     const WallpapersInfo *info = WallpapersInfo::instance();
     if (!info) {
         return {};
@@ -364,8 +354,7 @@ QUrl WallpaperModel::videoThumbnailFor(const QString &filePath) const
 }
 
 namespace {
-// The jpeg handler advertises several names for the same codec; any of them
-// present means both jpg and jpeg decode.
+// The jpeg handler advertises several aliases for one codec.
 QStringList formatAliases(const QString &format)
 {
     if (format == QLatin1String("jpg") || format == QLatin1String("jpeg")) {

@@ -144,12 +144,9 @@ void tst_Starship::testPreviewHtml()
     QVERIFY(html.contains(QStringLiteral("<html")));
     QVERIFY(html.contains(QStringLiteral("terminal")));
     QVERIFY(html.contains(QStringLiteral("rgba(24,24,24,0.8)")));
-    // The blinking terminal cursor is part of the preview.
     QCOMPARE(html.count(QStringLiteral("<span class=\"caret\"></span>")), 1);
     QVERIFY(html.contains(QStringLiteral("caret-blink")));
 
-    // With a line break the caret stays on the prompt line, before the
-    // line that splits it from the rest.
     const toml::table doc2 = toml::parse(
         "palette=\"Test\"\n"
         "format=\"$username $line_break $directory\"\n"
@@ -157,8 +154,7 @@ void tst_Starship::testPreviewHtml()
         "bg=\"#1a2b3c\"\n"
         "fg=\"#ffffff\"\n");
     const QString html2 = tools::starshipPreviewHtml(doc2, 0, 1.0, 800);
-    // With a line break the caret still sits at the very end of the format,
-    // i.e. after the line break.
+    // With a line break in `format`, the caret still lands at the very end, after the break.
     QCOMPARE(html2.count(QStringLiteral("<span class=\"caret\"></span>")), 1);
     QVERIFY(html2.indexOf(QStringLiteral("<span class=\"caret\">"))
                 > html2.indexOf(QStringLiteral("</div><div class=\"prompt-line\">")));
@@ -166,9 +162,8 @@ void tst_Starship::testPreviewHtml()
 
 void tst_Starship::testPreviewHtmlEscapesMarkup()
 {
-    // The preview document is loaded with file:// access: markup written
-    // in starship.toml (shared/downloaded configs, the bundled templates)
-    // must render as literal text, never as live HTML.
+    // The preview document is loaded with file:// access: markup in
+    // starship.toml must render as literal text, never live HTML.
     const toml::table doc = toml::parse(
         "palette=\"Test\"\n"
         "format=\"</div><img src=x onerror=alert(1)>\"\n"
@@ -176,7 +171,6 @@ void tst_Starship::testPreviewHtmlEscapesMarkup()
         "bg=\"#1a2b3c\"\n"
         "fg=\"#ffffff\"\n");
     const QString html = tools::starshipPreviewHtml(doc, 0, 1.0, 800);
-    // No live markup from the config: the payload survives only escaped.
     QVERIFY(!html.contains(QStringLiteral("<img")));
     QVERIFY(html.contains(QStringLiteral("&lt;/div&gt;")));
     QVERIFY(html.contains(QStringLiteral("&lt;img&nbsp;src=x&nbsp;onerror=alert(1)&gt;")));
@@ -203,12 +197,10 @@ void tst_Starship::testControllerLoadsAndApplies()
     QCOMPARE(controller.hasConfig(), true);
     QVERIFY(controller.paletteNames().contains(QStringLiteral("Test")));
     QVERIFY(!controller.previewHtml().isEmpty());
-    // The prompt is rendered from the parsed file (regression: the preview
-    // used to come out empty because the parse validity was never recorded).
+    // Regression: an unrecorded parse-validity flag used to leave the preview empty.
     QVERIFY(controller.previewHtml().contains("dev/scripts"));
     QVERIFY(controller.currentPreviewHtml().contains("dev/scripts"));
 
-    // Edit a row by key (the QML color rows use this path).
     controller.setColorValue("fg", "#33aaff");
     QCOMPARE(controller.draftColor(), QStringLiteral("#33aaff"));
     QCOMPARE(controller.paletteValues().at(0).toList().at(1).toString(),
@@ -256,8 +248,7 @@ void tst_Starship::testPreviewFollowsPaletteSelection()
     QVERIFY(controller.previewHtml().contains(QStringLiteral("#a00000")));
     QVERIFY(!controller.previewHtml().contains(QStringLiteral("#00aa00")));
 
-    // Switching the palette (as the combo does) re-renders the draft
-    // preview with that palette's colors.
+    // Switching the palette re-renders the draft preview with its colors.
     controller.setDraftPaletteIndex(1);
     QVERIFY(controller.previewHtml().contains(QStringLiteral("#00aa00")));
     QVERIFY(!controller.previewHtml().contains(QStringLiteral("#a00000")));
@@ -269,8 +260,7 @@ void tst_Starship::testPreviewFollowsPaletteSelection()
     QFile::remove(path + QStringLiteral(".bak"));
 }
 
-// The tab used to re-read starship.toml only on Reset, so a rewrite by
-// matugen stayed invisible until then.
+// Regression: starship.toml used to be re-read only on Reset, hiding external (matugen) rewrites.
 void tst_Starship::testRefreshIfChangedFollowsExternalWrite()
 {
     const QString path = tools::starshipConfigPath();
@@ -289,16 +279,14 @@ void tst_Starship::testRefreshIfChangedFollowsExternalWrite()
     QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
              QStringLiteral("#111111"));
 
-    // An activation that finds the file untouched must not drop the palette
-    // the user is drafting.
+    // An activation that finds the file untouched must not drop the user's draft.
     controller.setColorValue(QStringLiteral("fg"), QStringLiteral("#33aaff"));
     controller.refreshIfChanged();
     QCOMPARE(controller.draftColor(), QStringLiteral("#33aaff"));
     QCOMPARE(controller.paletteValues().at(0).toList().at(1).toString(),
              QStringLiteral("#33aaff"));
 
-    // An external rewrite is followed on the next activation: the draft now
-    // describes a file that no longer exists, so it is replaced.
+    // An external rewrite is followed on the next activation: the now-stale draft is replaced.
     writeFile(path, QStringLiteral(
         "palette=\"Test\"\n"
         "format=\"$directory\"\n"
@@ -316,8 +304,7 @@ void tst_Starship::testRefreshIfChangedFollowsExternalWrite()
     QVERIFY(controller.previewHtml().contains(QStringLiteral("#222222")));
     QVERIFY(!controller.previewHtml().contains(QStringLiteral("#33aaff")));
 
-    // The re-read re-armed the fingerprint: the next activation is a no-op
-    // and keeps a fresh draft edit.
+    // The re-read re-arms the fingerprint: the next refresh is a no-op and keeps a fresh draft edit.
     controller.setColorValue(QStringLiteral("bg"), QStringLiteral("#00ff00"));
     controller.refreshIfChanged();
     QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
@@ -327,9 +314,8 @@ void tst_Starship::testRefreshIfChangedFollowsExternalWrite()
     QFile::remove(path + QStringLiteral(".bak"));
 }
 
-// While a template is being edited, an external rewrite of the applied
-// config must follow the "Current" side only: the template's draft palettes
-// are the work in progress, not the config's.
+// With a template drafted, an external rewrite of the applied config must follow
+// only the "Current" side; the template's draft palettes stay untouched.
 void tst_Starship::testRefreshIfChangedKeepsTemplateDraft()
 {
     const QString path = tools::starshipConfigPath();
@@ -379,11 +365,9 @@ void tst_Starship::testRefreshIfChangedKeepsTemplateDraft()
         "style=\"fg:fg bg:bg\"\n"));
     controller.refreshIfChanged();
 
-    // The template and its draft colors stay exactly as they were...
     QCOMPARE(controller.selectedTemplate(), QStringLiteral("Alt"));
     QCOMPARE(controller.paletteValues().at(0).toList().at(0).toString(),
              QStringLiteral("#00ff00"));
-    // ...while the applied-config preview follows the rewritten file.
     QVERIFY(controller.currentPreviewHtml().contains(QStringLiteral("#222222")));
     QVERIFY(!controller.currentPreviewHtml().contains(QStringLiteral("#111111")));
 
@@ -394,8 +378,7 @@ void tst_Starship::testRefreshIfChangedKeepsTemplateDraft()
 
 int main(int argc, char *argv[])
 {
-    // Sandbox user dirs so starshipConfigPath / QStandardPaths never touch the
-    // real home directory.
+    // Sandboxed user dirs: starshipConfigPath / QStandardPaths never touch the real home.
     const QString base = QDir::tempPath() + QStringLiteral("/kwal-tst-starship-") +
                          QString::number(QCoreApplication::applicationPid());
     qputenv("HOME", base.toUtf8());

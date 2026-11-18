@@ -4,32 +4,17 @@ import org.kde.kirigami as Kirigami
 
 pragma ComponentBehavior: Bound
 
-// Shared shell for the tool tabs (Fastfetch, Starship, Ulauncher). Each of
-// those pages is a Kirigami.Page with the same chrome: an app-wide
-// controller reference, a transparency-aware background (also reused by the
-// page's own panes through pageBackground), no page-level header, and a
-// modal dialog that surfaces the controller's operationResult. Only the
-// background, the result dialog and the header suppression live here; the
-// per-tool controller (a distinct C++ type per tab) and its page body stay
-// in the subclass.
+// Shared shell for the tool pages: background, operation-result dialog, header suppression.
 Kirigami.Page {
     id: page
 
-    // App-wide controller (folders / settings / transparency); subclasses
-    // bind it to the window's controller.
     property AppController app
 
-    // True while this page is the page stack's current item. The PageRow
-    // keeps every pushed page alive and visible, so `visible` never toggles
-    // on a tab switch: this is the flag the tabs use to re-read their tool's
-    // config when the user actually comes back to them (Main.qml binds it).
+    // The PageRow keeps every pushed page visible, so `visible` never toggles on tab switch; Main.qml binds this.
     property bool pageActive: true
 
-    // Title of the operation-result dialog; set by the subclass.
     property string resultTitle: ""
 
-    // Transparency-aware page background; the page's panes reference this so
-    // they match the window background exactly, as on WallpapersPage.
     readonly property color pageBackground: app.enableTransparency
         ? Qt.alpha(Kirigami.Theme.backgroundColor, app.transparencyLevel / 100.0)
         : Kirigami.Theme.backgroundColor
@@ -38,13 +23,9 @@ Kirigami.Page {
         color: page.pageBackground
     }
 
-    // Hide the page-level navigation header (back/forward + title): the
-    // window tab bar is the only chrome, matching WallpapersPage.
     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
 
-    // Opens the result dialog; the subclass calls this from its
-    // onOperationResult handler (the target controller differs per page, so
-    // the Connections block stays in the subclass).
+    // The Connections block stays in the subclass: the target controller differs per page.
     function showResult(message) {
         resultDialog.message = message
         resultDialog.visible = true

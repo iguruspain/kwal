@@ -237,8 +237,6 @@ Spec resolve(const TransitionConfig &cfg)
 {
     TransitionConfig c = cfg;
     if (!c.advancedEnabled) {
-        // The per-type defaults are the preset: the stored advanced values
-        // only apply once the switch is on.
         c.duration = 0.9;
         c.fps = 0;
         c.step = 2;

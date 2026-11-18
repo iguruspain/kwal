@@ -85,10 +85,8 @@ QString getActivePaletteName(const toml::table &doc)
 
 void replacePalettesInDoc(toml::table &doc, const PaletteMap &palettes, const QString &activePalette)
 {
-    // Remove existing palettes table
     doc.erase("palettes");
 
-    // Create new palettes table
     toml::table newPalettes;
     for (const auto &[pname, colors] : palettes) {
         toml::table paletteTable;
@@ -99,7 +97,6 @@ void replacePalettesInDoc(toml::table &doc, const PaletteMap &palettes, const QS
     }
     doc.insert("palettes", std::move(newPalettes));
 
-    // Update active palette key
     if (!activePalette.isEmpty()) {
         doc.insert_or_assign("palette", activePalette.toStdString());
     } else {
@@ -113,14 +110,12 @@ bool applyStarshipPalettes(const QString &configPath,
 {
     const QString cfgPath = configPath.isEmpty() ? starshipConfigPath() : configPath;
 
-    // Ensure config directory exists
     QFileInfo info(cfgPath);
     QDir dir = info.absoluteDir();
     if (!dir.exists() && !dir.mkpath(QStringLiteral("."))) {
         return false;
     }
 
-    // Back up the current config before overwriting it
     backupFile(cfgPath);
 
     toml::table doc;
@@ -128,7 +123,6 @@ bool applyStarshipPalettes(const QString &configPath,
         try {
             doc = toml::parse_file(cfgPath.toStdString());
         } catch (const toml::parse_error &) {
-            // If parsing fails, start with empty doc
             doc.clear();
         } catch (const std::exception &) {
             doc.clear();
@@ -137,7 +131,6 @@ bool applyStarshipPalettes(const QString &configPath,
 
     replacePalettesInDoc(doc, palettes, activePalette);
 
-    // Serialize TOML to string
     std::ostringstream oss;
     oss << toml::toml_formatter{ doc };
     const std::string tomlString = oss.str();
@@ -155,7 +148,6 @@ bool writeStarshipDoc(const QString &configPath, const toml::table &doc)
         return false;
     }
 
-    // Back up the current config before overwriting it
     backupFile(cfgPath);
 
     std::ostringstream oss;

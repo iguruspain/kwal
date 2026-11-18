@@ -18,7 +18,6 @@
 
 class KConfig;
 
-// One custom command: the shell line and whether it runs on apply.
 struct CustomCommand {
     QString command;
     bool enabled = true;
@@ -39,17 +38,13 @@ class AppController : public QObject
     Q_PROPERTY(bool resizeEnabled READ resizeEnabled WRITE setResizeEnabled NOTIFY resizeEnabledChanged)
     Q_PROPERTY(int resizeHeight READ resizeHeight WRITE setResizeHeight NOTIFY resizeHeightChanged)
     Q_PROPERTY(int resizeFps READ resizeFps WRITE setResizeFps NOTIFY resizeFpsChanged)
-    // Configured folders that contain at least one video; drives the
-    // "Generate resizes" folder picker.
     Q_PROPERTY(QStringList videoFolders READ videoFolders NOTIFY videoFoldersChanged)
     Q_PROPERTY(QString selectedWallpaper READ selectedWallpaper NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(QString selectedWallpaperSize READ selectedWallpaperSize NOTIFY selectedWallpaperChanged)
     Q_PROPERTY(int selectedSourceColorIndex READ selectedSourceColorIndex WRITE setSelectedSourceColorIndex NOTIFY selectedSourceColorIndexChanged)
-    // Custom commands, the last step of a wallpaper apply; the drawer
-    // edits and drag-reorders them, persisted in [Commands] of kwalrc.
+    // list of {command, enabled} maps; persisted in [Commands] of kwalrc.
     Q_PROPERTY(QVariantList customCommands READ customCommands NOTIFY customCommandsChanged)
-    // Custom command placeholder state, persisted in [Commands]: the
-    // mode (dark/light) for %mode% and the custom color hex for %ccolor%.
+    // %mode% / %ccolor% placeholder state; persisted in [Commands].
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged)
     Q_PROPERTY(QString customColor READ customColor WRITE setCustomColor NOTIFY customColorChanged)
     Q_PROPERTY(bool enableTransparency READ enableTransparency WRITE setEnableTransparency NOTIFY enableTransparencyChanged)
@@ -65,11 +60,8 @@ class AppController : public QObject
     Q_PROPERTY(UlauncherController *ulauncher READ ulauncher CONSTANT)
     Q_PROPERTY(WallpapersInfo *wallpapersInfo READ wallpapersInfo CONSTANT)
     Q_PROPERTY(PaletteExtractor *paletteExtractor READ paletteExtractor CONSTANT)
-    // AI tag generation against an OpenAI-compatible chat API; settings
-    // persist in [Wallpapers] of kwalrc.
+    // OpenAI-compatible chat API; settings in [Wallpapers] of kwalrc.
     Q_PROPERTY(AiTagger *aiTagger READ aiTagger CONSTANT)
-    // [Transitions]: layer-shell overlay animation applied on wallpaper
-    // switches.
     Q_PROPERTY(bool transitionEnabled READ transitionEnabled WRITE setTransitionEnabled NOTIFY transitionEnabledChanged)
     Q_PROPERTY(QString transitionLayer READ transitionLayer WRITE setTransitionLayer NOTIFY transitionLayerChanged)
     Q_PROPERTY(QStringList transitionLayers READ transitionLayers CONSTANT)
@@ -168,28 +160,21 @@ public:
     Q_INVOKABLE void setCurrentFolderIndex(int index);
     Q_INVOKABLE void selectWallpaper(const QString &filePath);
     Q_INVOKABLE void applyWallpaper();
-    // Runs the P5 video-resize generation for every video in <folder>.
     Q_INVOKABLE void generateVideoResizes(const QString &folder);
 
-    // file:// URL (percent-encoded) for a local path; for QML media sources.
     Q_INVOKABLE QString fileUrl(const QString &path) const;
 
-    // Wallpaper extensions this Qt build cannot decode because its image
-    // handler plugin is not installed (empty when all of them decode). The
-    // settings page turns a non-empty list into a visible warning.
+    // wallpaper extensions this Qt build cannot decode (empty when all decode).
     Q_INVOKABLE QStringList unreadableWallpaperFormats() const;
 
-    // True when Plasma's Smart Video Wallpaper (reborn) plugin is installed:
-    // without it a video wallpaper can only be applied as its first frame.
+    // Plasma Smart Video Wallpaper (reborn) plugin; without it videos apply as their first frame.
     Q_INVOKABLE bool videoWallpaperPluginInstalled() const;
 
-    // Custom commands, in execution order; the drawer's list mirrors these.
     Q_INVOKABLE void addCustomCommand();
     Q_INVOKABLE void updateCustomCommand(int index, const QString &command);
     Q_INVOKABLE void setCustomCommandEnabled(int index, bool enabled);
     Q_INVOKABLE void removeCustomCommand(int index);
-    // Reorders the command at <from> to the position <to> (new-list
-    // numbering, as Kirigami.ListItemDragHandle reports it).
+    // <to> uses new-list numbering, as Kirigami.ListItemDragHandle reports it.
     Q_INVOKABLE void moveCustomCommand(int from, int to);
 
 signals:
@@ -229,37 +214,26 @@ signals:
     void transitionWaveWidthChanged();
     void transitionWaveHeightChanged();
 private:
-    // Test access to the custom-command pipeline (placeholder expansion
-    // and execution); the tests must not go through the D-Bus apply path.
+    // tests use the placeholder pipeline directly, not the D-Bus apply path.
     friend class tst_AppController;
     void loadConfig();
     void saveConfig();
     void applyCurrentFolder();
     void setCurrentWallpaper(const QString &filePath);
     void setWallpaper(const QString &filePath);
-    // Shared finish handler for the wallpaper switch (direct path and
-    // transition binary).
     void wallpaperFinished(bool allOk, const QString &message);
-    // Expands the placeholders of one custom command for the current
-    // selection: %path%, %image%, %scolor%, %sc%, %mode% and %ccolor%.
+    // expands %path% %image% %scolor% %sc% %mode% %ccolor%.
     QString expandPlaceholders(const QString &command) const;
-    // Joins the enabled commands into one shell chain and starts it
-    // detached; the last step of a wallpaper apply.
+    // enabled commands joined into one detached shell chain; last apply step.
     void runCustomCommands();
     void recomputeVideoFolders();
     static QStringList videoFilesIn(const QString &folder);
 
     WallpaperModel *m_wallpaperModel = nullptr;
-    // Owned by this object; the D-Bus apply + linear config edits run from
-    // the thread pool so the UI stays responsive during a slow shell.
+    // owned; D-Bus apply + config edits run on the thread pool.
     PlasmaApply *m_plasmaApply = nullptr;
-    // Owned via the QObject child relationship; created with this app's own
-    // KConfig group so the preview settings persist in [Ulauncher] of
-    // kwalrc.
     UlauncherController *m_ulauncher = nullptr;
-    // Owned by this object; runs palette extraction on a thread pool.
     PaletteExtractor *m_paletteExtractor = nullptr;
-    // Owned by this object; AI tag generation, settings in [Wallpapers].
     AiTagger *m_aitagger = nullptr;
     std::unique_ptr<KConfig> m_config;
     QStringList m_folders;
@@ -267,45 +241,26 @@ private:
     int m_currentFolderIndex = 0;
     bool m_wallpaperBusy = false;
     QString m_currentWallpaper;
-    // [Wallpapers] "lockscreen": mirror the applied wallpaper to the
-    // KScreenLock config as well.
     bool m_lockscreen = false;
-    // [Wallpapers] "resizeEnabled"/"resizeHeight"/"resizeFps": the P5
-    // optional video resize; the settings are mirrored into WallpapersInfo.
+    // mirrored into WallpapersInfo on apply.
     bool m_resizeEnabled = false;
     int m_resizeHeight = kResizeHeightDefault;
     int m_resizeFps = 0;
     QString m_selectedWallpaper;
     QString m_selectedWallpaperSize;
-    // Index of the selected matugen source color dot of the current
-    // wallpaper; the first dot is selected by default. Restored from
-    // m_sourceColorSelections on every wallpaper change (only the applied
-    // wallpaper has a stored entry).
+    // restored from m_sourceColorSelections per wallpaper; 0 = first dot.
     int m_selectedSourceColorIndex = 0;
-    // Session cache of wallpaper path -> selected matugen source color
-    // dot index (per-wallpaper restore while navigating); only the
-    // applied wallpaper's entry is persisted, as a single-entry compact
-    // JSON object in [Wallpapers] "sourceColorSelections" of kwalrc.
+    // session cache path->dot index; only the applied wallpaper's entry persists ([Wallpapers] "sourceColorSelections").
     QMap<QString, int> m_sourceColorSelections;
-    // Custom commands, in execution order; persisted as a compact JSON
-    // array in [Commands] "commands" of kwalrc.
+    // execution order; compact JSON array in [Commands] "commands".
     QList<CustomCommand> m_customCommands;
-    // [Commands] "themeMode"/"customColor": the %mode% and %ccolor%
-    // placeholder state of the custom commands.
     QString m_themeMode = QStringLiteral("dark");
     QString m_customColor;
     bool m_enableTransparency = true;
-    // Window background opacity in percent (0-100) used when transparency
-    // is enabled; steps of 5 in the settings SpinBox.
     int m_transparencyLevel = kTransparencyLevelDefault;
-    // Show matugen color dots on the selected wallpaper; persisted in
-    // [Wallpapers] "matugenDots".
     bool m_matugenDots = false;
-    // Show the color-category chips in the wallpapers search; persisted in
-    // [Wallpapers] "colorCategories".
     bool m_colorCategories = false;
-    // [Transitions] "transitionEnabled"/"transitionLayer"/…; the overlay
-    // animation settings, built into a TransitionConfig on each apply.
+    // built into a TransitionConfig on each apply.
     bool m_transitionEnabled = false;
     QString m_transitionLayer = QStringLiteral("bottom");
     QString m_transitionType = QStringLiteral("grow");
@@ -329,8 +284,7 @@ private:
     static constexpr int kResizeHeightMax = 4320;
     static constexpr int kResizeFpsMax = 240;
 
-    // Default window geometry and the range the user may configure it to;
-    // the SpinBox bounds and the Main window minimums mirror these values.
+    // window geometry defaults + configured range; the SpinBox bounds and Main minimums mirror these.
     static constexpr int kDefaultWindowWidth = 960;
     static constexpr int kDefaultWindowHeight = 650;
     static constexpr int kMinimumWindowWidth = 700;

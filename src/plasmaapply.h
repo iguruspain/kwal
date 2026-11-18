@@ -10,19 +10,15 @@
 #include <utility>
 
 
-// Pure helpers for the Plasma wallpaper application pipeline: file URL
-// encoding, the video playlist computation, and a byte-preserving linear
-// editor for the appletsrc/kscreenlockerrc rc files.
+// Pure helpers: URL encoding, VideoUrls playlist computation, and a
+// byte-preserving editor for the Plasma rc files.
 namespace plasmaapply {
 
-// Plasma wallpaper plugin ids (org.kde.image and the "Smart Video Wallpaper
-// (reborn)" video plugin).
 constexpr char kImagePluginId[] = "org.kde.image";
 constexpr char kRebornPluginId[] = "luisbocanegra.smart.video.wallpaper.reborn";
 
-// Shell scripting snippets for the `evaluateScript` D-Bus method: the
-// live desktop ids and the logical geometry of every Plasma screen
-// ("id:x,y,w,h;…"). The appletsrc parse (Ini::desktopIds) is the fallback.
+// JS for the PlasmaShell evaluateScript D-Bus method; Ini::desktopIds() is
+// the appletsrc fallback.
 constexpr char kDesktopIdsScript[] = "var d = desktops(); var r = []; "
                                  "for (var i = 0; i < d.length; i++) { "
                                  "if (d[i].formFactor == 0) { r.push(d[i].id); } } "
@@ -33,48 +29,38 @@ constexpr char kScreenGeomsScript[] = "var r = []; "
                                   "r.push(i + ':' + g.x + ',' + g.y + ',' + g.width + ',' + g.height); } "
                                   "print(r.join(';'));";
 
-// "file://" + percent-encoded path, preserving A-Za-z0-9-_.~/ (the same
-// encoding the Rust reference and Plasma write into config values).
+// "file://" + percent-encoding over Plasma's own unreserved set
+// (A-Za-z0-9-_.~/), byte-identical to what Plasma writes into config.
 QString fileUrl(const QString &path);
 
-// "file://" + path, unencoded (raw UTF-8 and spaces): the form the video
-// plugin's own config page stores in its playlist entries and LastVideo
-// key (QUrl::toString with PreferredEncoding).
+// "file://" + path, unencoded (QUrl::toString PreferredEncoding): the form
+// the reborn plugin's config page stores in playlist entries and LastVideo.
 QString rawVideoUrl(const QString &path);
 
-// Computes the video plugin's VideoUrls JSON (compact, no whitespace):
-// the target video is enabled, every other entry disabled, entry order
-// preserved, and the target appended with default fields when missing.
-// Fields are emitted in the plugin page's own serialization order (its
-// JSON.stringify round-trip), so the stored string stays byte-identical and
-// the page never reports unsaved changes. <existingJson> is the current
-// VideoUrls value ("" when absent).
+// Compact VideoUrls JSON: target enabled, rest disabled, order kept, target appended
+// when missing; field order = the plugin page's JSON.stringify, so it round-trips byte-identically.
 QString computeVideoUrls(const QString &existingJson, const QString &targetUrl);
 
-// Line-based rc file editor: preserves byte-for-byte everything it does
-// not touch (comments, spacing, unknown keys); writes are atomic (tmp file
-// in the same directory + rename).
+// Line-based rc editor: untouched lines kept byte-for-byte; save() is
+// atomic (same-dir tmp + rename).
 class Ini
 {
 public:
     Ini() = default;
     explicit Ini(const QString &content);
 
-    // Loads <path>; a missing file yields an empty Ini.
     static Ini fromFile(const QString &path);
 
     bool save(const QString &path) const;
     QString render() const;
 
-    // Value of <key> in <section>; empty when the section or key is
-    // absent. <section> is a list like
-    // {"Containments", "313", "Wallpaper", "org.kde.image", "General"}.
+    // Empty when <section>/<key> is absent. <section> e.g.
+    // {"Containments","313","Wallpaper","org.kde.image","General"}.
     QString get(const QStringList &section, const QString &key) const;
     void set(const QStringList &section, const QString &key, const QString &value);
 
     QStringList desktopIds() const;
 
-    // The section parts of every section that contains <key>, in file order.
     QVector<QStringList> sectionsWithKey(const QString &key) const;
 
 private:
@@ -89,42 +75,29 @@ private:
 
 } // namespace plasmaapply
 
-// Applies a wallpaper to every desktop: the Plasma Shell D-Bus
-// setWallpaper (org.kde.plasmashell) per desktop, falling back to a direct
-// appletsrc edit when D-Bus is unavailable or errors, and optionally the
-// kscreenlockerrc lock screen.
+// Wallpaper application: PlasmaShell D-Bus setWallpaper per desktop, falling
+// back to a direct appletsrc edit when D-Bus is unavailable or errors.
 class PlasmaApply : public QObject
 {
     Q_OBJECT
 public:
     explicit PlasmaApply(QObject *parent = nullptr);
 
-    // True when the "Smart Video Wallpaper (reborn)" plugin is installed in
-    // the user or system Plasma wallpaper directories.
     bool rebornAvailable() const;
 
-    // Applies <path> to every desktop. <type> is "image" or "video"; a
-    // video falls back to its cached first frame when the reborn plugin is
-    // not installed. With <includeLockscreen>, kscreenlockerrc is written
-    // too. Emits result() when the operation finishes.
+    // <type> "image"/"video"; a video without the reborn plugin falls back to
+    // its cached first frame. <includeLockscreen> also writes kscreenlockerrc.
     Q_INVOKABLE void applyWallpaper(const QString &type, const QString &path,
                                     bool includeLockscreen);
 
-    // Pure: drops the entries of a VideoUrls playlist JSON whose filename
-    // is a file:// URL of a local file that no longer exists on disk; every
-    // other entry is kept. Returns the pruned JSON, or the input unchanged
-    // when nothing was removed (or the input is not a JSON array).
+    // Drops VideoUrls entries whose file:// URL is gone from disk; returns the
+    // input unchanged when nothing was removed.
     QString pruneVideoUrls(const QString &existingJson) const;
-    // Removes dead file:// URLs from the VideoUrls sections of the desktop
-    // appletsrc; writes the file only when something changed.
+    // Writes the appletsrc only when pruning changed something.
     Q_INVOKABLE void pruneDeadVideoUrls();
 
-    // Mirrors the applied wallpaper into kscreenlockerrc as the greeter
-    // background (one wallpaper for all screens). <plugin> is the Plasma
-    // wallpaper plugin id; <imageUrl> is the file URL of the image; for the
-    // video plugin <videoEntryUrl> is the percent-encoded playlist entry
-    // and <videoLastUrl> the raw LastVideo URL. Returns false when the
-    // file cannot be written.
+    // kscreenlockerrc greeter background, one wallpaper for all screens; <videoEntryUrl>
+    // is percent-encoded, <videoLastUrl> the raw form (video plugin only).
     bool mirrorLockscreen(const QString &plugin, const QString &imageUrl,
                           const QString &videoEntryUrl,
                           const QString &videoLastUrl);

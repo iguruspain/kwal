@@ -33,8 +33,7 @@ Rectangle {
                 display: AbstractButton.IconOnly
                 Accessible.name: qsTr("Add Folder")
                 onClicked: root.addFolderDialog.open()
-                // Kirigami.Icon with a semantic color: the Basic style follows the platform palette,
-                // which is light by default and would render the icon nearly invisible.
+                // Semantic color: the Basic style's platform-palette icon would be near-invisible.
                 contentItem: Kirigami.Icon {
                     source: "folder-new"
                     color: Kirigami.Theme.textColor
@@ -52,16 +51,9 @@ Rectangle {
             Layout.fillHeight: true
             clip: true
             model: root.app.folders
-            // The list itself is the sidebar's tab stop (rows are
-            // ItemDelegates, which are not stops): Tab enters here, arrow
-            // keys move the cursor, Enter/Space picks the folder under it.
+            // The list is the sidebar's single tab stop (ItemDelegate rows are not): Tab enters, arrows move, Enter/Space picks.
             activeFocusOnTab: true
-            // No ListView highlight rectangle: the selection/cursor fill is
-            // drawn by FolderRow's own background, guaranteeing identical
-            // geometry to the hover state.
-            // Keep the keyboard cursor on the active folder, so Tab into the
-            // list starts where the user is; arrow keys move the cursor
-            // without applying until Enter.
+            // Keep currentIndex on the applied folder so Tab lands where the user is; arrows move it without applying.
             Connections {
                 target: root.app
                 function onCurrentFolderIndexChanged() {
@@ -72,7 +64,6 @@ Rectangle {
                 }
             }
             Component.onCompleted: folderList.currentIndex = root.app.currentFolderIndex
-            // The keyboard's "click" for the row under the cursor.
             function activateCurrent() {
                 if (folderList.currentIndex >= 0)
                     root.app.setCurrentFolderIndex(folderList.currentIndex)

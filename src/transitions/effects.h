@@ -2,29 +2,12 @@
 // SPDX-FileCopyrightText: 2023-2026 LGFae (awww, https://codeberg.org/LGFae/awww)
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Pure pixel maths for the overlay transitions (no Wayland here, so it is
-// unit-testable).
-//
-// Model: the overlay holds the *outgoing* wallpaper (`orig`, opaque,
-// premultiplied ARGB8888 as native `uint32_t`: `A<<24 | R<<16 | G<<8 | B`,
-// the wl_shm ARGB8888 layout). Each effect makes a growing part of it
-// transparent, revealing the new wallpaper that the compositor draws
-// underneath. Every effect is **monotonic**: a pixel's transparency never
-// decreases over time. That lets the shape-based effects (grow, outer, wipe,
-// wave) rewrite only the pixels near the moving edge and `fill(0)` the
-// interior, instead of touching the whole buffer.
-//
-// Drawing into a buffer therefore requires that it holds either the pristine
-// image or a frame drawn with an earlier (less advanced) state.
-//
-// Two paint modes share the same shapes (Paint):
-// * Reveal: `orig` is the *outgoing* wallpaper; the shape becomes
-//   transparent, showing the new wallpaper underneath (buffer starts as
-//   `orig`);
-// * Cover: `orig` is the *incoming* wallpaper; the shape becomes `orig`,
-//   covering the old wallpaper underneath (buffer starts fully transparent).
-//
-// Port of the awww transition suite (effects.rs of the Rust reference).
+// Pure pixel maths for the overlay transitions (no Wayland here, so it is unit-testable).
+// The overlay holds a premultiplied ARGB8888 wallpaper (`orig`); each effect grows a
+// transparent area to reveal what the compositor draws under/over it. Effects are
+// **monotonic** (a pixel's transparency never decreases): shape effects rewrite only
+// the moving edge and `fill(0)` the interior, and a target buffer must hold either the
+// pristine image or a frame from an earlier (less advanced) state.
 #pragma once
 
 #include <cstdint>
@@ -37,7 +20,6 @@ namespace transitions {
 using Pixel = std::uint32_t;
 using Buffer = std::vector<Pixel>;
 
-// What the shape does to the overlay.
 enum class Paint : int {
     // Shape = transparent hole in the opaque outgoing image.
     Reveal,
@@ -45,7 +27,6 @@ enum class Paint : int {
     Cover,
 };
 
-// CSS-style cubic bezier control points (x1, y1, x2, y2).
 struct Bezier {
     double x1 = 0.54;
     double y1 = 0.0;
@@ -58,42 +39,35 @@ struct Bezier {
     }
 };
 
-// Evaluates the easing curve at time t in [0, 1].
 double bezierEase(const Bezier &bezier, double t);
 
-// Multiplies all four channels of a premultiplied pixel by a / 256
-// (a in 0..=256; 256 is the identity, 0 gives fully transparent).
+// Scale all channels by a/256; a=256 is the identity (not 255), a=0 transparent.
 Pixel scalePx(Pixel p, std::uint32_t a);
 
-// Whole-image fade: every pixel keeps `keep` / 256 of the original.
 void drawFade(std::span<Pixel> buf, std::span<const Pixel> orig, std::uint32_t keep);
 
-// Distance from (cx, cy) to the farthest corner of a w*h buffer.
 double maxRadius(double cx, double cy, int w, int h);
 
-// grow: the disc of radius `r` around (cx, cy) is transparent (antialiased
-// 1px rim). `r` must not decrease between calls.
+// The disc of radius `r` around (cx, cy) becomes transparent (antialiased 1px rim);
+// `r` must not decrease between calls.
 void drawGrow(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, int w, int h,
               double cx, double cy, double r);
 
-// outer: everything *outside* the circle of radius `r` is transparent.
-// `r` must not increase between calls (the circle shrinks); `r <= -0.5`
-// makes the whole buffer transparent.
+// Everything *outside* the circle of radius `r` is transparent; `r` must not
+// increase between calls; `r <= -0.5` makes the whole buffer transparent.
 void drawOuter(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, int w, int h,
                double cx, double cy, double r);
 
-// Projection range of the buffer's corners on `dir` (a unit vector):
-// (min, max) of x*dirX + y*dirY.
+// (min, max) of x*dirX + y*dirY over the buffer corners; dir must be a unit vector.
 std::pair<double, double> projRange(int w, int h, double dirX, double dirY);
 
-// wipe / wave: the half-plane p*dir < front (plus a sine offset
-// sin(perp / waveW) * waveH on the edge when waveH != 0) is transparent.
-// `front` must not decrease between calls.
+// The half-plane p*dir < front is transparent; `front` must not decrease between
+// calls; with waveH != 0 the edge gets a sine offset sin(perp / waveW) * waveH.
 void drawWipe(Paint paint, std::span<Pixel> buf, std::span<const Pixel> orig, int w, int h,
               double dirX, double dirY, double front,
               double waveW, double waveH);
 
-// Uniform random number in [0, 1) (splitmix64; no external dependency).
+// Uniform random in [0, 1) (splitmix64).
 double randUnit();
 
 } // namespace transitions

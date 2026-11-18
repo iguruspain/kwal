@@ -62,8 +62,7 @@ std::map<QString, QString> liveColors(const tools::ColorMap &themeColors,
         if (!it.value().contains(QStringLiteral("provisional")))
             live[it.key()] = it.value();
 
-    // The preview resolves highlight colors from the matched_text_hl_colors_*
-    // variables; the manifest when_selected / when_not_selected map onto them.
+    // Preview highlight colors come from matched_text_hl_colors_*; the manifest rows map onto them.
     const std::pair<QString, QString> hlPairs[] = {
         {QStringLiteral("when_selected"), QStringLiteral("matched_text_hl_colors_when_selected")},
         {QStringLiteral("when_not_selected"), QStringLiteral("matched_text_hl_colors_when_not_selected")},
@@ -174,17 +173,14 @@ void UlauncherController::refreshIfChanged()
         return;
 
     if (m_selectedFingerprint != tools::contentFingerprint(themeFiles(m_selectedPath))) {
-        // The theme being edited is what changed on disk: reload it, the
-        // colors on screen describe the file that no longer exists.
+        // The edited theme itself changed on disk: the on-screen colors no longer match it.
         refresh();
         return;
     }
 
-    // Only the applied theme (settings.json) or the applied theme's files
-    // moved: follow them, and keep the colors drafted in the selected theme.
+    // Only the applied theme moved: follow it, keep the selected theme's drafted colors.
     rebuildThemeEntries();
-    // The rebuilt list may differ in order; pin the selection to the same
-    // directory without re-loading it.
+    // The list order may change: pin the selection to the same directory, no reload.
     const int pinned = entryIndexForPath(m_selectedPath);
     if (pinned >= 0 && pinned != m_selectedIndex) {
         m_selectedIndex = pinned;
@@ -518,8 +514,7 @@ void UlauncherController::rebuildThemeEntries()
     for (ThemeEntry &entry : m_entries)
         entry.isCurrent = !current.isEmpty() && entry.path == current;
 
-    // The applied theme may live outside the listed roots; make sure it is
-    // always selectable.
+    // The applied theme may live outside the listed roots; keep it selectable.
     if (!m_currentPath.isEmpty()) {
         bool found = false;
         for (const ThemeEntry &entry : m_entries)
@@ -600,8 +595,7 @@ void UlauncherController::loadTheme()
     m_themeColors = tools::extractCssColors(m_cssContent);
     m_manifestColors = tools::parseManifestColors(m_manifestJson);
 
-    // Map each manifest row to the key that actually holds its value: a root
-    // key when present, otherwise its matched_text_hl_colors entry.
+    // Row -> key holding its value: root key if present, else matched_text_hl_colors_*.
     QJsonParseError error;
     QJsonDocument doc = QJsonDocument::fromJson(m_manifestJson.toUtf8(), &error);
     const QJsonObject obj = !error.error && doc.isObject() ? doc.object() : QJsonObject();
@@ -707,8 +701,7 @@ void UlauncherController::loadPreviewConfig()
                                  kMaxPreviewWidth);
     m_query = m_config.readEntry(QStringLiteral("previewQuery"), tools::sampleQuery());
 
-    // The rows are stored as one JSON string: KConfig cannot round-trip a
-    // list of maps.
+    // Rows stored as one JSON string: KConfig cannot round-trip a list of maps.
     m_rows = tools::sampleRows();
     const QString stored = m_config.readEntry(QStringLiteral("sampleRows"), QString());
     if (!stored.isEmpty()) {

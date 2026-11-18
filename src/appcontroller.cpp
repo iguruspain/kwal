@@ -25,7 +25,6 @@
 #include <functional>
 
 namespace {
-// "WxH" string for a readable image, empty if it cannot be determined.
 QString imageResolution(const QString &filePath)
 {
     const QSize size = QImageReader(filePath).size();
@@ -34,16 +33,13 @@ QString imageResolution(const QString &filePath)
         : QString();
 }
 
-// Whether a companion tool binary can be found on $PATH.
 bool isToolInstalled(const QString &binary)
 {
     return !QStandardPaths::findExecutable(binary).isEmpty();
 }
 
-// Wraps a placeholder value as a POSIX single-quoted word: embedded single
-// quotes are closed and re-escaped ('\'' ), everything else ($, `, ", \,
-// newlines) is literal inside single quotes. Double-quoting would still let
-// a crafted file name expand $( ) / ` ` / " inside the shell.
+// POSIX single-quoted word ('\'' re-escapes embedded quotes); double-quoting
+// would let a crafted file name expand $( ) / ` ` inside the shell.
 QString shellQuote(const QString &value)
 {
     QString escaped = value;
@@ -51,10 +47,8 @@ QString shellQuote(const QString &value)
     return QStringLiteral("'%1'").arg(escaped);
 }
 
-// Runs the wallpaper switch off the main thread (D-Bus round trips +
-// config edits), directly through PlasmaApply or, when a transition is
-// enabled, through the standalone transition binary (the binary runs the
-// overlay + switch + holds; the lockscreen mirror happens here).
+// Wallpaper switch on a pool thread: PlasmaApply directly or the standalone
+// transition binary; the lockscreen mirror is done here, not in the binary.
 class WallpaperApplyJob : public QRunnable
 {
 public:
@@ -77,10 +71,7 @@ public:
 
     void run() override
     {
-        // P5 on-demand: no cached copy exists for this video and resize is
-        // on — generate it now (blocking; this runs on a pool thread) and
-        // apply the copy instead of the original. Only this video is
-        // resized; a folder-wide batch stays a Settings action.
+        // on-demand: generate the copy here (blocking; pool thread) and apply it.
         if (m_generateResize) {
             if (WallpapersInfo *info = WallpapersInfo::instance()) {
                 const QString copy = info->ensureResizedCopy(m_path);
@@ -90,16 +81,12 @@ public:
             }
         }
         if (!m_cfg.enabled || m_binaryPath.isEmpty()) {
-            // The owner (and its PlasmaApply child) may already be gone when
-            // the pool runs this: skip if so. The finish arrives via
-            // PlasmaApply::result, queued to the main thread.
+            // the owner's PlasmaApply may already be gone: skip.
             if (PlasmaApply *apply = m_apply) {
                 apply->applyWallpaper(m_type, m_path, m_lockscreen);
             }
             return;
         }
-        // Transition mode: run the standalone binary; its exit code is the
-        // result.
         QStringList args;
         args << QStringLiteral("--type") << m_type
              << QStringLiteral("--file") << m_path;
@@ -128,7 +115,7 @@ public:
             finish(false, QStringLiteral("Could not start the transition process."));
             return;
         }
-        // The animation is a few seconds plus the holds; be generous.
+        // animation + holds: generous bound.
         if (!proc.waitForFinished(120000)) {
             proc.kill();
             proc.waitForFinished(3000);
@@ -141,9 +128,8 @@ public:
         }
         const bool ok = proc.exitStatus() == QProcess::NormalExit && proc.exitCode() == 0;
         if (ok && m_lockscreen) {
-            // The binary does not touch kscreenlockerrc; mirror it here
-            // with the same plugin/URL resolution as the direct path. The
-            // owner's PlasmaApply may already be gone when the pool runs.
+            // the binary does not touch kscreenlockerrc: mirror here with the
+            // same plugin/URL resolution as the direct path.
             PlasmaApply *apply = m_apply;
             if (!apply) {
                 finish(false, QStringLiteral("The apply was cancelled."));
@@ -167,8 +153,7 @@ public:
         }
         QString message;
         if (!ok) {
-            // The binary prints "kwal-transition: <reason>" to stderr on
-            // failure; use the last such line.
+            // "kwal-transition: <reason>" on stderr; last line wins.
             for (const QByteArray &line : err.split('\n')) {
                 const QString lineStr = QString::fromUtf8(line);
                 if (lineStr.startsWith(QStringLiteral("kwal-transition:"))) {
@@ -183,10 +168,8 @@ public:
     }
 
 private:
-    // Delivers the result on the owner's (main) thread. wallpaperFinished
-    // touches KConfig and QProcess::startDetached, neither safe off-thread,
-    // so never call m_finish directly from the pool. The owner may die
-    // before the queued call runs; the QPointer guard drops it then.
+    // wallpaperFinished touches KConfig/QProcess::startDetached: never call
+    // m_finish from the pool; queue it, the QPointer drops it if the owner died.
     void finish(bool ok, const QString &message) const
     {
         const QPointer<QObject> context = m_context;
@@ -234,8 +217,7 @@ AppController::AppController(QObject *parent)
     connect(m_plasmaApply, &PlasmaApply::result, this, [this](bool allOk, const QString &message) {
         wallpaperFinished(allOk, message);
     });
-    // Kick the media info cache (first frames, ...) after every folder
-    // re-scan. Must precede applyCurrentFolder(): the initial scan is
+    // must connect before applyCurrentFolder(): the initial scan is
     // synchronous and its "scanned" signal would otherwise be missed.
     connect(m_wallpaperModel, &WallpaperModel::scanned, this, [this]() {
         WallpapersInfo *info = WallpapersInfo::instance();
@@ -247,10 +229,7 @@ AppController::AppController(QObject *parent)
             info->refreshFile(path, WallpaperModel::isVideo(path) ? QStringLiteral("video") : QStringLiteral("image"));
         }
     });
-    // P7: purge orphaned entries and cache files at startup (the index was
-    // already loaded in WallpapersInfo::initialize) and after every folder
-    // scan; every purge prunes the dead playlist URLs from the desktop
-    // appletsrc.
+    // purges also prune dead playlist URLs from the desktop appletsrc.
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
         connect(info, &WallpapersInfo::scanFinished, info, &WallpapersInfo::sweep);
         connect(info, &WallpapersInfo::purged, m_plasmaApply, &PlasmaApply::pruneDeadVideoUrls);
@@ -319,8 +298,7 @@ void AppController::setSelectedSourceColorIndex(int index)
         return;
     }
     m_selectedSourceColorIndex = index;
-    // The dot selection is per wallpaper in-session; only the applied
-    // wallpaper's is persisted (saveConfig writes that entry alone).
+    // per-wallpaper in-session; saveConfig persists only the applied one.
     if (!m_selectedWallpaper.isEmpty()) {
         m_sourceColorSelections.insert(m_selectedWallpaper, index);
         if (m_selectedWallpaper == m_currentWallpaper) {
@@ -501,7 +479,6 @@ void AppController::addFolder(const QString &path)
 {
     QString trimmed = path.trimmed();
     if (trimmed.startsWith(QLatin1String("file://"))) {
-        // FolderDialog hands us a file URL; the folder list stores plain paths.
         trimmed = QUrl(trimmed).toLocalFile();
     }
     if (trimmed.isEmpty() || m_folders.contains(trimmed)) {
@@ -552,8 +529,7 @@ void AppController::selectWallpaper(const QString &filePath)
         return;
     }
     m_selectedWallpaper = filePath;
-    // Videos carry no dimensions QImageReader can read; the cached first
-    // frame (extracted at the video's native resolution) does.
+    // QImageReader cannot read video dimensions; the cached first frame can.
     QString source = filePath;
     if (WallpaperModel::isVideo(filePath)) {
         if (WallpapersInfo *info = wallpapersInfo()) {
@@ -561,8 +537,6 @@ void AppController::selectWallpaper(const QString &filePath)
         }
     }
     m_selectedWallpaperSize = source.isEmpty() ? QString() : imageResolution(source);
-    // The dot selection is per wallpaper: restore this wallpaper's stored
-    // index (the first dot when it has none).
     const int stored = m_sourceColorSelections.value(filePath, 0);
     if (m_selectedSourceColorIndex != stored) {
         m_selectedSourceColorIndex = stored;
@@ -612,8 +586,7 @@ void AppController::setWallpaper(const QString &filePath)
     const bool video = WallpaperModel::isVideo(filePath);
     QString target = filePath;
     bool generateResize = false;
-    // P5: while the setting is on, prefer the resized cache copy; without
-    // a usable copy the job generates it for this video before the switch.
+    // resize on: prefer the cached copy; the job generates one if missing.
     if (video && m_resizeEnabled) {
         if (WallpapersInfo *info = WallpapersInfo::instance()) {
             info->setResizeParameters(m_resizeHeight, m_resizeFps);
@@ -644,8 +617,6 @@ void AppController::setWallpaper(const QString &filePath)
     cfg.waveHeight = m_transitionWaveHeight;
     QString binaryPath;
     if (cfg.enabled) {
-        // Standalone transition binary; without it (pre-install build)
-        // fall back to the direct switch.
         binaryPath = QCoreApplication::applicationDirPath() + QStringLiteral("/kwal-transition");
         if (!QFileInfo::exists(binaryPath)) {
             binaryPath = QStandardPaths::findExecutable(QStringLiteral("kwal-transition"));
@@ -654,9 +625,8 @@ void AppController::setWallpaper(const QString &filePath)
             qWarning() << "kwal-transition binary not found; applying without transition";
         }
     }
-    // First frame for a video: what the binary paints in Cover and what
-    // Plasma shows as the video fallback (the entry is keyed by the
-    // original path, not the resize target).
+    // the binary's Cover and Plasma's video fallback; the entry is keyed by
+    // the original path, not the resize target.
     QString framePath;
     if (video) {
         if (WallpapersInfo *info = WallpapersInfo::instance()) {
@@ -678,8 +648,6 @@ void AppController::setWallpaper(const QString &filePath)
                               }));
 }
 
-// Shared finish handler for both switch paths (direct PlasmaApply and the
-// transition binary).
 void AppController::wallpaperFinished(bool allOk, const QString &message)
 {
     m_wallpaperBusy = false;
@@ -688,16 +656,14 @@ void AppController::wallpaperFinished(bool allOk, const QString &message)
         setCurrentWallpaper(m_selectedWallpaper);
     }
     emit wallpaperSetResult(allOk, message);
-    // The custom commands are the last step of the apply, regardless of
-    // the switch result (the old app ran them after the qdbus call too).
+    // run regardless of the switch result.
     runCustomCommands();
 }
 
 void AppController::setCurrentWallpaper(const QString &filePath)
 {
     m_currentWallpaper = filePath;
-    // The persisted selection is always the applied wallpaper's; the
-    // selection active at apply time is the one the custom commands used.
+    // persist the selection that was active at apply time.
     m_sourceColorSelections.insert(filePath, m_selectedSourceColorIndex);
     saveConfig();
     emit currentWallpaperChanged();
@@ -769,8 +735,7 @@ QString AppController::expandPlaceholders(const QString &command) const
     QString image = m_selectedWallpaper;
     QStringList colors;
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
-        // For videos the "image" is the cached first frame (what Plasma
-        // shows as the fallback); the entry is keyed by the original path.
+        // videos: %image% is the cached first frame.
         if (WallpaperModel::isVideo(image)) {
             image = info->firstFrameFor(image);
         }
@@ -807,7 +772,6 @@ void AppController::runCustomCommands()
     if (parts.isEmpty()) {
         return;
     }
-    // One shell chain, started detached (fire and forget).
     if (!QProcess::startDetached(QStringLiteral("sh"),
                                  {QStringLiteral("-c"), parts.join(QStringLiteral(" && "))})) {
         qWarning("Failed to launch the custom commands");
@@ -819,8 +783,7 @@ void AppController::loadConfig()
     const KConfigGroup group = m_config->group(QStringLiteral("Wallpapers"));
     m_folders = group.readEntry("folders", QStringList());
     if (m_folders.isEmpty()) {
-        // standardLocations() resolves the user's localized Pictures dir
-        // ("Imágenes", "Pictures", ...) without creating it.
+        // standardLocations() resolves the localized Pictures dir without creating it.
         const QStringList candidates = QStandardPaths::standardLocations(QStandardPaths::PicturesLocation);
         for (const QString &dir : candidates) {
             if (QDir(dir).exists()) {
@@ -840,9 +803,7 @@ void AppController::loadConfig()
                             group.readEntry("resizeHeight", kResizeHeightDefault),
                             kResizeHeightMax);
     m_resizeFps = qBound(0, group.readEntry("resizeFps", 0), kResizeFpsMax);
-    // The persisted selection only covers the applied wallpaper; entries
-    // of previously applied ones (older versions stored one per touched
-    // wallpaper) are dropped.
+    // persisted JSON covers only the applied wallpaper; other entries drop.
     const QByteArray sourceColorData = group.readEntry("sourceColorSelections", QByteArray());
     if (!sourceColorData.isEmpty() && !m_currentWallpaper.isEmpty()) {
         const QJsonDocument parsed = QJsonDocument::fromJson(sourceColorData);
@@ -854,8 +815,7 @@ void AppController::loadConfig()
         }
     }
 
-    // Both color features are on by default when matugen is installed; the
-    // keys are absent on first run. Extraction runs while either is on.
+    // on by default when matugen is installed (keys absent on first run).
     if (WallpapersInfo *info = WallpapersInfo::instance()) {
         m_matugenDots = group.readEntry("matugenDots", info->matugenAvailable());
         m_colorCategories = group.readEntry("colorCategories", true);
@@ -904,8 +864,6 @@ void AppController::loadConfig()
                                 generalGroup.readEntry("transparencyLevel", kTransparencyLevelDefault),
                                 kTransparencyLevelMax);
 
-    // The resize settings no longer drive auto-generation; rebuild the
-    // video-folder picker from the loaded folders.
     recomputeVideoFolders();
 }
 
@@ -921,8 +879,6 @@ void AppController::saveConfig()
     group.writeEntry("resizeEnabled", m_resizeEnabled);
     group.writeEntry("resizeHeight", m_resizeHeight);
     group.writeEntry("resizeFps", m_resizeFps);
-    // Only the applied wallpaper's dot selection is persisted; the rest of
-    // the map is a session-local cache.
     QJsonObject sourceColorObj;
     if (!m_currentWallpaper.isEmpty() && m_sourceColorSelections.contains(m_currentWallpaper)) {
         sourceColorObj.insert(m_currentWallpaper, m_sourceColorSelections.value(m_currentWallpaper));

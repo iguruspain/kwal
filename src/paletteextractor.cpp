@@ -48,10 +48,8 @@ QString firstAvailableBinary(const QStringList &candidates)
     return {};
 }
 
-// The nine Material You (M3) schemes share the (source, is_dark)
-// constructor; an unknown name falls back to Tonal Spot (D6). The result
-// is sliced to the DynamicScheme base: all 16 swatches (D6) are read from
-// base fields only.
+// The nine M3 schemes share the (source, is_dark) constructor; unknown names fall back to TonalSpot.
+// Slicing to the DynamicScheme base is safe: the swatches read base fields only.
 material_color_utilities::DynamicScheme buildScheme(const material_color_utilities::Hct &source,
                                                     bool dark,
                                                     const QString &schemeName)
@@ -83,8 +81,7 @@ material_color_utilities::DynamicScheme buildScheme(const material_color_utiliti
     return material_color_utilities::SchemeTonalSpot(source, dark);
 }
 
-// The nine M3 scheme names, shared by the single-pass computation, the
-// fallback lookup and the QML combo.
+// The nine M3 scheme names, shared by all lookups and the QML combo.
 const QStringList kSchemeNames = {
     QStringLiteral("TonalSpot"),
     QStringLiteral("Vibrant"),
@@ -101,8 +98,7 @@ QString hexOf(const Argb argb)
     return QString::asprintf("#%06x", argb & 0xFFFFFF);
 }
 
-// The 16 swatches of a scheme in the Material You (M3) order (D6), read
-// from DynamicScheme base fields only.
+// The 16 swatches in M3 order, read from DynamicScheme base fields only.
 QStringList schemeSwatches(const material_color_utilities::DynamicScheme &scheme)
 {
     const auto tone = [](const material_color_utilities::TonalPalette &palette, double t) {
@@ -128,7 +124,6 @@ QStringList schemeSwatches(const material_color_utilities::DynamicScheme &scheme
     return colors;
 }
 
-// Cache key: the wallpaper path plus the dark mode of one extraction pass.
 QString schemeCacheKey(const QString &path, bool dark)
 {
     return path + QLatin1Char('|') + (dark ? QStringLiteral("dark") : QStringLiteral("light"));
@@ -202,9 +197,6 @@ void PaletteExtractor::extract(const QString &path, const QString &backend, bool
         }
     }
     if (backend == QLatin1String("materialyou")) {
-        // The nine schemes of a previously extracted wallpaper (in this
-        // dark mode) are cached: answer immediately instead of re-running
-        // Celebi.
         QMutexLocker locker(&m_cacheMutex);
         const QMap<QString, MaterialYouResult> cached = m_schemeCache.value(schemeCacheKey(path, dark));
         if (!cached.isEmpty()) {
@@ -241,9 +233,7 @@ QMap<QString, PaletteExtractor::MaterialYouResult> PaletteExtractor::materialYou
         return out;
     }
 
-    // Google's material-color-utilities (Apache-2.0): Celebi quantization
-    // and ranked suggestions dominate the cost; the nine M3 schemes are a
-    // cheap recombination of the same ranked colors.
+    // material-color-utilities (Apache-2.0): Celebi + ranking dominate the cost.
     const auto quantized = material_color_utilities::QuantizeCelebi(pixels, 128);
     material_color_utilities::ScoreOptions options;
     options.desired = 3;
@@ -295,7 +285,6 @@ void PaletteExtractor::processImageMagick(const QString &path, const QString &im
         return;
     }
 
-    // Up to 16 unique colors of the 128x128 downscale.
     QProcess paletteProcess;
     paletteProcess.start(binary,
                          {image,
@@ -331,8 +320,7 @@ void PaletteExtractor::processImageMagick(const QString &path, const QString &im
         return;
     }
 
-    // Best accent: 8-color histogram of the 64x64 downscale, scored by
-    // HSV s*v with s > 0.15 and 0.15 < v < 0.95 (same as the original app).
+    // Best accent: 8-color histogram, HSV s*v with s > 0.15 and 0.15 < v < 0.95.
     QString bestHex = colors.first();
     double bestScore = -1.0;
     QProcess histogramProcess;

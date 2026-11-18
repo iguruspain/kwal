@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# One-command release: bump the version everywhere, commit, sign the tag, push,
+# One-command release: bump the version everywhere, commit, tag, push,
 # regenerate the AUR .SRCINFO, and queue the GitHub source release as a DRY RUN.
 #
 #   scripts/release.sh [-n] [-N] [-R] [--check] <version>
 #     -n, --dry-run      compute and print everything, change nothing
-#     -N, --no-push      local commit + signed tag only (push by hand afterwards)
+#     -N, --no-push      local commit + tag only (push by hand afterwards)
 #     -R, --no-release   do not start the "Release" GitHub workflow
 #         --check        clean build + ctest before committing (the repo rule)
 #
@@ -13,21 +13,21 @@
 # carries the same pkgver. src/main.cpp gets it from the KWAL_VERSION compile
 # definition, so there is no string literal left to bump.
 #
-# The tag is SIGNED (gpg.format=ssh + user.signingkey) — that signature is the
-# only authenticity claim this project makes, docs/kwal_signers is what makes it
-# checkable, and release.yml refuses an unsigned tag. Required repo config,
-# verified by the guards below:
-#   git config gpg.format ssh
-#   git config user.signingkey ~/.ssh/id_ed25519.pub
+# Tags are plain annotated tags (git tag -a): this project makes no signature
+# claim and release.yml checks none. Authenticity rides on the HTTPS channel
+# of the clone: the release is whatever the pinned tag points at on origin.
+# (No checksum assets either: whoever could swap a tarball could rewrite the
+# sums anyway, and GitHub regenerates its release archives on the fly — a
+# pinned archive hash is a time bomb.)
 #
 # Publishing stays a human gate: this script starts release.yml with
-# publish=false (guards + signature check + the exact notes rendered in the run
+# publish=false (guards + the exact notes rendered in the run
 # summary); read that summary, then re-run the workflow with publish=true.
 #
 # There is no hand-written changelog: release.yml builds the notes from the
-# commits the tag adds over the previous tag. The signed tag message is the
+# commits the tag adds over the previous tag. The tag message is the
 # release intro — keep the default "Kwal X.Y.Z" when the commit list says it
-# all, and write prose into the tag (`git tag -s -a -F notes.txt`) for a release
+# all, and write prose into the tag (`git tag -a -F notes.txt`) for a release
 # that needs explaining.
 
 set -euo pipefail
@@ -72,19 +72,6 @@ aboutdata="$(sed -nE 's/.*"Version": "([^"]+)".*/\1/p' aboutdata.json)"
 grep -qE "^pkgver=$current$" packaging/aur/PKGBUILD \
     || die "packaging/aur/PKGBUILD pkgver is not $current"
 
-# Tag signing must be configured *and* the key must be the one the tree trusts,
-# otherwise the release would be cut unsigned or unverifiable — fail before
-# touching any file instead of discovering it in the workflow.
-[[ "$(git config --get gpg.format || true)" == ssh ]] \
-    || die "tag signing not configured: git config gpg.format ssh"
-signingkey="$(git config --get user.signingkey || true)"
-[[ -n "$signingkey" ]] || die "no signing key: git config user.signingkey ~/.ssh/id_ed25519.pub"
-keyfile="${signingkey/#\~/$HOME}"
-[[ -f "$keyfile" ]] || die "signing key '$signingkey' not found"
-keymaterial="$(awk '{print $1, $2}' "$keyfile")"
-grep -qF "$keymaterial" docs/kwal_signers \
-    || die "the key in $keyfile is not listed in docs/kwal_signers: its tags could never be verified"
-
 # --- compute the new file contents ----------------------------------------
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -98,7 +85,7 @@ for f in CMakeLists.txt aboutdata.json packaging/aur/PKGBUILD; do
 done
 
 if ((dry)); then
-    printf '\ndry run: nothing written. Tag would be the signed %s, pushed with the .SRCINFO, then a DRY-RUN Release workflow from main.\n' "$tag"
+    printf '\ndry run: nothing written. Tag would be the annotated %s, pushed with the .SRCINFO, then a DRY-RUN Release workflow from main.\n' "$tag"
     exit 0
 fi
 
@@ -133,12 +120,8 @@ fi
 git add CMakeLists.txt aboutdata.json "${aurfiles[@]}"
 git commit -m "chore(release): $version" -m "Bumps project(VERSION), aboutdata.json and the AUR pkgver/.SRCINFO. The release notes are the commits between $tag and the previous tag, composed by release.yml."
 
-git tag -s -a "$tag" -m "Kwal $version"
-# Verify our own tag with the key the tree publishes: catches a signing
-# misconfiguration before anything is public.
-git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag "$tag" \
-    || die "$tag is not verifiable against docs/kwal_signers: fix the signing setup and delete the tag"
-printf 'committed and signed-tagged %s locally\n' "$tag"
+git tag -a "$tag" -m "Kwal $version"
+printf 'committed and tagged %s locally\n' "$tag"
 
 if ((push == 0)); then
     printf 'not pushed (asked with -N). Later: git push origin HEAD --follow-tags\n'

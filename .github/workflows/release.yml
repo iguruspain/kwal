@@ -3,8 +3,7 @@ name: Release
 # Manual by design (the install channel today is git clone + cmake; packages
 # arrive with AUR/OBS in Fase 2): run this workflow from the Actions tab **on
 # the main ref** and type the tag in the input. It checks the tag matches
-# project(VERSION) and that the tag is **signed and trusted by the key shipped
-# in docs/kwal_signers**, then writes the notes itself: the tag message as the
+# project(VERSION), then writes the notes itself: the tag message as the
 # intro (the default "Kwal X.Y.Z" one-liner is skipped, the release title
 # already says that) and every commit between the previous tag and this one,
 # grouped by conventional-commit type. On the first release there is nothing to
@@ -13,15 +12,14 @@ name: Release
 # proves nothing (whoever could swap the tarball could rewrite the sums), and
 # GitHub generates the archive tarballs on the fly, so pinning their hash is a
 # time bomb (GitHub changed gzip behaviour in Feb 2023 and mass-broke pinned
-# hashes). Provenance is the signed tag: the README tells users to clone and
-# `git verify-tag`.
+# hashes).
 #
 # Publish is a two-step gate: run with publish=false, read the rendered body in
 # the run summary (the "Build release notes" step), then re-run the same
 # workflow with publish=true.
 #
 # Normal entry point: scripts/release.sh <version> bumps the version, commits,
-# signs the tag, pushes and regenerates the AUR .SRCINFO. Run this workflow by
+# tags, pushes and regenerates the AUR .SRCINFO. Run this workflow by
 # hand for the publish step (or when there is no gh CLI).
 on:
   workflow_dispatch:
@@ -30,7 +28,7 @@ on:
         description: 'Tag to release (e.g. v0.1.0)'
         required: true
       publish:
-        description: 'Actually create the release (unchecked = dry run: guard + signature check + the exact notes rendered in the run summary)'
+        description: 'Actually create the release (unchecked = dry run: guard + the exact notes rendered in the run summary)'
         type: boolean
         required: false
         default: false
@@ -65,32 +63,13 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
 
-      - name: Signature guard (the tag must be signed by the repo's key)
-        run: |
-          set -euo pipefail
-          # The one authenticity check in this chain. The signer identity and
-          # the public key come from the tagged tree itself, so a release can
-          # only be cut from a tag that the repo says is signed by that key.
-          # No --depth here: a shallow fetch grafts the fetched tip and cuts
-          # the history the notes step needs below (measured: after a
-          # --depth=1 fetch, `git log` on the local repo reported one commit).
-          git fetch --no-tags \
-            origin "refs/tags/${INPUT_TAG}:refs/tags/${INPUT_TAG}"
-          if ! git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag "$INPUT_TAG"; then
-            echo "::error::$INPUT_TAG is not a signed tag trusted by docs/kwal_signers — cut it with scripts/release.sh (git tag -s)"
-            exit 1
-          fi
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
-
       - name: Build release notes (always, also on dry runs)
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
           : > notes.md
-          # 1. The intro is the signed tag message. `%(contents)` would carry
-          #    the signature block, so subject+body is what is wanted (the
-          #    command substitution trims the trailing blank lines of a
+          # 1. The intro is the tag message: subject+body (the command
+          #    substitution trims the trailing blank lines of a
           #    one-liner). The default "Kwal X.Y.Z" repeats the release title,
           #    so it is left out.
           intro="$(git for-each-ref --format='%(contents:subject)%0a%(contents:body)' "refs/tags/${INPUT_TAG}")"
@@ -144,8 +123,8 @@ jobs:
           # GitHub's `target_commitish` must name a branch or a commit: passing
           # the tag itself dies with HTTP 422 "Release.target_commitish is
           # invalid" (measured on the first publish run). The tag is peeled to
-          # its commit — the checkout is already at that tag, and the signature
-          # guard above verified it — so the SHA is exactly the intended target.
+          # its commit — the checkout is already at that tag — so the SHA is
+          # exactly the intended target.
           target="$(git rev-parse "refs/tags/${INPUT_TAG}^{commit}")"
           # Re-running must fix an existing release instead of dying on it.
           # --draft=false matters: a release whose tag was deleted stays behind
@@ -155,8 +134,8 @@ jobs:
             gh release edit "$INPUT_TAG" --target "$target" --draft=false \
               --title "Kwal $ver" --notes-file notes.md
           else
-            # --verify-tag: the release must attach to the tag that was just
-            # signature-checked, never invent a new one at the target (a typo in
+            # --verify-tag: the release must attach to a tag that already
+            # exists, never invent a new one at the target (a typo in
             # the input would otherwise cut a tag and ship a release from it).
             gh release create "$INPUT_TAG" --target "$target" --verify-tag \
               --title "Kwal $ver" --notes-file notes.md

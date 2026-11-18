@@ -38,16 +38,12 @@ CMake fetches `tomlplusplus` and `material-color-utilities` with `FetchContent`.
 
 ## Installation
 
-Clone the tag you want and check its signature:
+Clone the tag you want:
 
 ```sh
 git clone --branch v0.1.0 https://github.com/iguruspain/kwal.git
 cd kwal
-git -c gpg.ssh.allowedSignersFile=docs/kwal_signers verify-tag v0.1.0
 ```
-
-Release tags are signed with the SSH key published in `docs/kwal_signers`, so
-that command prints `Good "git" signature for …`.
 
 ### Option A — Arch Linux
 

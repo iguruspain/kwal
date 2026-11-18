@@ -1,6 +1,6 @@
 pkgbase = kwal
 	pkgdesc = KDE Plasma utility to manage the wallpaper and tint tools with palettes from the wallpaper
-	pkgver = 0.1.0
+	pkgver = 0.1.1
 	pkgrel = 1
 	url = https://github.com/iguruspain/kwal
 	arch = x86_64
@@ -36,7 +36,7 @@ pkgbase = kwal
 	optdepends = fastfetch: Fastfetch tab (hidden when the binary is not on PATH)
 	optdepends = starship: Starship tab (hidden when the binary is not on PATH)
 	optdepends = ulauncher: Ulauncher tab (hidden when the binary is not on PATH)
-	source = git+https://github.com/iguruspain/kwal.git#tag=v0.1.0
+	source = git+https://github.com/iguruspain/kwal.git#tag=v0.1.1
 	source = https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
 	source = https://github.com/material-foundation/material-color-utilities/archive/bd811e4ca2ab94c4ce3cadc89c19b1820b9704b3.tar.gz
 	sha256sums = SKIP

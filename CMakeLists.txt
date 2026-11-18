@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(kwal
- VERSION 0.1.0
+ VERSION 0.1.1
  DESCRIPTION "KDE Plasma wallpaper and style manager"
  LANGUAGES CXX
 )

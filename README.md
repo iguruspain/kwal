@@ -38,12 +38,11 @@ CMake fetches `tomlplusplus` and `material-color-utilities` with `FetchContent`.
 
 ## Installation
 
-Clone the repo and check out the latest release (or any tag you want):
+Clone the repo:
 
 ```sh
 git clone https://github.com/iguruspain/kwal.git
 cd kwal
-git checkout "$(git describe --tags --abbrev=0)"   # latest tag
 ```
 
 ### Option A — Arch Linux

@@ -124,24 +124,31 @@ jobs:
         run: |
           set -euo pipefail
           ver="${INPUT_TAG#v}"
-          # GitHub's `target_commitish` must name a branch or a commit: passing
-          # the tag itself dies with HTTP 422 "Release.target_commitish is
-          # invalid" (measured on the first publish run). The tag is peeled to
-          # its commit — the checkout is already at that tag — so the SHA is
-          # exactly the intended target.
-          target="$(git rev-parse "refs/tags/${INPUT_TAG}^{commit}")"
+          # No --target at all. The tag already exists (--verify-tag below) and
+          # GitHub always attaches the release to the tag's own commit;
+          # target_commitish only names where a *new* tag would be cut, which
+          # never happens here. Passing it is actively harmful: the tag *name*
+          # died with HTTP 422 "Release.target_commitish is invalid" (first
+          # publish run), and the tag's *commit SHA* dies with HTTP 403 "Resource
+          # not accessible by integration" — since the Nov-2023 "enforcing
+          # workflow scope when creating a release" change, a target commit
+          # behind the default branch's HEAD makes GitHub audit the target..HEAD
+          # range, and if it touches .github/workflows/ it demands the
+          # workflows:write permission, which a GITHUB_TOKEN can never hold (the
+          # v0.1.1 publish run died exactly there: the workflow fix between the
+          # tag and main's HEAD was in that range).
           # Re-running must fix an existing release instead of dying on it.
           # --draft=false matters: a release whose tag was deleted stays behind
           # as a *draft*, and gh release edit alone would keep it unpublished
           # (the documented idiom for publishing a draft is exactly this flag).
           if gh release view "$INPUT_TAG" >/dev/null 2>&1; then
-            gh release edit "$INPUT_TAG" --target "$target" --draft=false \
+            gh release edit "$INPUT_TAG" --draft=false \
               --title "Kwal $ver" --notes-file notes.md
           else
             # --verify-tag: the release must attach to a tag that already
-            # exists, never invent a new one at the target (a typo in
-            # the input would otherwise cut a tag and ship a release from it).
-            gh release create "$INPUT_TAG" --target "$target" --verify-tag \
+            # exists, never invent a new one (a typo in the input would
+            # otherwise cut a tag at the default branch and ship from it).
+            gh release create "$INPUT_TAG" --verify-tag \
               --title "Kwal $ver" --notes-file notes.md
           fi
         env:

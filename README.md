@@ -21,6 +21,8 @@ KDE Plasma utility to manage your desktop wallpapers and customize supported too
 - **Custom Commands:** Execute shell commands after applying a wallpaper with dynamic placeholders (e.g., `%path%`, `%scolor%`). Matugen ready.
 - **Smooth Transitions:** Animated wallpaper switches via a Wayland layer-shell overlay like awww (with fallback support).
 
+https://github.com/user-attachments/assets/15402305-009b-4957-a3a3-2efd2dc975d3
+
 ## Requirements
 
 - CMake ≥ 3.16 + Ninja, GCC with C++20

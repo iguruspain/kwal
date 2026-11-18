@@ -40,6 +40,7 @@ private slots:
     void testApplyStarshipPalettes();
     void testRestoreStarshipBackup();
     void testPreviewHtml();
+    void testPreviewHtmlEscapesMarkup();
     void testControllerLoadsAndApplies();
     void testPreviewFollowsPaletteSelection();
     void testRefreshIfChangedFollowsExternalWrite();
@@ -142,7 +143,7 @@ void tst_Starship::testPreviewHtml()
     const QString html = tools::starshipPreviewHtml(doc, 0, 1.0, 800);
     QVERIFY(html.contains(QStringLiteral("<html")));
     QVERIFY(html.contains(QStringLiteral("terminal")));
-    QVERIFY(html.contains(QStringLiteral("rgba(24,24,24,0.6)")));
+    QVERIFY(html.contains(QStringLiteral("rgba(24,24,24,0.8)")));
     // The blinking terminal cursor is part of the preview.
     QCOMPARE(html.count(QStringLiteral("<span class=\"caret\"></span>")), 1);
     QVERIFY(html.contains(QStringLiteral("caret-blink")));
@@ -161,6 +162,24 @@ void tst_Starship::testPreviewHtml()
     QCOMPARE(html2.count(QStringLiteral("<span class=\"caret\"></span>")), 1);
     QVERIFY(html2.indexOf(QStringLiteral("<span class=\"caret\">"))
                 > html2.indexOf(QStringLiteral("</div><div class=\"prompt-line\">")));
+}
+
+void tst_Starship::testPreviewHtmlEscapesMarkup()
+{
+    // The preview document is loaded with file:// access: markup written
+    // in starship.toml (shared/downloaded configs, the bundled templates)
+    // must render as literal text, never as live HTML.
+    const toml::table doc = toml::parse(
+        "palette=\"Test\"\n"
+        "format=\"</div><img src=x onerror=alert(1)>\"\n"
+        "[palettes.Test]\n"
+        "bg=\"#1a2b3c\"\n"
+        "fg=\"#ffffff\"\n");
+    const QString html = tools::starshipPreviewHtml(doc, 0, 1.0, 800);
+    // No live markup from the config: the payload survives only escaped.
+    QVERIFY(!html.contains(QStringLiteral("<img")));
+    QVERIFY(html.contains(QStringLiteral("&lt;/div&gt;")));
+    QVERIFY(html.contains(QStringLiteral("&lt;img&nbsp;src=x&nbsp;onerror=alert(1)&gt;")));
 }
 
 void tst_Starship::testControllerLoadsAndApplies()

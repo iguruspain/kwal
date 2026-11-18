@@ -230,6 +230,13 @@ void WallpaperModel::refresh()
     const QDir dir(m_directory);
     const QStringList files = dir.entryList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     for (const QString &fileName : files) {
+        // Video apply keeps raw file:// URLs (the reborn plugin's exact
+        // string format); a newline inside such a name would become a real
+        // line break in appletsrc/kscreenlockerrc — INI injection. Such
+        // names are junk anyway: keep them out of every consumer.
+        if (fileName.contains(QLatin1Char('\n')) || fileName.contains(QLatin1Char('\r'))) {
+            continue;
+        }
         const QString suffix = QFileInfo(fileName).suffix();
         if (!imageExtensions().contains(suffix, Qt::CaseInsensitive)
             && !videoExtensions().contains(suffix, Qt::CaseInsensitive)) {

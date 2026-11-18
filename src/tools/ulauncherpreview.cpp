@@ -115,9 +115,15 @@ QString resolveColor(const QString &name,
     }
 
     // rgb()/rgba() function values: Qt's QColor cannot parse them, but
-    // browsers render them natively, so pass them through unchanged.
-    if (QRegularExpression(QStringLiteral(R"(^rgba?\s*\()")).match(v).hasMatch())
-        return v;
+    // browsers render them natively, so pass them through unchanged —
+    // minus `<`: every resolved color is spliced raw into the <style>
+    // block of the mockup document, and without `<` a value can close
+    // its rule but can never open markup like `</style><script>`.
+    if (QRegularExpression(QStringLiteral(R"(^rgba?\s*\()")).match(v).hasMatch()) {
+        QString raw = v;
+        raw.remove(QLatin1Char('<'));
+        return raw;
+    }
 
     // Direct color
     const QColor c(v);
@@ -176,6 +182,11 @@ QString transformCss(const QString &css, const std::map<QString, QString> &eff)
             return resolveColor(QString(), matched, {}, 4);
         });
 
+    // The result is spliced raw into the <style> block of the mockup
+    // document (a file://-origin WebEngine page). `<` carries no meaning
+    // in CSS, and dropping it makes any markup exit like
+    // `</style><script>` in a hostile third-party theme impossible.
+    out.remove(QLatin1Char('<'));
     return out;
 }
 

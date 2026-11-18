@@ -107,6 +107,18 @@ void tst_AppController::testWallpaperModel()
     QCOMPARE(model->rowForPath(betaPath), 1);
     QCOMPARE(model->rowForPath(QStringLiteral("/does/not/exist.png")), -1);
     QCOMPARE(model->rowForPath(QString()), -1);
+
+    // A line break inside a file name must never reach the consumers:
+    // video apply writes raw file:// URLs into appletsrc/kscreenlockerrc,
+    // where the newline would become an injected INI line. The grid hides
+    // such names outright.
+    const QString junk = pictures + QStringLiteral("/C-newline");
+    QDir().mkpath(junk);
+    saveImage(junk + QStringLiteral("/ok.png"), Qt::red);
+    saveImage(junk + QStringLiteral("/evil\nnotme.png"), Qt::red);
+    model->setSourceDirectory(junk);
+    QCOMPARE(model->rowCount(), 1);
+    QCOMPARE(QFileInfo(model->pathAt(0)).fileName(), QStringLiteral("ok.png"));
 }
 
 void tst_AppController::testAutoRefresh()
@@ -396,7 +408,9 @@ void tst_AppController::testCustomCommandExpansion()
     QCOMPARE(app.customColor(), QString());
     app.setThemeMode(QStringLiteral("light"));
     app.setCustomColor(QStringLiteral("#123456"));
-    QCOMPARE(app.expandPlaceholders(QStringLiteral("%mode%")), QStringLiteral("light"));
+    // Every shell-bound placeholder is quoted, %mode% included: the only
+    // unquoted ones are %sc% (always an int) and nothing else.
+    QCOMPARE(app.expandPlaceholders(QStringLiteral("%mode%")), QStringLiteral("'light'"));
     QCOMPARE(app.expandPlaceholders(QStringLiteral("%ccolor%")), QStringLiteral("'#123456'"));
     AppController modeApp;
     QCOMPARE(modeApp.themeMode(), QStringLiteral("light"));

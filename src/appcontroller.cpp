@@ -786,7 +786,7 @@ QString AppController::expandPlaceholders(const QString &command) const
     result.replace(QStringLiteral("%path%"), shellQuote(m_selectedWallpaper));
     result.replace(QStringLiteral("%image%"), shellQuote(image));
     result.replace(QStringLiteral("%ccolor%"), shellQuote(m_customColor));
-    result.replace(QStringLiteral("%mode%"), m_themeMode);
+    result.replace(QStringLiteral("%mode%"), shellQuote(m_themeMode));
     result.replace(QStringLiteral("%scolor%"), shellQuote(scolor));
     result.replace(QStringLiteral("%sc%"), QString::number(m_selectedSourceColorIndex));
     return result;

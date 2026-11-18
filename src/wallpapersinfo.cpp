@@ -94,6 +94,12 @@ bool extractFirstFrame(const QString &video, const QString &target)
                   {QStringLiteral("-v"),
                    QStringLiteral("error"),
                    QStringLiteral("-y"),
+                   // Input protocols pinned to plain files: a planted file
+                   // whose bytes are actually an HLS/DASH playlist must not
+                   // make ffmpeg reach the network while the folder is
+                   // scanned. (Input-scoped: output options keep defaults.)
+                   QStringLiteral("-protocol_whitelist"),
+                   QStringLiteral("file,pipe"),
                    QStringLiteral("-i"),
                    video,
                    QStringLiteral("-map"),
@@ -247,6 +253,9 @@ VideoProbe probeVideo(const QString &probeBinary, const QString &video)
                    QStringLiteral("stream=width,height,r_frame_rate"),
                    QStringLiteral("-of"),
                    QStringLiteral("json"),
+                   // Same input-protocol pinning as extractFirstFrame.
+                   QStringLiteral("-protocol_whitelist"),
+                   QStringLiteral("file,pipe"),
                    video});
     if (!process.waitForStarted(5000) || !process.waitForFinished(kMatugenTimeoutMs)) {
         process.kill();
@@ -310,6 +319,9 @@ bool encodeResized(const QString &ffmpegBinary, const QString &video, const QStr
          << QStringLiteral("-progress")
          << QStringLiteral("pipe:1")
          << QStringLiteral("-nostats")
+         // Same input-protocol pinning as extractFirstFrame.
+         << QStringLiteral("-protocol_whitelist")
+         << QStringLiteral("file,pipe")
          << QStringLiteral("-i")
          << video
          << QStringLiteral("-map")

@@ -95,6 +95,7 @@ private slots:
     void testPreviewResolvesReferences();
     void testStripCssComments();
     void testPreviewInjectsThemeCss();
+    void testPreviewThemeCssCannotEscapeStyle();
     void testPreviewIconFilePath();
     void testPreviewRows();
     void testPreviewEmptyUsesDefaults();
@@ -255,6 +256,31 @@ void tst_Ulauncher::testPreviewInjectsThemeCss()
     QVERIFY(html.contains(QStringLiteral("background:transparent")));
     QVERIFY(html.contains(QStringLiteral("box-shadow")));
     QVERIFY(!html.contains(QStringLiteral("@define-color")));
+}
+
+void tst_Ulauncher::testPreviewThemeCssCannotEscapeStyle()
+{
+    // A hostile third-party theme (user-themes are downloaded from the
+    // community and previewed automatically) must not be able to close
+    // the mockup document's <style> element: the page runs with file://
+    // access, so markup in the CSS would read local files.
+    QTemporaryDir tmp;
+    QVERIFY(tmp.isValid());
+    const QString dir = tmp.path();
+    writeFile(dir + QStringLiteral("/theme.css"),
+              QStringLiteral("@define-color window_bg rgba(1, 2, 3, 0.5)}</style><script>alert(1)</script>;\n"
+                             ".app { background-color: red; }\n"
+                             "</style><script>alert(2)</script>\n"));
+    writeFile(dir + QStringLiteral("/manifest.json"), QStringLiteral("{}"));
+
+    const QString html = tools::ulauncherPreviewHtml(dir, {}, 0.75, 0, QString(), QString());
+    // Exactly the template's own style element remains, and no script.
+    QCOMPARE(html.count(QStringLiteral("</style>")), 1);
+    QVERIFY(!html.contains(QStringLiteral("<script")));
+    // The legitimate styling survives: values and rules are intact,
+    // only `<` is stripped.
+    QVERIFY(html.contains(QStringLiteral("rgba(1, 2, 3, 0.5)")));
+    QVERIFY(html.contains(QStringLiteral("background-color: red")));
 }
 
 void tst_Ulauncher::testPreviewRows()

@@ -94,6 +94,25 @@ QString formatCssColor(const QString &value)
     return v.isEmpty() ? QStringLiteral("inherit") : v;
 }
 
+// The preview document is generated from data (starship.toml text, style
+// values) and loaded with file:// access — every string entering the HTML
+// must be escaped or markup in the config becomes script.
+QString escapeHtmlText(const QString &text)
+{
+    QString out = text;
+    out.replace(QLatin1Char('&'), QStringLiteral("&amp;"));
+    out.replace(QLatin1Char('<'), QStringLiteral("&lt;"));
+    out.replace(QLatin1Char('>'), QStringLiteral("&gt;"));
+    return out;
+}
+
+QString escapeHtmlAttr(const QString &text)
+{
+    QString out = escapeHtmlText(text);
+    out.replace(QLatin1Char('"'), QStringLiteral("&quot;"));
+    return out;
+}
+
 QString resolveColor(const QString &key, const std::map<QString, QString> &palette)
 {
     if (key.isEmpty())
@@ -609,11 +628,13 @@ private:
                 continue;
 
             const QStringList css = buildElementCss(el.style, m_palette);
-            QString escaped = el.content;
+            // Escape first, then protect the spaces: escaping the
+            // &nbsp; entities afterward would double-encode them.
+            QString escaped = escapeHtmlText(el.content);
             escaped.replace(QStringLiteral(" "), QStringLiteral("&nbsp;"));
             inner += QStringLiteral("<span class=\"%1\" style=\"%2\">%3</span>")
                 .arg(classifyContentClass(el.content),
-                     css.join(QStringLiteral("; ")), escaped);
+                     escapeHtmlAttr(css.join(QStringLiteral("; "))), escaped);
         }
         // The terminal cursor blinks at the very end of the prompt.
         inner += QStringLiteral("<span class=\"caret\"></span>");
@@ -672,11 +693,11 @@ QString buildPreviewCss(double scale, int width)
         ".terminal {"
         "display: inline-block;"
         "width: %2px;"
-        "background: rgba(24,24,24,0.6);"
+        "background: rgba(24,24,24,0.8);"
         "border: 1px solid rgba(48,48,48,0.6);"
         "border-radius: 8px;"
         "padding: 15px 20px;"
-        "box-shadow: 0 20px 40px rgba(0,0,0,0.8);"
+        "box-shadow: 0 20px 24px rgba(0,0,0,0.8);"
         "white-space: nowrap;"
         "overflow: hidden;"
         "}"

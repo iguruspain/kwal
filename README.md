@@ -21,9 +21,9 @@ KDE Plasma utility to manage your desktop wallpapers and customize supported too
 - **Custom Commands:** Execute shell commands after applying a wallpaper with dynamic placeholders (e.g., `%path%`, `%scolor%`). Matugen ready.
 - **Smooth Transitions:** Animated wallpaper switches via a Wayland layer-shell overlay like awww (with fallback support).
 
-▶️ **[Watch the Kwal feature demo](https://github.com/iguruspain/kwal/blob/main/screenshots/kwal_features_web.mp4)**
+<video src="https://raw.githubusercontent.com/iguruspain/kwal/main/screenshots/kwal_features_web.mp4" controls autoplay loop muted playsinline></video>
 
-> GitHub doesn't play repository-hosted video files inline in README files. Open the link above to play the demo in GitHub's video viewer.
+[Open the feature demo video](https://github.com/iguruspain/kwal/blob/main/screenshots/kwal_features_web.mp4)
 
 ## Requirements
 

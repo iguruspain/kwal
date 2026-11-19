@@ -23,11 +23,11 @@
 
     <text x="550" y="450" z="100" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">w</text>
     <text x="890" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">a</text>
-    <text x="1080" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">l</text>
+    <text x="1090" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">l</text>
     <text x="550" y="450" z="100" fill="url(#translucency)">w</text>
     <text x="200" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">k</text>
     <text x="200" y="450" fill="url(#translucency)">k</text>
     <text x="890" y="450" fill="url(#translucency)">a</text>
-    <text x="1080" y="450" fill="url(#translucency)">l</text>
+    <text x="1090" y="450" fill="url(#translucency)">l</text>
   </g>
 </svg>

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 512" width="1440" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 512" width="1200" height="512">
 
   <defs>
     <!-- Gradiente cromático a lo ancho de la palabra -->
@@ -10,24 +10,24 @@
       <stop offset="100%" stop-color="#FFB38F"/>
     </linearGradient>
 
-    <!-- Brillo gelatinoso, receta de la campana de la medusa: se reinicia por letra -->
-    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+    <!-- Cuerpo gelatinoso -->
+    <linearGradient id="translucency" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fff" stop-opacity=".38"/>
       <stop offset="1" stop-color="#fff" stop-opacity=".04"/>
     </linearGradient>
   </defs>
 
-  <!-- Letras separadas: el gloss (objectBoundingBox) resalta la parte superior de cada una -->
-  <g font-family="Arial Rounded MT Bold, Nunito, sans-serif"
+  <!-- Letras separadas: el translucency (objectBoundingBox) resalta la parte superior de cada una -->
+  <g font-family="Nunito, Arial Rounded MT Bold, sans-serif"
      font-size="520" font-weight="900" text-anchor="middle">
-    <text x="200" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">k</text>
-    <text x="600" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">w</text>
-    <text x="940" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">a</text>
-    <text x="1130" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">l</text>
 
-    <text x="200" y="450" fill="url(#gloss)">k</text>
-    <text x="600" y="450" fill="url(#gloss)">w</text>
-    <text x="940" y="450" fill="url(#gloss)">a</text>
-    <text x="1130" y="450" fill="url(#gloss)">l</text>
+    <text x="550" y="450" z="100" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">w</text>
+    <text x="890" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">a</text>
+    <text x="1080" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">l</text>
+    <text x="550" y="450" z="100" fill="url(#translucency)">w</text>
+    <text x="200" y="450" fill="url(#jelly)" stroke="url(#jelly)" stroke-width="35" stroke-linejoin="round">k</text>
+    <text x="200" y="450" fill="url(#translucency)">k</text>
+    <text x="890" y="450" fill="url(#translucency)">a</text>
+    <text x="1080" y="450" fill="url(#translucency)">l</text>
   </g>
 </svg>

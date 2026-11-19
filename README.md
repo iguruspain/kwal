@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="icons/hicolor/scalable/apps/kwal.svg" height="170" alt="Kwal jellyfish logo">
-  <img src="icons/hicolor/scalable/apps/kwal_text.svg" height="210" alt="Kwal text logo">
+  <img src="icons/hicolor/scalable/apps/kwal.svg" height="180" alt="Kwal jellyfish logo">
+  <img src="icons/hicolor/scalable/apps/kwal_text.svg" height="180" alt="Kwal text logo">
 </p>
 
 # Kwal
